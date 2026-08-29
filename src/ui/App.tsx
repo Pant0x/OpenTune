@@ -257,6 +257,8 @@ const playerSession = usePlayerSession();
   // OS media query alone, which is why this is the app's hook and not that one.
   const reduceMotion = useReduceMotion();
 
+  const [isWindowMaximizedOrFullscreen, setIsWindowMaximizedOrFullscreen] = useState(true);
+
   // The window is transparent so the app root can round its own corners. When the window
   // is maximised or fullscreen those corners would expose the desktop, so drop the radius.
   useEffect(() => {
@@ -270,9 +272,10 @@ const playerSession = usePlayerSession();
           appWindow.isFullscreen(),
         ]);
         if (disposed) return;
+        setIsWindowMaximizedOrFullscreen(Boolean(maximized || fullscreen));
         document.documentElement.toggleAttribute(
           "data-window-maximized",
-          maximized || fullscreen,
+          Boolean(maximized || fullscreen),
         );
       } catch (error) {
         logInternalWarn("App.syncWindowRadius failed", {
@@ -1597,8 +1600,10 @@ const backOnboardingStep = () => {
       webview there, so this edge would just be a stray line under the OS title bar.
     */}
     <div
-      className={`relative flex h-screen flex-col overflow-hidden rounded-[var(--window-radius)] ${
-        nativeWindowControls ? "" : "border border-border ring-1 ring-inset ring-[var(--window-edge)]"
+      className={`relative flex h-screen flex-col overflow-hidden ${
+        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen
+          ? "rounded-none border-0 ring-0 p-0 m-0"
+          : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
       }`}
     >
  {/*    {!paperPcMode && <StarField />}

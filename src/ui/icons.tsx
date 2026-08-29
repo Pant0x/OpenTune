@@ -75,6 +75,7 @@ export { DocumentTextIcon as LogFileIcon } from "@solar-icons/react/linear/docum
 export { Home2Icon as HomeIcon } from "@solar-icons/react/linear/home-2";
 export { Home2Icon as HomeActiveIcon } from "@solar-icons/react/bold/home-2";
 export { SidebarMinimalisticIcon as QueuePanelIcon } from "@solar-icons/react/linear/sidebar-minimalistic";
+export { SidebarMinimalisticIcon as SidebarToggleIcon } from "@solar-icons/react/linear/sidebar-minimalistic";
 export { MagnifierIcon as SearchIcon } from "@solar-icons/react/linear/magnifier";
 export { CompassIcon } from "@solar-icons/react/linear/compass";
 export { RadioIcon } from "@solar-icons/react/linear/radio";

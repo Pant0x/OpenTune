@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const DISCORD_CLIENT_ID: &str = "1515682467154100344";
 const GITHUB_REPO: &str = "https://github.com/Pant0x/Amber-Music-Platform";
-const ACTIVITY_NAME: &str = "Amber";
 /// Asset key for the Amber logo uploaded to Discord Developer Portal
 /// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "amber-logo"
 const AMBER_LOGO_ASSET_KEY: &str = "amber-logo";

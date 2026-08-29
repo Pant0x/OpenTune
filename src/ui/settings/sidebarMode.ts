@@ -17,11 +17,17 @@ export type SidebarMode = "collapsed" | "expanded" | "hover";
 
 const STORAGE_KEY = "sidebar-mode";
 const CHANGE_EVENT = "sidebar-mode-change";
-const DEFAULT_MODE: SidebarMode = "hover";
+const DEFAULT_MODE: SidebarMode = "expanded";
 
 /** Rail width when collapsed. Wide enough for a 40px tile plus its padding. */
 export const SIDEBAR_COLLAPSED_WIDTH = 62;
 export const SIDEBAR_EXPANDED_WIDTH = 240;
+
+export function toggleSidebarMode() {
+  const current = getSidebarMode();
+  const next = current === "collapsed" ? "expanded" : "collapsed";
+  setSidebarMode(next);
+}
 
 export const SIDEBAR_MODES: ReadonlyArray<{ value: SidebarMode; label: string; hint: string }> = [
   { value: "expanded", label: "Always expanded", hint: "Names always visible" },

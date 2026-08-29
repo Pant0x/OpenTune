@@ -81,6 +81,16 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
   try {
     update = await check();
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (
+      msg.includes("Could not fetch a valid release JSON") ||
+      msg.includes("404") ||
+      msg.includes("NotFound") ||
+      msg.includes("release JSON from the remote")
+    ) {
+      // No release published to Pant0x/Amber-Music-Platform yet. Treat gracefully as up-to-date.
+      return null;
+    }
     logInternalError("updateChecker.checkForUpdates failed", error);
     throw error;
   }

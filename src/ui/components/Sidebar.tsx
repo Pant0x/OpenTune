@@ -23,6 +23,7 @@ import {
   PlaylistIcon,
   RefreshIcon,
   SearchIcon,
+  SidebarToggleIcon,
   SortIcon,
 } from "@/ui/icons";
 import type { Album, Playlist } from "../../datasource/types";
@@ -37,7 +38,7 @@ import {
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
 import { getAppSetting, setAppSetting } from "../../internal/appSettings";
-import { resolveSidebarWidth, useSidebarMode } from "../settings/sidebarMode";
+import { resolveSidebarWidth, toggleSidebarMode, useSidebarMode } from "../settings/sidebarMode";
 import { ArtistLinks } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
@@ -1172,52 +1173,98 @@ export function Sidebar({
           change the page, only what the list below shows, and styling it identically was
           what made "Albums the destination" and "Albums the filter" indistinguishable.
         */}
+        {/* Header with Library views and Toggle button */}
         <div
           className={cn(
-            "flex shrink-0 items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border",
-            shouldHideText ? "mx-auto flex-col" : "mx-2",
+            "flex shrink-0 items-center justify-between gap-1 pb-1",
+            shouldHideText ? "mx-auto flex-col px-1" : "mx-2",
           )}
-          role="group"
-          aria-label="Library view"
         >
-          {LIBRARY_VIEWS.map((view) => {
-            const isActive = libraryView === view.value;
-            return (
-              <SidebarItemTooltip
-                key={view.value}
-                enabled={shouldHideText}
-                title={view.label}
-                subtitle={view.hint}
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    "relative flex items-center justify-center gap-1.5 rounded-full transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    shouldHideText ? "size-9" : "flex-1 px-2.5 py-1.5 text-xs font-medium",
-                    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                  )}
-                  aria-pressed={isActive}
-                  aria-label={view.label}
-                  onClick={() => setLibraryView(view.value)}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="sidebar-library-view"
-                      transition={{ type: "spring", stiffness: 520, damping: 42 }}
-                      /* `bg-card`, not `bg-background`: card is the lighter token in dark
-                         mode and the darker one in light, so the active pill reads as raised
-                         in both. Against `bg-background` it went *darker* than its own track
-                         in dark mode, which reads as disabled rather than selected. */
-                      className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
-                    />
-                  )}
-                  <view.icon size={16} aria-hidden="true" />
-                  {!shouldHideText && <span>{view.label}</span>}
-                </button>
-              </SidebarItemTooltip>
-            );
-          })}
+          {!shouldHideText ? (
+            <div
+              className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
+              role="group"
+              aria-label="Library view"
+            >
+              {LIBRARY_VIEWS.map((view) => {
+                const isActive = libraryView === view.value;
+                return (
+                  <button
+                    key={view.value}
+                    type="button"
+                    className={cn(
+                      "relative flex items-center justify-center gap-1.5 rounded-full transition-colors flex-1 px-2.5 py-1.5 text-xs font-medium",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-pressed={isActive}
+                    aria-label={view.label}
+                    onClick={() => setLibraryView(view.value)}
+                  >
+                    {isActive && (
+                      <motion.span
+                        layoutId="sidebar-library-view"
+                        transition={{ type: "spring", stiffness: 520, damping: 42 }}
+                        className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
+                      />
+                    )}
+                    <view.icon size={16} aria-hidden="true" />
+                    <span>{view.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div
+              className="flex shrink-0 flex-col items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
+              role="group"
+              aria-label="Library view"
+            >
+              {LIBRARY_VIEWS.map((view) => {
+                const isActive = libraryView === view.value;
+                return (
+                  <SidebarItemTooltip
+                    key={view.value}
+                    enabled={shouldHideText}
+                    title={view.label}
+                    subtitle={view.hint}
+                  >
+                    <button
+                      type="button"
+                      className={cn(
+                        "relative flex size-8 items-center justify-center rounded-full transition-colors",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                      aria-pressed={isActive}
+                      aria-label={view.label}
+                      onClick={() => setLibraryView(view.value)}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="sidebar-library-view-collapsed"
+                          transition={{ type: "spring", stiffness: 520, damping: 42 }}
+                          className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
+                        />
+                      )}
+                      <view.icon size={16} aria-hidden="true" />
+                    </button>
+                  </SidebarItemTooltip>
+                );
+              })}
+            </div>
+          )}
+
+          <Tooltip side="right" content={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            <button
+              type="button"
+              onClick={() => toggleSidebarMode()}
+              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <SidebarToggleIcon size={18} aria-hidden="true" />
+            </button>
+          </Tooltip>
         </div>
 
         <CreatePlaylistButton
@@ -1463,7 +1510,7 @@ export function Sidebar({
                 {!shouldHideText && (
                   <span>
                     {libraryState.status === "signed-out"
-                      ? "Sign in to see your playlists."
+                      ? "Sign in to see your YouTube Music playlists."
                       : "No user-created playlists were found."}
                   </span>
                 )}

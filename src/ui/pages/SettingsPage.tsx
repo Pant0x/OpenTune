@@ -40,15 +40,21 @@ import {
 } from "@/components/motion/select";
 import {
   BugIcon,
+  CheckIcon,
+  CloseIcon,
+  DiscordIcon,
   DownloadIcon,
   FolderAddIcon,
   FolderIcon,
   FolderOpenIcon,
+  GoogleIcon,
+  ImageIcon,
   KeyIcon,
   LogFileIcon,
   LogoutIcon,
   LyricsIcon,
   PaletteIcon,
+  PencilIcon,
   PlayIcon,
   QueuePanelIcon,
   RefreshIcon,
@@ -57,6 +63,7 @@ import {
   TrashIcon,
   UserIcon,
 } from "@/ui/icons";
+import { useAuthProfile } from "../../lib/authProfile";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -721,6 +728,62 @@ export function SettingsPage({
   const [localPlaylistBrowsingId, setLocalPlaylistBrowsingId] = useState<string | null>(null);
   const [createFromFolderBusy, setCreateFromFolderBusy] = useState(false);
   const [createFromFolderError, setCreateFromFolderError] = useState<string | null>(null);
+  const { profile, updateUsername, updateAvatarUrl, signOut: authSignOut } = useAuthProfile();
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [isEditingAvatar, setIsEditingAvatar] = useState(false);
+  const [avatarUrlInput, setAvatarUrlInput] = useState("");
+  const [profileActionBusy, setProfileActionBusy] = useState(false);
+  const [profileActionError, setProfileActionError] = useState<string | null>(null);
+  const [profileActionSuccess, setProfileActionSuccess] = useState<string | null>(null);
+
+  const isGoogleUser = libraryState.status === "ready" || profile?.provider === "google";
+  const hasAppAccount = Boolean(profile || libraryState.status === "ready");
+
+  const handleSaveUsername = async () => {
+    if (!usernameInput.trim()) return;
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    setProfileActionSuccess(null);
+    try {
+      await updateUsername(usernameInput.trim());
+      setIsEditingUsername(false);
+      setProfileActionSuccess("Username updated successfully.");
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to update username.");
+    } finally {
+      setProfileActionBusy(false);
+    }
+  };
+
+  const handleSaveAvatar = async (url: string) => {
+    if (!url.trim()) return;
+    setProfileActionBusy(true);
+    setProfileActionError(null);
+    setProfileActionSuccess(null);
+    try {
+      await updateAvatarUrl(url.trim());
+      setIsEditingAvatar(false);
+      setAvatarUrlInput("");
+      setProfileActionSuccess("Profile picture updated successfully.");
+    } catch (err) {
+      setProfileActionError(err instanceof Error ? err.message : "Failed to update avatar.");
+    } finally {
+      setProfileActionBusy(false);
+    }
+  };
+
+  const handleSignOutAll = async () => {
+    try {
+      if (libraryState.status === "ready") {
+        await libraryController.signOut();
+      }
+      await authSignOut();
+    } catch (err) {
+      console.error("Sign out error:", err);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<SettingsTab>("about");
   const themePreference = useThemePreference();
   const [listeningShortcut, setListeningShortcut] = useState<KeyboardShortcutAction | null>(null);
@@ -1157,92 +1220,277 @@ export function SettingsPage({
 
       {activeTab === "about" && (
         <div className="flex flex-col gap-5" role="tabpanel" aria-label="About settings">
+          {/* User Profile & Account Card */}
           <section className={SETTINGS_CARD} aria-labelledby="account-settings-title">
             <SettingsCardHeader
-              title="Account"
+              title="Account & Profile"
               titleId="account-settings-title"
               icon={<UserIcon size={18} aria-hidden="true" />}
-              description={isSignedIn ? "Signed in to YouTube Music" : "No account connected"}
+              description={hasAppAccount ? "Manage your profile and authentication" : "No account connected"}
               status={
-                <span className={isSignedIn ? "text-primary" : "text-muted-foreground"}>
-                  {isSignedIn ? "Connected" : "Signed out"}
+                <span className={hasAppAccount ? "text-primary font-medium" : "text-muted-foreground"}>
+                  {hasAppAccount ? "Active" : "Signed out"}
                 </span>
               }
             />
 
-            {/* `justify-between` with a `min-w-0 flex-1` text column: without both, the name
-                and description push the sign-out button off the right edge on long channel
-                names instead of truncating. */}
-            <div className="flex items-center justify-between gap-3">
-              <AccountAvatar artworkUrl={account?.artworkUrl} className="size-11" iconSize={26} />
+            {/* Profile Row */}
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
+                <div className="relative group/avatar shrink-0">
+                  <AccountAvatar
+                    artworkUrl={profile?.avatarUrl || account?.artworkUrl}
+                    className="size-14 ring-2 ring-border/60"
+                    iconSize={30}
+                  />
+                  {!isGoogleUser && profile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingAvatar((prev) => !prev);
+                        setAvatarUrlInput(profile?.avatarUrl ?? "");
+                      }}
+                      className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full bg-primary text-white shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title="Change Profile Picture"
+                      aria-label="Change Profile Picture"
+                    >
+                      <ImageIcon size={13} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
 
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-base font-medium text-foreground">
-                  {isSignedIn ? account?.name || "YouTube Music" : "Not signed in"}
-                </span>
-                <span className="truncate text-sm text-muted-foreground">
-                  {isSignedIn
-                    ? `Session confirmed ${formatSessionAge(libraryState.sessionConfirmedAt)}.`
-                    : "Sign in to load your library."}
-                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-base font-semibold text-foreground">
+                      {profile?.username || account?.name || "Music Explorer"}
+                    </span>
+                    {!isGoogleUser && profile && !isEditingUsername && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingUsername(true);
+                          setUsernameInput(profile.username);
+                        }}
+                        className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                        title="Edit Username"
+                        aria-label="Edit Username"
+                      >
+                        <PencilIcon size={14} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {profile?.email || (isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Sign in to customize profile and sync playlists")}
+                  </span>
+                  {profile && (
+                    <span className="mt-1 inline-flex w-fit items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {profile.provider === "google" ? "Google Account" : profile.provider === "discord" ? "Discord Account" : "Amber Account"}
+                    </span>
+                  )}
+                </div>
+
+                {hasAppAccount ? (
+                  <button
+                    className="flex items-center gap-2 rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    type="button"
+                    onClick={() => void handleSignOutAll()}
+                  >
+                    <LogoutIcon size={16} />
+                    Sign out
+                  </button>
+                ) : (
+                  <button
+                    className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    type="button"
+                    onClick={() => setIsAuthModalOpen(true)}
+                  >
+                    Sign In / Sign Up
+                  </button>
+                )}
               </div>
 
-              {isSignedIn ? (
-                <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  onClick={() => void libraryController.signOut()}
-                >
-                  <LogoutIcon size={18} />
-                  Sign out
-                </button>
-              ) : (
-                <button
-                  className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  type="button"
-                  onClick={() => setIsAuthModalOpen(true)}
-                >
-                  Sign In / Sign Up
-                </button>
+              {/* Inline Edit Username */}
+              {isEditingUsername && !isGoogleUser && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                  <span className="text-xs font-medium text-foreground w-full sm:w-auto">New Username:</span>
+                  <input
+                    className={cn(SETTINGS_FIELD, "flex-1 min-w-[180px]")}
+                    type="text"
+                    value={usernameInput}
+                    placeholder="Enter new username"
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleSaveUsername();
+                      if (e.key === "Escape") setIsEditingUsername(false);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={profileActionBusy}
+                    onClick={() => void handleSaveUsername()}
+                    className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    <CheckIcon size={14} />
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    disabled={profileActionBusy}
+                    onClick={() => setIsEditingUsername(false)}
+                    className="flex items-center gap-1 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <CloseIcon size={14} />
+                    Cancel
+                  </button>
+                </div>
               )}
+
+              {/* Inline Edit Avatar / PFP */}
+              {isEditingAvatar && !isGoogleUser && (
+                <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                  <span className="text-xs font-medium text-foreground">Change Profile Picture:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      className={cn(SETTINGS_FIELD, "flex-1 min-w-[200px]")}
+                      type="text"
+                      value={avatarUrlInput}
+                      placeholder="https://example.com/avatar.jpg"
+                      onChange={(e) => setAvatarUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleSaveAvatar(avatarUrlInput);
+                        if (e.key === "Escape") setIsEditingAvatar(false);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={profileActionBusy || !avatarUrlInput.trim()}
+                      onClick={() => void handleSaveAvatar(avatarUrlInput)}
+                      className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <CheckIcon size={14} />
+                      Save PFP
+                    </button>
+                    <button
+                      type="button"
+                      disabled={profileActionBusy}
+                      onClick={() => setIsEditingAvatar(false)}
+                      className="flex items-center gap-1 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      <CloseIcon size={14} />
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[11px] text-muted-foreground">Quick presets:</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAvatar("/icons/128x128.png")}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      Amber Logo
+                    </button>
+                    <span className="text-muted-foreground/40">•</span>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveAvatar("/img/liked.jpg")}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      Classic Mascot
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {profileActionSuccess && <p className="text-xs text-emerald-400">{profileActionSuccess}</p>}
+              {profileActionError && <p className="text-xs text-destructive">{profileActionError}</p>}
+              {libraryState.error && <p className="text-xs text-destructive">{libraryState.error}</p>}
             </div>
 
-            {/* Separate Google logins, not channels — always shown once signed in, since this
-                is where a second account gets added, not just switched to. */}
+            {/* Google Channels / Switcher when signed in */}
             {isSignedIn && (
-              <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+              <div className="flex flex-col gap-2 border-t border-border pt-4">
                 <GoogleAccountSwitcher
                   libraryController={libraryController}
                   showSingle
                   allowRemove
-                  label="Accounts"
+                  label="Google Accounts"
                 />
                 <AddGoogleAccountButton disabled={authBusy} onClick={() => void onSignIn()} />
-              </div>
-            )}
-
-            {/* Renders nothing unless the account actually has more than one channel. */}
-            {isSignedIn && (
-              <div className="flex flex-col gap-1.5 border-t border-border pt-4">
                 <AccountSwitcher libraryController={libraryController} showSingle label="Channel" />
               </div>
             )}
-
-            {libraryState.error && <p className="text-sm text-destructive">{libraryState.error}</p>}
           </section>
 
-          <section className={SETTINGS_CARD} aria-labelledby="discord-settings-title">
-            <h2 className="text-lg font-semibold text-foreground" id="discord-settings-title">
-              Discord
-            </h2>
+          {/* Connected Accounts Section */}
+          <section className={SETTINGS_CARD} aria-labelledby="connections-settings-title">
+            <SettingsCardHeader
+              title="Connected Accounts"
+              titleId="connections-settings-title"
+              icon={<GoogleIcon size={18} aria-hidden="true" />}
+              description="Connect external services to link libraries and activity"
+            />
 
-            <div className="flex flex-col gap-5">
-              <SettingToggle
-                title="Show what you're playing"
-                description="Publishes the current track, artist and artwork to your Discord profile. Turning this off clears whatever is showing there now."
-                checked={discordPresenceEnabled}
-                onCheckedChange={(enabled) => void DiscordRpcService.setEnabled(enabled)}
-              />
+            <div className="flex flex-col gap-3">
+              {/* Google Row */}
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-xl bg-card">
+                    <GoogleIcon size={22} />
+                  </span>
+                  <div className="flex flex-col">
+                    <strong className="text-sm font-semibold text-foreground">Google / YouTube Music</strong>
+                    <span className="text-xs text-muted-foreground">
+                      {isSignedIn || profile?.isGoogleConnected
+                        ? "Connected — Playlists and likes are synchronized"
+                        : "Connect to sync your YouTube Music playlists and library"}
+                    </span>
+                  </div>
+                </div>
+
+                {isSignedIn || profile?.isGoogleConnected ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
+                    <CheckIcon size={13} />
+                    Connected
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void onSignIn()}
+                    className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+
+              {/* Discord Row */}
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-xl bg-card">
+                    <DiscordIcon size={22} />
+                  </span>
+                  <div className="flex flex-col">
+                    <strong className="text-sm font-semibold text-foreground">Discord Rich Presence</strong>
+                    <span className="text-xs text-muted-foreground">
+                      Display what you are listening to on your Discord profile status
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    "text-xs font-medium",
+                    discordPresenceEnabled ? "text-primary" : "text-muted-foreground"
+                  )}>
+                    {discordPresenceEnabled ? "Connected" : "Disconnected"}
+                  </span>
+                  <Switch
+                    checked={discordPresenceEnabled}
+                    onCheckedChange={(enabled) => void DiscordRpcService.setEnabled(enabled)}
+                    aria-label="Discord Rich Presence"
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1325,15 +1573,15 @@ export function SettingsPage({
               description="Folders on this computer, scanned into playlists."
             />
 
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
-                  <strong>Local playlists</strong>
-                  <span>Create playlists from folders on this computer.</span>
-                </span>
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4">
+                <div className="flex flex-col gap-0.5">
+                  <strong className="text-sm font-medium text-foreground">Local playlists</strong>
+                  <span className="text-sm text-muted-foreground">Create playlists from folders on this computer.</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
                   <input
-                    className={cn(SETTINGS_FIELD, "w-44")}
+                    className={cn(SETTINGS_FIELD, "w-56")}
                     type="text"
                     value={localPlaylistName}
                     placeholder="Playlist name"
@@ -1344,7 +1592,7 @@ export function SettingsPage({
                     }}
                   />
                   <button
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     type="button"
                     onClick={handleCreateLocalPlaylist}
                   >
@@ -1352,7 +1600,7 @@ export function SettingsPage({
                     Create
                   </button>
                   <button
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     type="button"
                     onClick={handleCreateFromFolder}
                     disabled={createFromFolderBusy}
@@ -1368,77 +1616,77 @@ export function SettingsPage({
               {createFromFolderBusy && <p className="text-sm text-muted-foreground">Scanning folder and creating playlists...</p>}
 
               {localPlaylists.length > 0 && (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
                   {localPlaylists.map((playlist) => (
-                    <div className="flex items-center justify-between gap-3 rounded-lg bg-background/40 px-3 py-2 text-sm" key={playlist.id}>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-foreground">
+                    <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4 text-sm" key={playlist.id}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-2 truncate font-medium text-foreground">
                           <FolderIcon size={18} aria-hidden="true" />
                           {playlist.name}
                         </span>
                         <button
-                          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                           type="button"
                           onClick={() => deleteLocalPlaylist(playlist.id)}
                         >
-                          <TrashIcon size={18} />
+                          <TrashIcon size={16} />
                           Delete
                         </button>
                       </div>
 
-                      <div className="flex flex-col gap-2">
-                        <span className="flex items-center gap-2">
-                          <input
-                            className={cn(SETTINGS_FIELD, "flex-1")}
-                            type="text"
-                            value={localPlaylistPathInputs[playlist.id] ?? ""}
-                            placeholder="/Users/name/Music"
-                            aria-label={`Folder path for ${playlist.name}`}
-                            onChange={(event) => setLocalPlaylistPathInputs((current) => ({
-                              ...current,
-                              [playlist.id]: event.target.value,
-                            }))}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") handleAddLocalPlaylistPath(playlist.id);
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                            disabled={localPlaylistBrowsingId === playlist.id}
-                            title="Browse for folder"
-                            aria-label={`Browse for a folder for ${playlist.name}`}
-                            onClick={() => void handleBrowseLocalPlaylistPath(playlist.id)}
-                          >
-                            <FolderOpenIcon size={17} aria-hidden="true" />
-                          </button>
-                        </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          className={cn(SETTINGS_FIELD, "min-w-[240px] flex-1")}
+                          type="text"
+                          value={localPlaylistPathInputs[playlist.id] ?? ""}
+                          placeholder="/Users/name/Music or C:\Music"
+                          aria-label={`Folder path for ${playlist.name}`}
+                          onChange={(event) => setLocalPlaylistPathInputs((current) => ({
+                            ...current,
+                            [playlist.id]: event.target.value,
+                          }))}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") handleAddLocalPlaylistPath(playlist.id);
+                          }}
+                        />
                         <button
-                          className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          type="button"
+                          className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          disabled={localPlaylistBrowsingId === playlist.id}
+                          title="Browse for folder"
+                          aria-label={`Browse for a folder for ${playlist.name}`}
+                          onClick={() => void handleBrowseLocalPlaylistPath(playlist.id)}
+                        >
+                          <FolderOpenIcon size={16} aria-hidden="true" />
+                          Browse
+                        </button>
+                        <button
+                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                           type="button"
                           onClick={() => handleAddLocalPlaylistPath(playlist.id)}
                         >
-                          Add
+                          Add Path
                         </button>
                       </div>
 
                       {playlist.paths.length > 0 ? (
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1.5 pt-1">
                           {playlist.paths.map((path) => (
-                            <div className="flex items-center justify-between gap-3 rounded-lg bg-background/40 px-3 py-2 text-sm" key={path}>
-                              <span>{path}</span>
+                            <div className="flex items-center justify-between gap-3 rounded-lg bg-card/60 px-3 py-2 text-xs" key={path}>
+                              <span className="truncate text-muted-foreground">{path}</span>
                               <button
                                 type="button"
+                                className="text-muted-foreground hover:text-destructive transition-colors"
                                 aria-label={`Remove ${path}`}
                                 onClick={() => removeLocalPlaylistPath(playlist.id, path)}
                               >
-                                <TrashIcon size={16} aria-hidden="true" />
+                                <TrashIcon size={15} aria-hidden="true" />
                               </button>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="px-1 py-3 text-sm text-muted-foreground">No paths added yet.</p>
+                        <p className="px-1 py-1 text-xs text-muted-foreground">No paths added to this playlist yet.</p>
                       )}
                     </div>
                   ))}
