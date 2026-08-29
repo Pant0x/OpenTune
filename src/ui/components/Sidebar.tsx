@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import { FloatingPanel } from "./FloatingPanel";
 import { GoogleSignInButton } from "./GoogleSignInButton";
-import { importPlaylistFile } from "../../player/playlistTransfer";
+import { importPlaylistFile, importSpotifyPlaylist } from "../../player/playlistTransfer";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import {
   AlbumIcon,
@@ -210,10 +210,11 @@ function CreatePlaylistButton({
    * choice — it cannot hold anything you have not downloaded — so it should be the one you
    * opt into, not the one you get by default.
    */
-  const [destination, setDestination] = useState<"youtube" | "local">(
+  const [destination, setDestination] = useState<"youtube" | "local" | "spotify">(
     canCreateRemote ? "youtube" : "local",
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const spotifyUrlRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!canCreateRemote) setDestination("local");
@@ -272,15 +273,42 @@ function CreatePlaylistButton({
     }
     if (busy) return;
 
+    // For Spotify, we need a URL
+    if (destination === "spotify") {
+      const spotifyUrl = spotifyUrlRef.current?.value?.trim();
+      if (!spotifyUrl) {
+        setError("Enter a Spotify playlist URL.");
+        spotifyUrlRef.current?.focus();
+        return;
+      }
+    }
+
     setBusy(true);
     try {
-      const created = await libraryController.createPlaylist(trimmed, {
-        local: destination === "local",
-      });
-      setName("");
-      setError(null);
-      setOpen(false);
-      onCreated(created);
+      if (destination === "spotify") {
+        // Import Spotify playlist
+        const spotifyUrl = spotifyUrlRef.current?.value?.trim();
+        const imported = await importSpotifyPlaylist(spotifyUrl!);
+        if (!imported) return;
+
+        const created = await libraryController.createPlaylist(imported.title, {
+          local: false,
+        });
+        await libraryController.addTracksToPlaylist(imported.tracks, created);
+        
+        setName("");
+        setError(null);
+        setOpen(false);
+        onCreated(created);
+      } else {
+        const created = await libraryController.createPlaylist(trimmed, {
+          local: destination === "local",
+        });
+        setName("");
+        setError(null);
+        setOpen(false);
+        onCreated(created);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the playlist.");
     } finally {
@@ -342,7 +370,7 @@ function CreatePlaylistButton({
             role="radiogroup"
             aria-label="Where to create the playlist"
           >
-            {(["youtube", "local"] as const).map((value) => (
+            {(["youtube", "spotify", "local"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
@@ -357,7 +385,11 @@ function CreatePlaylistButton({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {value === "youtube" ? "YouTube Music" : "This computer"}
+                {value === "youtube"
+                  ? "YouTube Music"
+                  : value === "spotify"
+                  ? "Spotify"
+                  : "This computer"}
               </button>
             ))}
           </div>
@@ -366,23 +398,41 @@ function CreatePlaylistButton({
         <span className="text-xs text-muted-foreground">
           {destination === "youtube"
             ? "Saved to your account, so it syncs everywhere."
+            : destination === "spotify"
+            ? "Import a Spotify playlist by URL. Requires connected Spotify account."
             : "Built from folders on this computer."}
         </span>
-        <input
-          ref={inputRef}
-          className="mt-1 w-full min-w-0 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-inset focus:ring-border"
-          value={name}
-          placeholder="Playlist name"
-          aria-label="Playlist name"
-          onChange={(event) => {
-            setName(event.target.value);
-            if (error) setError(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void submit();
-            if (event.key === "Escape") setOpen(false);
-          }}
-        />
+        {destination === "spotify" ? (
+          <input
+            ref={spotifyUrlRef}
+            className="mt-1 w-full min-w-0 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-inset focus:ring-border"
+            placeholder="https://open.spotify.com/playlist/..."
+            aria-label="Spotify playlist URL"
+            onChange={(_event) => {
+              // No state needed, we read from ref on submit
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submit();
+              if (event.key === "Escape") setOpen(false);
+            }}
+          />
+        ) : (
+          <input
+            ref={inputRef}
+            className="mt-1 w-full min-w-0 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-inset focus:ring-border"
+            value={name}
+            placeholder="Playlist name"
+            aria-label="Playlist name"
+            onChange={(event) => {
+              setName(event.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submit();
+              if (event.key === "Escape") setOpen(false);
+            }}
+          />
+        )}
         {error ? <span className="text-xs text-destructive">{error}</span> : null}
         <button
           type="button"

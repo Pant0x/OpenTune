@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -31,7 +31,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { motion } from "motion/react";
-import { supabase } from "../../lib/supabaseClient";
+import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
 
 interface TitleBarProps {
@@ -89,11 +89,7 @@ export function TitleBar({
       || libraryState.status === "loading"
       || libraryState.status === "authorizing");
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
-  const [supabaseAuthState, setSupabaseAuthState] = useState<"idle" | "email" | "oauth">("idle");
-  const [supabaseEmail, setSupabaseEmail] = useState("");
-  const [supabasePassword, setSupabasePassword] = useState("");
-  const [supabaseBusy, setSupabaseBusy] = useState(false);
-  const [supabaseError, setSupabaseError] = useState<string | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const nativeWindowControls = useNativeWindowControls();
   const windowsStyleWindowControls = useWindowsStyleWindowControls();
   const forceWindowControls = useForceWindowControls();
@@ -122,6 +118,11 @@ export function TitleBar({
   } | null>(null);
   const suppressHomeClickRef = useRef(false);
   const hideHomeText = sidebarWidth <= 120;
+
+  const handleAuthSuccess = () => {
+    setIsAuthModalOpen(false);
+    setIsAccountPanelOpen(false);
+  };
 
   const startWindowDrag = async () => {
     try {
@@ -159,69 +160,6 @@ export function TitleBar({
       }
     } catch (error) {
       logInternalError("TitleBar.maximize failed", error);
-    }
-  };
-
-  // Supabase auth state sync
-  useEffect(() => {
-    if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, _session) => {
-      // Session changes are handled by the auth UI state
-      // This keeps the UI in sync if auth happens elsewhere
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleSupabaseEmailAuth = async (isSignUp: boolean) => {
-    if (!supabase || !supabaseEmail.trim() || !supabasePassword.trim()) return;
-    setSupabaseBusy(true);
-    setSupabaseError(null);
-    try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email: supabaseEmail,
-          password: supabasePassword,
-        });
-        if (error) throw error;
-        setSupabaseAuthState("idle");
-        setSupabaseEmail("");
-        setSupabasePassword("");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: supabaseEmail,
-          password: supabasePassword,
-        });
-        if (error) throw error;
-        setSupabaseAuthState("idle");
-        setSupabaseEmail("");
-        setSupabasePassword("");
-      }
-    } catch (error) {
-      setSupabaseError(error instanceof Error ? error.message : "Authentication failed");
-    } finally {
-      setSupabaseBusy(false);
-    }
-  };
-
-  const handleSupabaseOAuth = async (provider: "google" | "discord" | "spotify") => {
-    if (!supabase) return;
-    setSupabaseBusy(true);
-    setSupabaseError(null);
-    try {
-      const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo,
-          scopes: provider === "spotify" 
-            ? "playlist-read-private playlist-read-collaborative user-read-email"
-            : undefined,
-        },
-      });
-      if (error) throw error;
-    } catch (error) {
-      setSupabaseError(error instanceof Error ? error.message : "OAuth failed");
-      setSupabaseBusy(false);
     }
   };
 
@@ -398,11 +336,11 @@ export function TitleBar({
           </Button>
         </Tooltip>
         )}
+
         <Tooltip side="bottom" content="Settings">
         <Button
             variant='ghost'
           size='icon'
-            
             onClick={onOpenSettings}
             aria-label="Open settings"
           >
@@ -475,32 +413,6 @@ export function TitleBar({
 
               <span className="my-0.5 h-px bg-border" aria-hidden="true" />
 
-              {/* Supabase Account (Amber Account) */}
-              {supabase ? (
-                <div className="px-1 py-1">
-                  <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Amber Account
-                  </p>
-                  <SupabaseAuthPanel
-                    supabaseAuthState={supabaseAuthState}
-                    setSupabaseAuthState={setSupabaseAuthState}
-                    supabaseEmail={supabaseEmail}
-                    setSupabaseEmail={setSupabaseEmail}
-                    supabasePassword={supabasePassword}
-                    setSupabasePassword={setSupabasePassword}
-                    supabaseBusy={supabaseBusy}
-                    setSupabaseBusy={setSupabaseBusy}
-                    supabaseError={supabaseError}
-                    handleSupabaseEmailAuth={handleSupabaseEmailAuth}
-                    handleSupabaseOAuth={handleSupabaseOAuth}
-                  />
-                </div>
-              ) : (
-                <p className="px-2 py-1 text-xs text-muted-foreground">
-                  Supabase not configured
-                </p>
-              )}
-
               <button
                 type="button"
                 className={ACCOUNT_PANEL_ITEM}
@@ -511,6 +423,18 @@ export function TitleBar({
               >
                 <SettingsIcon size={16} aria-hidden="true" />
                 Account settings
+              </button>
+
+              <button
+                type="button"
+                className={ACCOUNT_PANEL_ITEM}
+                onClick={() => {
+                  setIsAccountPanelOpen(false);
+                  void libraryController.signOut();
+                }}
+              >
+                <LoginIcon size={16} aria-hidden="true" />
+                Sign out
               </button>
             </div>
           ) : (
@@ -542,23 +466,26 @@ export function TitleBar({
                 }}
               />
               <span className="my-2 h-px bg-border w-full" aria-hidden="true" />
-              <p className="text-xs text-muted-foreground">Amber Account</p>
-              <SupabaseAuthPanel
-                supabaseAuthState={supabaseAuthState}
-                setSupabaseAuthState={setSupabaseAuthState}
-                supabaseEmail={supabaseEmail}
-                setSupabaseEmail={setSupabaseEmail}
-                supabasePassword={supabasePassword}
-                setSupabasePassword={setSupabasePassword}
-                supabaseBusy={supabaseBusy}
-                setSupabaseBusy={setSupabaseBusy}
-                supabaseError={supabaseError}
-                handleSupabaseEmailAuth={handleSupabaseEmailAuth}
-                handleSupabaseOAuth={handleSupabaseOAuth}
-              />
+              <button
+                type="button"
+                className="w-full rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                onClick={() => {
+                  setIsAccountPanelOpen(false);
+                  setIsAuthModalOpen(true);
+                }}
+              >
+                Sign in / Sign up
+              </button>
             </div>
           )}
         </FloatingPanel>
+      
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
       </div>
 
       {showCustomWindowControls && (
@@ -625,89 +552,6 @@ export function TitleBar({
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-function SupabaseAuthPanel({
-  supabaseAuthState,
-  setSupabaseAuthState,
-  supabaseEmail,
-  setSupabaseEmail,
-  supabasePassword,
-  setSupabasePassword,
-  supabaseBusy,
-  supabaseError,
-  setSupabaseBusy,
-  handleSupabaseEmailAuth,
-  handleSupabaseOAuth,
-}: {
-  supabaseAuthState: "idle" | "email" | "oauth";
-  setSupabaseAuthState: (state: "idle" | "email" | "oauth") => void;
-  supabaseEmail: string;
-  setSupabaseEmail: (email: string) => void;
-  supabasePassword: string;
-  setSupabasePassword: (password: string) => void;
-  supabaseBusy: boolean;
-  setSupabaseBusy: (busy: boolean) => void;
-  supabaseError: string | null;
-  handleSupabaseEmailAuth: (isSignUp: boolean) => void;
-  handleSupabaseOAuth: (provider: "google" | "discord" | "spotify") => void;
-}) {
-  if (!supabase) return null;
-
-  const [supabaseUser, setSupabaseUser] = useState<any>(null);
-
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getUser().then(({ data }) => {
-      setSupabaseUser(data.user ?? null);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSupabaseUser(session?.user ?? null);
-    }) ?? { data: { subscription: { unsubscribe: () => {} } } };
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  if (supabaseUser) {
-    return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-foreground truncate">{supabaseUser.email}</span>
-          <button className="rounded-full bg-card px-3 py-1.5 text-sm hover:bg-muted" onClick={async () => { setSupabaseBusy(true); await supabase.auth.signOut(); setSupabaseBusy(false); }}>Sign out</button>
-        </div>
-        <span className="text-xs text-muted-foreground">Signed in to Amber</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {supabaseAuthState === "email" ? (
-        <>
-          <div className="flex flex-wrap gap-2">
-            <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Email" value={supabaseEmail} onChange={e => setSupabaseEmail(e.target.value)} />
-            <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Password" type="password" value={supabasePassword} onChange={e => setSupabasePassword(e.target.value)} />
-            <button disabled={supabaseBusy} className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => handleSupabaseEmailAuth(false)}>{supabaseBusy ? "..." : "Sign In"}</button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Email" value={supabaseEmail} onChange={e => setSupabaseEmail(e.target.value)} />
-            <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Password" type="password" value={supabasePassword} onChange={e => setSupabasePassword(e.target.value)} />
-            <button disabled={supabaseBusy} className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => handleSupabaseEmailAuth(true)}>{supabaseBusy ? "..." : "Sign Up"}</button>
-          </div>
-          <button className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setSupabaseAuthState("oauth")}>Or continue with OAuth</button>
-        </>
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-2">
-            <button disabled={supabaseBusy} className="rounded-full bg-card px-4 py-2 text-sm hover:bg-muted" onClick={() => handleSupabaseOAuth("google")}>Google</button>
-            <button disabled={supabaseBusy} className="rounded-full bg-card px-4 py-2 text-sm hover:bg-muted" onClick={() => handleSupabaseOAuth("discord")}>Discord</button>
-            <button disabled={supabaseBusy} className="rounded-full bg-[#1DB954] px-4 py-2 text-sm text-white hover:opacity-90" onClick={() => handleSupabaseOAuth("spotify")}>Connect Spotify</button>
-          </div>
-          <button className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setSupabaseAuthState("email")}>Or use email/password</button>
-        </>
-      )}
-      {supabaseError && <p className="text-xs text-destructive">{supabaseError}</p>}
     </div>
   );
 }

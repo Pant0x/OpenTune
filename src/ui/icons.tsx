@@ -119,6 +119,9 @@ export { SpeedometerMaxIcon as SpeedIcon } from "@solar-icons/react/linear/speed
 export { CupHotIcon as CoffeeIcon } from "@solar-icons/react/linear/cup-hot";
 export { MagicWandIcon as DiceIcon } from "@solar-icons/react/linear/magic-wand";
 export { MagicWandIcon as DiceActiveIcon } from "@solar-icons/react/bold/magic-wand";
+export { UserIcon as MailIcon } from "@solar-icons/react/linear/user";
+export { LockIcon } from "@solar-icons/react/linear/lock";
+export { CloseCircleIcon as XIcon } from "@solar-icons/react/linear/close-circle";
 
 /**
  * YouTube Music brand mark.
