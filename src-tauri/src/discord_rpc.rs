@@ -125,12 +125,8 @@ impl DiscordRpcManager {
         let start_ts = now_secs - elapsed as i64;
         let end_ts = start_ts + duration as i64;
 
-        // Activity name: artist (or app name as fallback)
-        let activity_name = if data.artist.trim().is_empty() {
-            ACTIVITY_NAME.to_string()
-        } else {
-            data.artist.clone()
-        };
+        // Activity name: always "Amber" so Discord shows "Listening to Amber"
+        let activity_name = ACTIVITY_NAME.to_string();
 
         let mut activity = json!({
             "name": activity_name,
@@ -390,11 +386,7 @@ impl DiscordRpcManager {
                             let state_str = data.artist.clone();
                             let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
                             let large_text_str = format!("{} - {}", data.title, data.artist);
-                            let activity_name = if data.artist.trim().is_empty() {
-                                ACTIVITY_NAME.to_string()
-                            } else {
-                                data.artist.clone()
-                            };
+                            let activity_name = ACTIVITY_NAME.to_string();
 
                             let mut activity = json!({
                                 "name": activity_name,
