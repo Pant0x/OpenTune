@@ -17,7 +17,7 @@ export type SidebarMode = "collapsed" | "expanded" | "hover";
 
 const STORAGE_KEY = "sidebar-mode";
 const CHANGE_EVENT = "sidebar-mode-change";
-const DEFAULT_MODE: SidebarMode = "expanded";
+const DEFAULT_MODE: SidebarMode = "hover";
 
 /** Rail width when collapsed. Wide enough for a 40px tile plus its padding. */
 export const SIDEBAR_COLLAPSED_WIDTH = 62;

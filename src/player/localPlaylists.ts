@@ -452,6 +452,58 @@ export function syncLocalAudioWatcher(): void {
   });
 }
 
+/**
+ * Refresh all local playlists: re-scan folders and update the watcher.
+ */
+export async function refreshLocalPlaylists(): Promise<void> {
+  // Re-scan all folders by clearing caches and re-syncing watcher
+  cachedRaw = null;
+  cachedPlaylistItemsRaw = null;
+  cachedPlaylistTracksRaw = null;
+  cachedTrackOrderRaw = null;
+  listeners.forEach((listener) => listener());
+  syncLocalAudioWatcher();
+}
+
+/**
+ * Create playlists from a folder, splitting by album metadata.
+ * Scans the folder and groups tracks by album, creating one playlist per album.
+ */
+export async function createPlaylistsFromFolder(folderPath: string): Promise<LocalPlaylist[]> {
+  try {
+    const files = await invoke<LocalAudioFile[]>("local_audio_scan", { paths: [folderPath] });
+    if (!files.length) return [];
+
+    // Group tracks by album
+    const albumGroups = new Map<string, LocalAudioFile[]>();
+    for (const file of files) {
+      const albumKey = file.album?.trim() || "Unknown Album";
+      const existing = albumGroups.get(albumKey) || [];
+      existing.push(file);
+      albumGroups.set(albumKey, existing);
+    }
+
+    const createdPlaylists: LocalPlaylist[] = [];
+    for (const [albumName, albumFiles] of albumGroups) {
+      const playlist = createLocalPlaylist(`${albumName} (from ${folderPath.split(/[\\/]/).pop()})`);
+      const paths = albumFiles.map(f => f.path);
+      writeLocalPlaylists(readLocalPlaylists().map((pl) =>
+        pl.id === playlist.id
+          ? { ...playlist, paths: Array.from(new Set([...pl.paths, ...paths])) }
+          : pl
+      ));
+      createdPlaylists.push(playlist);
+    }
+
+    // Sync watcher to include new folder
+    syncLocalAudioWatcher();
+    return createdPlaylists;
+  } catch (error) {
+    console.error("Failed to create playlists from folder:", error);
+    return [];
+  }
+}
+
 export function getLocalPlaylistItems(): Playlist[] {
   readLocalPlaylists();
   if (cachedPlaylistItemsRaw === cachedRaw) return cachedPlaylistItems;

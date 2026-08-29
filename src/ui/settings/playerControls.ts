@@ -15,7 +15,7 @@ function readExtraControlsAlwaysVisible() {
 }
 
 function readCompactPlayerBar() {
-  return readLocalBooleanSetting(COMPACT_PLAYER_BAR_STORAGE_KEY, false);
+  return readLocalBooleanSetting(COMPACT_PLAYER_BAR_STORAGE_KEY, true);
 }
 
 function subscribe(callback: () => void) {

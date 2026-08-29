@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { AlbumIcon, ClockIcon, CompassIcon, DownloadIcon } from "@/ui/icons";
+import { AlbumIcon, ClockIcon, CompassIcon, DownloadIcon, MusicNoteIcon, RadioIcon } from "@/ui/icons";
 import { useOfflineState } from "../../player/offlineStore";
 import { usePlayHistory } from "../../player/playHistory";
 import { useLibraryState } from "../../player/playerStore";
@@ -38,7 +38,7 @@ export function HomeDestinations({
     key: string;
     label: string;
     hint: string;
-    icon: typeof AlbumIcon;
+    icon: typeof AlbumIcon | typeof MusicNoteIcon | typeof CompassIcon | typeof RadioIcon | typeof ClockIcon | typeof DownloadIcon;
     onClick: () => void;
     /** Live state, so the card says something the label alone cannot. */
     badge?: string;
@@ -47,7 +47,7 @@ export function HomeDestinations({
       key: "library",
       label: "Library",
       hint: "Songs, albums, artists",
-      icon: AlbumIcon,
+      icon: MusicNoteIcon,
       onClick: onOpenLibrary,
       badge: savedCount > 0 ? `${savedCount} saved` : undefined,
     },
@@ -55,7 +55,7 @@ export function HomeDestinations({
       key: "browse",
       label: "Browse",
       hint: "Charts, moods, podcasts",
-      icon: CompassIcon,
+      icon: RadioIcon,
       onClick: onOpenBrowse,
     },
     {

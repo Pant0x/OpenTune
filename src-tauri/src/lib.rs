@@ -5219,6 +5219,28 @@ fn discord_rpc_clear(
     Ok(())
 }
 
+#[tauri::command]
+fn discord_rpc_init(
+    discord_manager: tauri::State<
+        '_,
+        std::sync::Arc<std::sync::Mutex<discord_rpc::DiscordRpcManager>>,
+    >,
+) -> Result<(), CommandError> {
+    match discord_manager.lock() {
+        Ok(manager) => {
+            if let Err(e) = manager.connect() {
+                eprintln!("[internal][discord_rpc] failed to initialize: {}", e);
+                return Err(CommandError::Any(format!("Failed to connect to Discord: {}", e)));
+            }
+        }
+        Err(e) => {
+            eprintln!("[internal][discord_rpc] failed to lock manager: {}", e);
+            return Err(CommandError::Any("Failed to lock Discord manager".to_string()));
+        }
+    }
+    Ok(())
+}
+
 /// The compositor the app is running under, so the frontend can decide whether the
 /// window manager already provides window management (tiling compositors) or the app
 /// must draw its own buttons.
@@ -5421,6 +5443,7 @@ pub fn run() {
             local_audio_unwatch,
             discord_rpc_update,
             discord_rpc_clear,
+            discord_rpc_init,
             #[cfg(target_os = "macos")]
             macos_media::update_macos_media_session,
             #[cfg(target_os = "windows")]

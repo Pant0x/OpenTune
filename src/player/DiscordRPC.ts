@@ -128,7 +128,15 @@ export class DiscordRpcService {
    */
   static async setEnabled(enabled: boolean): Promise<void> {
     setDiscordPresenceEnabled(enabled);
-    if (enabled) return;
+    if (enabled) {
+      try {
+        await invoke("discord_rpc_init");
+        logInternalDebug("Discord.setEnabled initialized connection", {});
+      } catch (error) {
+        logInternalWarn("Discord.setEnabled.initFailed", error as Record<string, unknown>);
+      }
+      return;
+    }
 
     try {
       await invoke("discord_rpc_clear");

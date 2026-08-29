@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, MotionConfig } from "motion/react";
+import { MotionConfig } from "motion/react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Album, Artist, Playlist, SearchResults, Track } from "../datasource/types";
 import { looksLikeYouTubeLink } from "../datasource/youtube/links";
@@ -35,7 +35,6 @@ const HistoryPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
-import { SearchOverlay } from "./components/SearchOverlay";
 import { TrackContextMenuProvider } from "./components/TrackContextMenu";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
@@ -66,10 +65,7 @@ import { clearAppSession, loadAppSession, saveAppSession } from "../player/appSe
 import { useMediaSession } from "../player/useMediaSession";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
-import { AuthOverlay } from "./components/AuthOverlay";
 import { UpdateToast } from "./components/UpdateToast";
-import { ReleaseNoteDialog } from "./components/ReleaseNoteDialog";
-import { markReleaseNoteSeen, resolveReleaseNoteVersion } from "../internal/releaseNote";
 import {
   checkForUpdates,
   isUpdateSnoozed,
@@ -91,27 +87,12 @@ import {
   previousOnboardingStep,
   type OnboardingStep,
 } from "./components/Onboarding";
-import { isLinux, isMacOS } from "./platform";
+import { isMacOS } from "./platform";
 import { useReduceMotion } from "./settings/renderEffects";
 
-import { emit, listen } from "@tauri-apps/api/event";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import {
-  availableMonitors,
-  currentMonitor,
-  getCurrentWindow,
-  primaryMonitor,
-} from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { logInternalWarn } from "../internal/logging";
-import { PhysicalPosition } from "@tauri-apps/api/dpi";
-import {
-  destroyMiniPlayerWindow,
-  ensureMiniPlayerWindow,
-  getSavedMiniPlayerPosition,
-  saveMiniPlayerPosition,
-  useMiniPlayerEnabled,
-  useMiniPlayerWindowLive,
-} from "./settings/miniPlayer";
 import { setAutostartEnabled } from "./settings/autostart";
 import {
   eventMatchesShortcut,
@@ -129,11 +110,6 @@ const KEYCHAIN_NOTICE_COMPLETE_KEY = "amber:keychain-notice-complete";
 const LOADING_SCREEN_MIN_MS = 1000;
 const MOUSE_BACK_BUTTON = 3;
 const MOUSE_FORWARD_BUTTON = 4;
-const MINI_PLAYER_BOTTOM_MARGIN = 24;
-// Safety net only — the suppression is normally cleared on pointerup or refocus.
-// A long fixed timeout used to swallow the mini player when the window was moved
-// and then minimised shortly after.
-const MAIN_WINDOW_DRAG_BACKGROUND_SUPPRESS_MS = 1500;
 /** How often the session is written purely to keep the restored playback position fresh. */
 const SESSION_HEARTBEAT_MS = 5000;
 const SLEEP_RECOVERY_TIMER_INTERVAL_MS = 15000;
@@ -228,25 +204,7 @@ function stripNavigationHistory(tab: Tab): Tab {
   return sessionTab;
 }
 
-async function placeMiniPlayerAtBottomCenter(miniWin: WebviewWindow) {
-  const savedPosition = getSavedMiniPlayerPosition();
-  if (savedPosition) {
-    await miniWin.setPosition(new PhysicalPosition(savedPosition.x, savedPosition.y));
-    return;
-  }
 
-  const monitor = await currentMonitor()
-    ?? await primaryMonitor()
-    ?? (await availableMonitors())[0];
-  if (!monitor) return;
-
-  const size = await miniWin.outerSize();
-  const x = monitor.position.x + Math.round((monitor.size.width - size.width) / 2);
-  const y = monitor.position.y + monitor.size.height - size.height - MINI_PLAYER_BOTTOM_MARGIN;
-
-  await miniWin.setPosition(new PhysicalPosition(x, y));
-  saveMiniPlayerPosition({ x, y });
-}
 
 function readLocalOnboardingComplete(): boolean {
   try {
@@ -297,13 +255,8 @@ export default function App() {
     }),
     shallowEqual,
   );
-  const playerSession = usePlayerSession();
-  /* Resolved once at startup. Null in every case except the first launch after an update —
-     see resolveReleaseNoteVersion, which records silently for all the others. */
-  const [releaseNoteVersion, setReleaseNoteVersion] = useState<string | null>(null);
+const playerSession = usePlayerSession();
   const playerUIState = usePlayerUIState();
-  const miniPlayerEnabled = useMiniPlayerEnabled();
-  const miniPlayerWindowLive = useMiniPlayerWindowLive();
   const keyboardShortcuts = useKeyboardShortcuts();
   // The stylesheet kills CSS animation via !important; this is the JS half. Motion writes
   // inline styles, so no stylesheet can reach it — and its own `useReducedMotion` reads the
@@ -422,18 +375,14 @@ export default function App() {
   const dismissAvailableUpdate = useCallback(() => {
     setAvailableUpdate(null);
   }, []);
-  const loadingScreenDismissedRef = useRef(false);
+const loadingScreenDismissedRef = useRef(false);
   const loadingScreenStartedAtRef = useRef(performance.now());
-  const miniPlayerEnabledRef = useRef(miniPlayerEnabled);
-  const miniPlayerRestoreSuppressUntilRef = useRef(0);
-  const mainWindowDragSuppressUntilRef = useRef(0);
   const lastErrorAlertRef = useRef<string | null>(null);
   const sessionStateRef = useRef({ tabs, activeTabId, nextTabId });
   const sessionPersistenceDisabledRef = useRef(false);
   const sleepRecoveryLastTickRef = useRef(Date.now());
   const sleepRecoveryReloadingRef = useRef(false);
   sessionStateRef.current = { tabs, activeTabId, nextTabId };
-  miniPlayerEnabledRef.current = miniPlayerEnabled;
   const persistAppSession = useCallback(() => {
     if (sessionPersistenceDisabledRef.current) return;
     const current = sessionStateRef.current;
@@ -623,20 +572,7 @@ export default function App() {
     [activeTabId],
   );
 
-  useMediaSession(playerState, playerController);
-
-  useEffect(() => {
-    let cancelled = false;
-    void resolveReleaseNoteVersion().then((version) => {
-      if (!cancelled) setReleaseNoteVersion(version);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-
-
+useMediaSession(playerState, playerController);
 
   const activeViewKey = [
     activeTabId,
@@ -1307,32 +1243,10 @@ export default function App() {
     else markOnboardingComplete(true);
   };
 
-  const backOnboardingStep = () => {
+const backOnboardingStep = () => {
     if (!onboardingStep) return;
     const previous = previousOnboardingStep(onboardingStep);
     if (previous) setOnboardingStep(previous);
-  };
-
-  const handlePlaySearchTrack = async (track: Track) => {
-    const stepAtStart = onboardingStep;
-    const tabAtStart = activeTabId;
-    const started = await playerController.playTrackById(track.id, [track], true);
-    if (!started) return;
-
-    if (
-      (stepAtStart === "type-first" || stepAtStart === "play-first")
-      && tabAtStart === onboardingFirstTabId
-    ) {
-      setOnboardingStep("new-tab");
-      setIsSearchOpen(false);
-    }
-    if (
-      (stepAtStart === "type-second" || stepAtStart === "play-second")
-      && tabAtStart === onboardingSecondTabId
-    ) {
-      setOnboardingStep("switch-back");
-      setIsSearchOpen(false);
-    }
   };
 
   const handlePlaySearchResult = async (track: Track) => {
@@ -1705,237 +1619,7 @@ export default function App() {
  *
  * The cost is a cold webview start on each show. That is paid while the user is looking at
  * another application, which is the one moment it does not read as lag.
- */
-useEffect(() => {
-  if (miniPlayerEnabled) return;
-  void destroyMiniPlayerWindow();
-}, [miniPlayerEnabled]);
-
-
-useEffect(() => {
-  const setupListeners = async () => {
-    /** Destroys rather than hides: a hidden webview keeps its whole renderer process alive. */
-    const dismissMiniPlayer = () => destroyMiniPlayerWindow();
-
-    /**
-     * @param force bypasses the drag/restore suppression windows. Used for an explicit
-     *   minimise, where the user's intent to background the app is unambiguous.
-     */
-    const showMiniPlayerIfAllowed = async (_event?: unknown, force = false) => {
-      /*
-       * Every one of these is checked before the window is asked for, not after.
-       *
-       * Asking is what creates it, so a suppression tested afterwards would spawn a whole
-       * webview process only to tear it down again — which is the cost this window is
-       * lazily created to avoid in the first place.
-       */
-      if (!miniPlayerEnabledRef.current) return;
-      if (!force && Date.now() < mainWindowDragSuppressUntilRef.current) return;
-      if (!force && Date.now() < miniPlayerRestoreSuppressUntilRef.current) return;
-
-      const miniWin = await ensureMiniPlayerWindow();
-      if (!miniWin) return;
-
-      // Placed on every show, because every show is a new window. `placeMiniPlayerAtBottomCenter`
-      // prefers the saved position, so a window the user dragged still comes back where they left it.
-      try {
-        await placeMiniPlayerAtBottomCenter(miniWin);
-      } catch (_) {}
-
-      await miniWin.show();
-      if (isLinux) {
-        try {
-          await placeMiniPlayerAtBottomCenter(miniWin);
-        } catch (_) {}
-      }
-      await miniWin.setFocus();
-    };
-
-    /*
-     * Launching straight into the background — autostart, or a click elsewhere while the app
-     * was still starting — produces no blur event, because focus was never held to lose.
-     */
-    const recoverMissedBackgroundEvent = async () => {
-      if (!miniPlayerEnabledRef.current) return;
-
-      const mainWin = await WebviewWindow.getByLabel("main");
-      if (!mainWin || (await mainWin.isFocused())) return;
-
-      await showMiniPlayerIfAllowed();
-    };
-
-    const unlistenBackgrounded = await listen("main-window-backgrounded", () =>
-      showMiniPlayerIfAllowed(),
-    );
-    // Minimise always wins over the drag suppression below.
-    const unlistenMinimized = await listen("main-window-minimized", () =>
-      showMiniPlayerIfAllowed(undefined, true),
-    );
-
-    const handleMainWindowDragStarted = () => {
-      mainWindowDragSuppressUntilRef.current = Date.now() + MAIN_WINDOW_DRAG_BACKGROUND_SUPPRESS_MS;
-    };
-    // Dragging ends on pointer release; clearing here means the suppression lasts for the
-    // gesture rather than for a fixed timeout that outlives it.
-    const handleMainWindowDragEnded = () => {
-      mainWindowDragSuppressUntilRef.current = 0;
-    };
-
-    const unlistenFocus = await listen("window-focused", () => {
-      mainWindowDragSuppressUntilRef.current = 0;
-      void dismissMiniPlayer();
-    });
-    window.addEventListener("main-window-drag-started", handleMainWindowDragStarted);
-    window.addEventListener("pointerup", handleMainWindowDragEnded);
-    window.addEventListener("pointercancel", handleMainWindowDragEnded);
-    const unlistenRestoreMain = await listen("mini-player:restore-main", async () => {
-      miniPlayerRestoreSuppressUntilRef.current = Date.now() + 800;
-      await dismissMiniPlayer();
-    });
-    const unlistenPositionChanged = await listen<{ x: number; y: number }>(
-      "mini-player:position-changed",
-      (event) => {
-        saveMiniPlayerPosition(event.payload);
-      },
-    );
-
-    void recoverMissedBackgroundEvent();
-
-    return () => {
-      window.removeEventListener("main-window-drag-started", handleMainWindowDragStarted);
-      window.removeEventListener("pointerup", handleMainWindowDragEnded);
-      window.removeEventListener("pointercancel", handleMainWindowDragEnded);
-      unlistenBackgrounded();
-      unlistenMinimized();
-      unlistenFocus();
-      unlistenRestoreMain();
-      unlistenPositionChanged();
-    };
-  };
-
-  const cleanup = setupListeners();
-  return () => { cleanup.then(fn => fn?.()); };
-}, []);
-
-
-useEffect(() => {
-  const setup = async () => {
-    const unlistenPlayPause = await listen("mini-player:toggle-play-pause", () => {
-      void playerController.togglePlayPause();
-    });
-    const unlistenNext = await listen("mini-player:skip-next", () => {
-      void playerController.skipToNext();
-    });
-    const unlistenPrev = await listen("mini-player:skip-previous", () => {
-      void playerController.skipToPrevious();
-    });
-
-    return () => {
-      unlistenPlayPause();
-      unlistenNext();
-      unlistenPrev();
-    };
-  };
-
-  const cleanup = setup();
-  return () => { cleanup.then(fn => fn?.()); };
-}, []);
-useEffect(() => {
-  let lastTrackId: string | null = null;
-  let lastStatus: string | null = null;
-  let lastArtworkUrl: string | null = null;
-
-  const syncPlayerState = () => {
-    const state = tabManager.getActiveState();
-    const trackId = state.currentTrack?.id ?? null;
-    const status = state.status;
-    const artworkUrl = state.currentTrack?.artworkUrl ?? null;
-
-    if (trackId === lastTrackId && status === lastStatus && artworkUrl === lastArtworkUrl) return;
-    lastTrackId = trackId;
-    lastStatus = status;
-    lastArtworkUrl = artworkUrl;
-
-    void emit("player-state-sync", {
-      status,
-      artworkUrl,
-      title: state.currentTrack?.title ?? null,
-      artist: state.currentTrack?.artist ?? null,
-    });
-  };
-
-  syncPlayerState();
-  const unsubscribe = tabManager.subscribe(syncPlayerState);
-
-  const syncTime = () => {
-    void emit("player-time-sync", {
-      currentTime: playerController.getCurrentTime(),
-      duration: playerController.getDuration(),
-    });
-    void emit("player-volume-sync", {
-      muted: playerController.isMuted(),
-      volume: playerController.getVolume(),
-    });
-  };
-
-  /*
-   * Only while somebody is listening.
-   *
-   * This pushes playback position and volume to the mini player. It ran unconditionally for
-   * the whole session — two Tauri events a second, each one a serialize and a hop across the
-   * IPC boundary — into a window that is created on demand, destroyed the moment the main
-   * window comes back, and never created at all for anyone with the mini player switched off.
-   *
-   * `syncPlayerState` above stays subscribed either way: it is edge-triggered and deduped, so
-   * it costs nothing between track changes, and it is what the mini player reads first.
-   */
-  let timeSyncIntervalId = 0;
-  if (miniPlayerWindowLive) {
-    syncTime();
-    timeSyncIntervalId = window.setInterval(syncTime, 1000);
-  }
-
-  /*
-   * A window that just appeared has missed every state emit so far, and the dedupe above means
-   * the next one may be minutes away. Clearing the memo makes the following call unconditional.
-   */
-  const resync = listen("mini-player:request-sync", () => {
-    lastTrackId = null;
-    lastStatus = null;
-    lastArtworkUrl = null;
-    syncPlayerState();
-    syncTime();
-  });
-
-  return () => {
-    unsubscribe();
-    window.clearInterval(timeSyncIntervalId);
-    void resync.then((unlisten) => unlisten());
-  };
-}, [miniPlayerWindowLive]);
-
-useEffect(() => {
-  const setup = async () => {
-    const unlisten = await listen<{ time: number }>("mini-player:seek", (event) => {
-      void playerController.seekTo(event.payload.time);
-    });
-    return unlisten;
-  };
-  const cleanup = setup();
-  return () => { cleanup.then(fn => fn()); };
-}, []);
-
-useEffect(() => {
-  const setup = async () => {
-    const unlisten = await listen<{ volume: number }>("mini-player:volume", (event) => {
-      const volume = Math.min(1, Math.max(0, event.payload.volume));
-      void playerController.setVolume(volume);
-    });
-    return unlisten;
-  };
-  const cleanup = setup();
-  return () => { cleanup.then(fn => fn()); };
-}, []);
+*/
 
   return (
     <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
@@ -2196,21 +1880,20 @@ useEffect(() => {
           </ErrorBoundary>
         </div>
       </div>
-      <SearchOverlay
-        isOpen={isSearchOpen && activeTab?.view !== "settings"}
+{/* <SearchOverlay
+        isOpen={isSearchOpen}
         activeTabId={activeTabId}
         searchController={searchController}
         albums={libraryState.library?.albums ?? []}
         playlists={libraryState.library?.playlists ?? []}
-          onClose={() => setIsSearchOpen(false)}
-          onDismiss={dismissSearch}
+        onClose={() => setIsSearchOpen(false)}
+        onDismiss={dismissSearch}
         onSubmit={handleSearch}
-        onPlayTrack={(track) => void handlePlaySearchTrack(track)}
         onOpenAlbum={handleNavigateAlbum}
         onOpenArtist={(artist) => handleNavigateArtist(artist)}
         onOpenPlaylist={handleNavigatePlaylist}
         onQueryChange={setOnboardingSearchQuery}
-      />
+      /> */}
       {loadingScreenState !== "hidden" && (
         <AppLoadingScreen isLeaving={loadingScreenState === "leaving"} />
       )}
@@ -2239,25 +1922,25 @@ useEffect(() => {
         />
       )}
 
-      <ReleaseNoteDialog
+{/* <ReleaseNoteDialog
         version={releaseNoteVersion}
         onDismiss={() => {
           if (releaseNoteVersion) markReleaseNoteSeen(releaseNoteVersion);
           setReleaseNoteVersion(null);
         }}
-      />
+      /> */}
       {/*
         Mounted only while a sign-in is running: `signInProgress` is null at every other moment,
         so the overlay and its animation cost nothing for the whole rest of the session.
       */}
-      <AnimatePresence>
+      {/* <AnimatePresence>
         {libraryState.authProgress && (
           <AuthOverlay
             progress={libraryState.authProgress}
             onCancel={() => void libraryController.cancelSignIn()}
           />
         )}
-      </AnimatePresence>
+      </AnimatePresence> */}
     </div>
     </PlaylistContextMenuProvider>
     </TrackContextMenuProvider>
@@ -2265,3 +1948,4 @@ useEffect(() => {
     </MotionConfig>
   );
 }
+
