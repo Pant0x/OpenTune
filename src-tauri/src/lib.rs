@@ -5230,14 +5230,18 @@ fn discord_rpc_init(
         Ok(manager) => {
             if let Err(e) = manager.connect() {
                 eprintln!("[internal][discord_rpc] failed to initialize: {}", e);
-                return Err(CommandError::Any(format!("Failed to connect to Discord: {}", e)));
+                return Err(CommandError {
+                    message: format!("Failed to connect to Discord: {}", e),
+                });
             }
             // Start periodic refresh after successful connection
             manager.start_periodic_refresh();
         }
         Err(e) => {
             eprintln!("[internal][discord_rpc] failed to lock manager: {}", e);
-            return Err(CommandError::Any("Failed to lock Discord manager".to_string()));
+            return Err(CommandError {
+                message: "Failed to lock Discord manager".to_string(),
+            });
         }
     }
     Ok(())

@@ -400,7 +400,7 @@ impl DiscordRpcManager {
                                 "buttons": [
                                     {
                                         "label": "Listen on Amber",
-                                        "url": data.song_url.unwrap_or(GITHUB_REPO.to_string()),
+                                        "url": data.song_url.as_deref().unwrap_or(GITHUB_REPO),
                                     }
                                 ],
                             });
