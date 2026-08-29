@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { supabase } from "../../lib/supabaseClient";
+import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
@@ -153,16 +154,12 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     setSuccessMessage(null);
 
     try {
-      const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo,
-        },
-      });
-      if (oauthError) throw oauthError;
+      await signInWithOAuthPopup(provider);
+      onAuthSuccess?.();
+      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "OAuth failed.");
+      setError(err instanceof Error ? err.message : "OAuth sign-in failed.");
+    } finally {
       setBusy(false);
     }
   };

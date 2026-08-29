@@ -40,6 +40,9 @@ import { hydrateHomeSectionSettings } from "./ui/settings/homeSections";
 import { hydrateDownloadLocation } from "./ui/settings/downloadLocation";
 import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEffects";
 import { startMemoryReport } from "./internal/memoryReport";
+import { handleOAuthPopupRedirect } from "./lib/oauthService";
+
+void handleOAuthPopupRedirect();
 
 logInternalInfo("main.bootstrap start");
 // Before React mounts: a resolution restored after first paint is a resolution that already
