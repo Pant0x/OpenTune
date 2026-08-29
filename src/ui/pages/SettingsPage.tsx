@@ -64,6 +64,7 @@ import {
   UserIcon,
 } from "@/ui/icons";
 import { useAuthProfile } from "../../lib/authProfile";
+import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -1423,14 +1424,14 @@ export function SettingsPage({
             />
 
             <div className="flex flex-col gap-3">
-              {/* Google Row */}
+              {/* Google Account Row */}
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="flex items-center gap-3">
                   <span className="grid size-10 place-items-center rounded-xl bg-card">
                     <GoogleIcon size={22} />
                   </span>
                   <div className="flex flex-col">
-                    <strong className="text-sm font-semibold text-foreground">Google / YouTube Music</strong>
+                    <strong className="text-sm font-semibold text-foreground">Google Account</strong>
                     <span className="text-xs text-muted-foreground">
                       {isSignedIn || profile?.isGoogleConnected
                         ? "Connected — Playlists and likes are synchronized"
@@ -1455,14 +1456,50 @@ export function SettingsPage({
                 )}
               </div>
 
-              {/* Discord Row */}
+              {/* Discord Account Row */}
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="flex items-center gap-3">
                   <span className="grid size-10 place-items-center rounded-xl bg-card">
                     <DiscordIcon size={22} />
                   </span>
                   <div className="flex flex-col">
-                    <strong className="text-sm font-semibold text-foreground">Discord Rich Presence</strong>
+                    <strong className="text-sm font-semibold text-foreground">Discord Account</strong>
+                    <span className="text-xs text-muted-foreground">
+                      {profile?.isDiscordConnected || profile?.provider === "discord"
+                        ? `Connected — Linked to ${profile?.username || "Discord"}`
+                        : "Connect your Discord account to link your Amber profile"}
+                    </span>
+                  </div>
+                </div>
+
+                {profile?.isDiscordConnected || profile?.provider === "discord" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
+                    <CheckIcon size={13} />
+                    Connected
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await signInWithOAuthPopup("discord");
+                      } catch {}
+                    }}
+                    className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Connect
+                  </button>
+                )}
+              </div>
+
+              {/* Discord Rich Presence (RPC) Row */}
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-xl bg-card">
+                    <DiscordIcon size={22} />
+                  </span>
+                  <div className="flex flex-col">
+                    <strong className="text-sm font-semibold text-foreground">Discord Rich Presence (RPC)</strong>
                     <span className="text-xs text-muted-foreground">
                       Display what you are listening to on your Discord profile status
                     </span>
@@ -1474,7 +1511,7 @@ export function SettingsPage({
                     "text-xs font-medium",
                     discordPresenceEnabled ? "text-primary" : "text-muted-foreground"
                   )}>
-                    {discordPresenceEnabled ? "Connected" : "Disconnected"}
+                    {discordPresenceEnabled ? "Enabled" : "Disabled"}
                   </span>
                   <Switch
                     checked={discordPresenceEnabled}

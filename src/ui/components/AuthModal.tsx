@@ -7,6 +7,7 @@ import { libraryController } from "../../player/playerStore";
 import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
+import loadingVideo from "../../../assets/img/Loading.mp4";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -225,20 +226,20 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <CloseIcon size={18} />
           </button>
 
-          {/* Amber Brand Logo */}
+          {/* Amber MP4 Animation Banner */}
           <div className="flex flex-col items-center mb-5">
-            <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-              className="relative size-16 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10 mb-3 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center p-2.5 border border-primary/30"
-            >
-              <img
-                src="/icons/128x128.png"
-                alt="Amber"
-                className="size-full object-contain"
-              />
-            </motion.div>
+            <div className="relative size-20 rounded-2xl overflow-hidden shadow-lg ring-1 ring-white/10 mb-3 bg-black/40">
+              <video
+                className="size-full object-cover"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+              >
+                <source src={loadingVideo} type="video/mp4" />
+              </video>
+            </div>
             <h2 id="auth-modal-title" className="text-xl font-bold text-foreground">
               {mode === "signin" ? "Sign In to Amber" : "Create Amber Account"}
             </h2>
