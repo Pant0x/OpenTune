@@ -1,4 +1,4 @@
-import likedSongsCover from "../../assets/img/liked.jpg";
+import likedSongsCover from "../../assets/img/liked.png";
 
 /**
  * Cover art for the Liked Songs collection.

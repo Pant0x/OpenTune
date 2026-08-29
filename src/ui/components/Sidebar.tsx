@@ -19,7 +19,6 @@ import {
   AlbumIcon,
   CheckIcon,
   CloseIcon,
-  FolderIcon,
   PlaylistIcon,
   RefreshIcon,
   SearchIcon,
@@ -470,8 +469,6 @@ const LIBRARY_VIEWS: Array<{
 
 const ARTWORK_TILE = "size-10 shrink-0 rounded object-cover";
 const ARTWORK_TILE_PX = 40;
-const ARTWORK_FALLBACK =
-  "flex size-10 shrink-0 items-center justify-center rounded bg-card text-muted-foreground";
 
 function SidebarAlbumArtwork({ album }: { album: Album }) {
   if (isLikedSongsId(album.id)) {
@@ -493,14 +490,6 @@ function SidebarAlbumArtwork({ album }: { album: Album }) {
 function SidebarPlaylistArtwork({ playlist }: { playlist: Playlist }) {
   if (isLikedSongsId(playlist.id, playlist.kind)) {
     return <img className={ARTWORK_TILE} src={likedSongsCover} alt="" />;
-  }
-
-  if (playlist.kind === "local") {
-    return (
-      <div className={ARTWORK_FALLBACK}>
-        <FolderIcon size={22} aria-hidden="true" />
-      </div>
-    );
   }
 
   return (
