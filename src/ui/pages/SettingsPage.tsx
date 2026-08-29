@@ -1389,14 +1389,6 @@ export function SettingsPage({
                     >
                       Amber Logo
                     </button>
-                    <span className="text-muted-foreground/40">•</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveAvatar("/img/liked.jpg")}
-                      className="text-[11px] font-medium text-primary hover:underline"
-                    >
-                      Classic Mascot
-                    </button>
                   </div>
                 </div>
               )}

@@ -1,4 +1,4 @@
-﻿import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { supabase } from "./supabaseClient";
 
 export const OAUTH_POPUP_LABEL = "amber_oauth_popup";
@@ -7,29 +7,37 @@ export function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 }
 
+export function isOAuthPopup(): boolean {
+  if (!isTauriEnvironment()) return false;
+  try {
+    const currentWin = getCurrentWebviewWindow();
+    return currentWin.label === OAUTH_POPUP_LABEL;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Checks if the current window is an OAuth popup and handles closing after receiving tokens.
  */
 export async function handleOAuthPopupRedirect(): Promise<boolean> {
-  if (!isTauriEnvironment()) return false;
+  if (!isOAuthPopup()) return false;
   try {
     const currentWin = getCurrentWebviewWindow();
-    if (currentWin.label === OAUTH_POPUP_LABEL) {
-      const hash = window.location.hash;
-      const search = window.location.search;
-      if (
-        hash.includes("access_token=") ||
-        search.includes("code=") ||
-        hash.includes("error=") ||
-        search.includes("error=")
-      ) {
-        setTimeout(async () => {
-          try {
-            await currentWin.close();
-          } catch {}
-        }, 500);
-        return true;
-      }
+    const hash = window.location.hash;
+    const search = window.location.search;
+    if (
+      hash.includes("access_token=") ||
+      search.includes("code=") ||
+      hash.includes("error=") ||
+      search.includes("error=")
+    ) {
+      setTimeout(async () => {
+        try {
+          await currentWin.close();
+        } catch {}
+      }, 300);
+      return true;
     }
   } catch {}
   return false;

@@ -40,9 +40,6 @@ import { hydrateHomeSectionSettings } from "./ui/settings/homeSections";
 import { hydrateDownloadLocation } from "./ui/settings/downloadLocation";
 import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEffects";
 import { startMemoryReport } from "./internal/memoryReport";
-import { handleOAuthPopupRedirect } from "./lib/oauthService";
-
-void handleOAuthPopupRedirect();
 
 logInternalInfo("main.bootstrap start");
 // Before React mounts: a resolution restored after first paint is a resolution that already
@@ -123,24 +120,27 @@ window.addEventListener("beforeunload", () => {
   void DiscordRpcService.shutdown();
 });
 
-/*
- * The outermost boundary. Nothing below it can be recovered from selectively, so its only
- * job is to make sure a render error leaves something on screen with a button on it rather
- * than a blank window — a desktop shell has no address bar to reload from.
- */
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <ErrorBoundary label="Amber">
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-);
+import { handleOAuthPopupRedirect, isOAuthPopup } from "./lib/oauthService";
 
-/*
- * Local folders are watched for the whole session. The event carries no detail on purpose —
- * a rescan is cheap and precisely diffing renames, temp files and write-then-replace editors
- * would be far more code for the same visible result.
- */
-syncLocalAudioWatcher();
-void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
+void handleOAuthPopupRedirect();
+
+if (isOAuthPopup()) {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <div className="flex h-screen w-screen flex-col items-center justify-center bg-background text-foreground gap-3">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <span className="text-sm font-medium">Signing in to Amber...</span>
+    </div>
+  );
+} else {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <ErrorBoundary label="Amber">
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
+
+  syncLocalAudioWatcher();
+  void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
+}
 
