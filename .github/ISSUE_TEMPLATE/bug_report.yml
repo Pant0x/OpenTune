@@ -17,7 +17,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Zuno version
+      label: Amber version
       description: Settings → About, or the installer filename.
       placeholder: "1.2.1"
     validations:
@@ -40,7 +40,7 @@ body:
       label: Log
       description: |
         `current.log` from the log directory — it usually says what failed.
-        Windows: `%LOCALAPPDATA%\com.zuno.desktop\logs`
-        macOS: `~/Library/Logs/com.zuno.desktop`
-        Linux: `~/.local/share/com.zuno.desktop/logs`
+        Windows: `%LOCALAPPDATA%\com.amber.desktop\logs`
+        macOS: `~/Library/Logs/com.amber.desktop`
+        Linux: `~/.local/share/com.amber.desktop/logs`
       render: text

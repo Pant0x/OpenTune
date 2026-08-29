@@ -40,13 +40,13 @@ export function Header() {
           href="#top"
         >
           <img className="size-8" src="./logo.png" alt="" />
-          zuno_
+          Amber_
         </a>
 
         <div className="ml-auto flex items-center gap-1">
           <a
             className="rounded-full px-3 py-2 font-mono text-[13px] text-foreground/60 transition-colors hover:text-foreground"
-            href="https://github.com/nofayz/zuno"
+            href="https://github.com/Pant0x/Amber-Music-Platform"
             rel="noopener"
           >
             source

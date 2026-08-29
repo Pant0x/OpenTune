@@ -23,7 +23,6 @@ import { hydrateOutputDevice } from "./ui/settings/audioOutputDevice";
 import { hydrateYouTubeAccountSettings } from "./ui/settings/youtubeAccount";
 import { notifyLocalPlaylistsChanged, syncLocalAudioWatcher } from "./player/localPlaylists";
 import { listen } from "@tauri-apps/api/event";
-import { hydrateLastFmSettings } from "./ui/settings/lastfm";
 import { hydrateDiscordSettings } from "./ui/settings/discord";
 import { hydrateSidebarSettings } from "./ui/settings/sidebarMode";
 import { hydrateKeyboardShortcuts } from "./ui/settings/keyboardShortcuts";
@@ -78,7 +77,6 @@ void Promise.all([
   // Same reason: a fresh Rust process opens the OS default device until told otherwise.
   hydrateOutputDevice(),
   hydrateYouTubeAccountSettings(),
-  hydrateLastFmSettings(),
   hydrateDiscordSettings(),
   hydrateSidebarSettings(),
   hydrateKeyboardShortcuts(),
@@ -122,7 +120,7 @@ window.addEventListener("unhandledrejection", (event) => {
  */
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary label="Zuno">
+    <ErrorBoundary label="Amber">
       <App />
     </ErrorBoundary>
   </React.StrictMode>,

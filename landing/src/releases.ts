@@ -1,6 +1,6 @@
-export const GITHUB_REPO = "https://github.com/noFAYZ/zuno";
+export const GITHUB_REPO = "https://github.com/Pant0x/Amber-Music-Platform";
 export const RELEASES_URL = `${GITHUB_REPO}/releases/latest`;
-const LATEST_RELEASE_API = "https://api.github.com/repos/noFAYZ/zuno/releases/latest";
+const LATEST_RELEASE_API = "https://api.github.com/repos/Pant0x/Amber-Music-Platform/releases/latest";
 
 export type PlatformId = "windows" | "macos-arm" | "macos-intel" | "linux";
 
@@ -73,7 +73,7 @@ function pickAsset(assets: ReleaseAsset[], patterns: RegExp[]) {
 /**
  * Reads the newest release straight from GitHub.
  *
- * Asset names carry the version (`Zuno_1.1.1_x64-setup.exe`), so there is no stable per-file
+ * Asset names carry the version (`Amber_1.1.1_x64-setup.exe`), so there is no stable per-file
  * URL to hardcode — the alternative to this request is sending everyone to the releases page
  * to work out which file they need. Every button falls back to exactly that page if this
  * fails, so a rate limit or an offline visitor still gets a working download.

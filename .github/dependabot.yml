@@ -1,4 +1,4 @@
-# Dependency updates. Monthly, grouped into one PR per ecosystem — zuno has a single
+# Dependency updates. Monthly, grouped into one PR per ecosystem — Amber has a single
 # maintainer, and a weekly drip of five separate PRs is how update PRs get ignored.
 version: 2
 updates:

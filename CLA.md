@@ -1,6 +1,6 @@
 # Contributor License Agreement
 
-By submitting a contribution to Zuno, you confirm that:
+By submitting a contribution to Amber, you confirm that:
 
 1. You have the right to submit the contribution.
 2. You retain copyright ownership of your contribution.

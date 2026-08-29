@@ -1,6 +1,6 @@
 # AUR packaging
 
-`zuno` repackages the published `.deb`. Edit it here, not in the AUR repo — this is what the
+`Amber` repackages the published `.deb`. Edit it here, not in the AUR repo — this is what the
 workflow pushes.
 
 ## Publishing
@@ -32,4 +32,4 @@ Bump `pkgrel` instead of `pkgver` when only the packaging changed. The workflow 
 
 - The GStreamer deps are load-bearing: without `gst-libav` playback fails with
   `GStreamer element appsink not found`.
-- `conflicts=('zuno-bin')` — the community `zuno-bin` package installs the same files.
+- `conflicts=('Amber-bin')` — the community `Amber-bin` package installs the same files.

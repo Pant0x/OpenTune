@@ -21,8 +21,8 @@ const TRACK = {
   src: "./low-tide.mp3",
   title: "Low Tide",
   artist: "Tom Rhodes",
-  /** The Zuno character loop stands in for cover art; the still tints the glass behind it. */
-  avatar: "./zuno-character.mp4",
+  /** The Amber character loop stands in for cover art; the still tints the glass behind it. */
+  avatar: "./Amber-character.mp4",
   artwork: "./logo.png",
 };
 

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Zuno",
+  "productName": "Amber",
   "version": "1.4.0",
-  "identifier": "com.zuno.desktop",
+  "identifier": "com.amber.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Zuno",
+        "title": "Amber",
         "decorations": false,
         "transparent": true,
         "shadow": false,
@@ -51,10 +51,10 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyMDQ0MjEzQjkxMThGQ0MKUldUTWp4RzVFMElFTXZGMmxnOC84VXlUTkZyaStyQzFkcXd6UVczeGNBNkVuWWU3MjdIM2JLVkgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCMkIwQzdFNUIwNTBBQzEKUldUQkNnVmJmZ3dyNjJGU0ZsSTFjNWtvaU5oSFMyMDBqRkRJaFBPYXVqMSsvdDcrc0xFdE9uVmsK",
       "endpoints": [
-        "https://github.com/noFAYZ/zuno/releases/latest/download/latest.json",
-        "https://raw.githubusercontent.com/noFAYZ/zuno/updater-channel/latest.json"
+        "https://github.com/Pant0x/Amber-Music-Platform/releases/latest/download/latest.json",
+        "https://raw.githubusercontent.com/Pant0x/Amber-Music-Platform/updater-channel/latest.json"
       ]
     }
   }

@@ -1,8 +1,8 @@
 <p align="center">
-  <img width="120px" src="assets/img/Logo.png" alt="Zuno" />
+  <img width="120px" src="assets/img/logo2-noBG.png" alt="Amber" />
 </p>
 
-<h1 align="center">Zuno</h1>
+<h1 align="center">Amber</h1>
 
 <p align="center">
   A fast, native-feeling desktop client for YouTube Music.<br />
@@ -10,30 +10,30 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/noFAYZ/zuno/releases/latest"><img src="https://img.shields.io/github/downloads/noFAYZ/zuno/total?style=for-the-badge&color=ff0033&label=downloads" alt="Downloads"></a>
-  <a href="https://github.com/noFAYZ/zuno/releases/latest"><img src="https://img.shields.io/github/package-json/v/noFAYZ/zuno?style=for-the-badge&color=ff3d00&label=version" alt="Version"></a>
-  <a href="https://github.com/noFAYZ/zuno/blob/main/LICENSE"><img src="https://img.shields.io/github/license/noFAYZ/zuno?style=for-the-badge&color=ff6900" alt="License"></a>
-  <a href="https://github.com/noFAYZ/zuno/stargazers"><img src="https://img.shields.io/github/stars/noFAYZ/zuno?style=for-the-badge&color=ff9700&label=stars" alt="Stars"></a>
-  <a href="https://aur.archlinux.org/packages/zuno"><img src="https://img.shields.io/aur/version/zuno?style=for-the-badge&color=ffc300&label=AUR" alt="AUR"></a>
+  <a href="https://github.com/Pant0x/Amber-Music-Platform/releases/latest"><img src="https://img.shields.io/github/downloads/Pant0x/Amber-Music-Platform/total?style=for-the-badge&color=ff0033&label=downloads" alt="Downloads"></a>
+  <a href="https://github.com/Pant0x/Amber-Music-Platform/releases/latest"><img src="https://img.shields.io/github/package-json/v/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff3d00&label=version" alt="Version"></a>
+  <a href="https://github.com/Pant0x/Amber-Music-Platform/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff6900" alt="License"></a>
+  <a href="https://github.com/Pant0x/Amber-Music-Platform/stargazers"><img src="https://img.shields.io/github/stars/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff9700&label=stars" alt="Stars"></a>
+  <a href="https://aur.archlinux.org/packages/amber"><img src="https://img.shields.io/aur/version/amber?style=for-the-badge&color=ffc300&label=AUR" alt="AUR"></a>
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/img/zuno-d1-1.2.PNG" />
-    <source media="(prefers-color-scheme: light)" srcset="assets/img/zuno-l4-1.2.PNG" />
-    <img src="assets/img/zuno-d1-1.2.PNG" alt="Zuno home view" width="900" />
+    <source media="(prefers-color-scheme: dark)" srcset="assets/img/Screenshot01.png" />
+    <source media="(prefers-color-scheme: light)" srcset="assets/img/Screenshot02.png" />
+    <img src="assets/img/Screenshot01.png" alt="Amber home view" width="900" />
   </picture>
 </p>
 
 > [!IMPORTANT]
-> Zuno is an independent, unofficial project. It is not affiliated with, authorized by,
+> Amber is an independent, unofficial project. It is not affiliated with, authorized by,
 > sponsored by, or endorsed by YouTube or Google.
 
 <br />
 
 ## About
 
-Zuno brings YouTube Music to the desktop as its own application, not a browser tab. There is
+Amber brings YouTube Music to the desktop as its own application, not a browser tab. There is
 no official desktop client, so the goal is a fast, native-feeling one that holds up with large
 libraries.
 
@@ -49,8 +49,8 @@ If you find it useful, **starring the repo** genuinely helps.
     <td width="50%"><b>Artist page</b></td>
   </tr>
   <tr>
-    <td><img src="assets/img/zuno-d-1.2.PNG" alt="Synced lyrics following the current line" /></td>
-    <td><img src="assets/img/zuno-d4-1.2.PNG" alt="An artist page showing popular songs and releases" /></td>
+    <td><img src="assets/img/Amber-d-1.2.PNG" alt="Synced lyrics following the current line" /></td>
+    <td><img src="assets/img/Amber-d4-1.2.PNG" alt="An artist page showing popular songs and releases" /></td>
   </tr>
   <tr>
     <td><sub>Click a line to seek, nudge the timing if a match is off, and see which source the words came from.</sub></td>
@@ -64,8 +64,8 @@ If you find it useful, **starring the repo** genuinely helps.
     <td width="50%"><b>Library</b></td>
   </tr>
   <tr>
-    <td><img src="assets/img/zuno-d3-1.2.PNG" alt="The queue panel open beside the home view" /></td>
-    <td><img src="assets/img/zuno-l5-1.2.PNG" alt="The library songs list, with explicit badges and the now-playing meter" /></td>
+    <td><img src="assets/img/Amber-d3-1.2.PNG" alt="The queue panel open beside the home view" /></td>
+    <td><img src="assets/img/Amber-l5-1.2.PNG" alt="The library songs list, with explicit badges and the now-playing meter" /></td>
   </tr>
   <tr>
     <td><sub>Separates what you added by hand from what came next on its own.</sub></td>
@@ -74,7 +74,7 @@ If you find it useful, **starring the repo** genuinely helps.
 </table>
 
 <p align="center">
-  <img src="assets/img/zuno-set-1.2.PNG" alt="Zuno settings, showing the library and lyrics options" width="860" />
+  <img src="assets/img/Amber-set-1.2.PNG" alt="Amber settings, showing the library and lyrics options" width="860" />
   <br />
   <sub>Settings — quality, lyrics source, translation and text size, downloads and the disk cap.</sub>
 </p>
@@ -109,13 +109,13 @@ If you find it useful, **starring the repo** genuinely helps.
 
 ## Download
 
-Grab the newest installer from the **[latest release](https://github.com/noFAYZ/zuno/releases/latest)**
+Grab the newest installer from the **[latest release](https://github.com/Pant0x/Amber-Music-Platform/releases/latest)**
 for Windows, macOS or Linux.
 
 On Arch and derivatives, install from the AUR instead:
 
 ```bash
-yay -S zuno     # or: paru -S zuno
+yay -S Amber     # or: paru -S Amber
 ```
 
 <br />
@@ -128,7 +128,7 @@ yay -S zuno     # or: paru -S zuno
 
 ### Linux notes
 
-Install the `.deb` or `.rpm`, or `zuno` from the AUR on Arch. All three run on your system's
+Install the `.deb` or `.rpm`, or `Amber` from the AUR on Arch. All three run on your system's
 WebKitGTK (rendering) and GStreamer (playback) rather than bundling their own.
 
 <details>
@@ -162,17 +162,17 @@ A WebKitGTK rendering problem under Wayland, most often on Nvidia. Launch from a
 with one of:
 
 ```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 zuno
-WEBKIT_DISABLE_COMPOSITING_MODE=1 zuno
-GDK_BACKEND=x11 zuno
+WEBKIT_DISABLE_DMABUF_RENDERER=1 Amber
+WEBKIT_DISABLE_COMPOSITING_MODE=1 Amber
+GDK_BACKEND=x11 Amber
 ```
 
 Launching from an app menu instead? Add the same variable to the `Exec` line of
-`zuno.desktop` (typically `/usr/share/applications/zuno.desktop`, or
-`~/.local/share/applications/zuno.desktop` for a user install):
+`Amber.desktop` (typically `/usr/share/applications/Amber.desktop`, or
+`~/.local/share/applications/Amber.desktop` for a user install):
 
 ```
-Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 zuno
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 Amber
 ```
 
 </details>
@@ -183,10 +183,10 @@ Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 zuno
 Preload the system Wayland client library:
 
 ```bash
-LD_PRELOAD=/usr/lib/libwayland-client.so ~/Downloads/zuno*.AppImage
+LD_PRELOAD=/usr/lib/libwayland-client.so ~/Downloads/Amber*.AppImage
 ```
 
-In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to Zuno's environment variables.
+In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to Amber's environment variables.
 
 </details>
 
@@ -195,29 +195,29 @@ In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to Zuno's environm
 Open **Settings → Library → Application log**, reproduce the problem, and attach the log to
 an issue along with your desktop environment, display server (X11 or Wayland) and distro —
 those three narrow down a Linux bug faster than anything else. The log also lives at
-`~/.local/share/com.zuno.desktop/logs/current.log`.
+`~/.local/share/com.amber.desktop/logs/current.log`.
 
 ### macOS notes
 
 #### "Apple is not able to verify that it is free from malware"
 
 The macOS builds aren't signed with an Apple Developer ID, so Gatekeeper blocks them on first
-launch. This isn't a malware finding — it means the binary is unsigned. Drag Zuno to
+launch. This isn't a malware finding — it means the binary is unsigned. Drag Amber to
 Applications, then either:
 
-- open **System Settings → Privacy & Security**, scroll to the message about Zuno, and click
+- open **System Settings → Privacy & Security**, scroll to the message about Amber, and click
   **Open Anyway**, or
 - clear the quarantine flag yourself:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Zuno.app
+xattr -dr com.apple.quarantine /Applications/Amber.app
 ```
 
 Build from source instead if you'd rather not trust a prebuilt, unsigned binary.
 
 #### A Keychain prompt on sign-in
 
-Zuno stores one encryption key in its own Keychain entry and encrypts your YouTube Music
+Amber stores one encryption key in its own Keychain entry and encrypts your YouTube Music
 session with it before writing anything to the app data directory. Choose **Always Allow** to
 avoid repeated prompts — or **Deny** if you don't intend to sign in to YouTube Music.
 
@@ -262,7 +262,7 @@ By contributing you agree to the [Contributor License Agreement](CLA.md).
 
 ## Credits
 
-Zuno is a fork of **[JustAnotherMusicClient](https://github.com/2latemc/JustAnotherMusicClient)**
+Amber is a fork of **[amber-musicplayer](https://github.com/2latemc/amber-musicplayer)**
 by [2latemc](https://github.com/2latemc), used under the Apache 2.0 licence. The original
 project did the hard groundwork of getting YouTube Music working on the desktop.
 
@@ -273,13 +273,13 @@ If you want to support the original author, they accept donations
 
 ## Legal
 
-**Zuno provides no downloading functionality.** It is a client for audio listening, with
+**Amber provides no downloading functionality.** It is a client for audio listening, with
 theming and interface additions.
 
-Zuno interacts with YouTube and YouTube Music. Access to those services remains governed by
+Amber interacts with YouTube and YouTube Music. Access to those services remains governed by
 their own terms, policies, availability and regional restrictions.
 
-Zuno does not host or claim ownership of music, videos, artwork, metadata, or any other
+Amber does not host or claim ownership of music, videos, artwork, metadata, or any other
 content supplied by third parties. Rights in that content remain with their respective
 owners.
 
@@ -297,6 +297,6 @@ integration only.
 
 ## Thanks to our contributors
 
-<a href="https://github.com/noFAYZ/zuno/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=noFAYZ/zuno" />
+<a href="https://github.com/Pant0x/Amber-Music-Platform/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Pant0x/Amber-Music-Platform" />
 </a>

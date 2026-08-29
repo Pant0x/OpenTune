@@ -13,7 +13,7 @@ import { getAppSetting, setAppSetting } from "./appSettings";
  *   **Topic** — one line, in plain language, about what changed for the listener.
  *   ...one line per topic, four or so at most...
  *
- *   Report anything broken on GitHub, or come say hello at /r/ZunoMusic.
+ *   Report anything broken on GitHub, or come say hello at /r/AmberMusic.
  *
  *   Thanks :)
  *
@@ -27,9 +27,9 @@ export const RELEASE_NOTE_BODY = `**Accounts** — switch between multiple YouTu
 **Sound** — pick your exact output device (real speaker/headphone names on Linux too), plus a bypass toggle and mini EQ right in the player bar.
 **Playlists** — shuffle now truly shuffles the whole playlist from wherever you are in it, loop cycles properly instead of getting stuck, and any playlist can be hidden from your library.
 **Discovery** — start a radio station from any track, and pages load in with proper skeletons instead of a blank flash.
-**Fixes** — some tracks auto-skipping a few seconds in, crossfade stalling when minimized, YouTube embed errors now falling back automatically, and a second launch refocusing Zuno instead of opening twice.
+**Fixes** — some tracks auto-skipping a few seconds in, crossfade stalling when minimized, YouTube embed errors now falling back automatically, and a second launch refocusing Amber instead of opening twice.
 
-Report anything broken on GitHub, or come say hello at /r/ZunoMusic.
+Report anything broken on GitHub, or come say hello at /r/AmberMusic.
 
 Thanks :)`;
 
@@ -120,11 +120,11 @@ export function shouldShowReleaseNote(
  * both cases and settle nothing.
  */
 const PRIOR_USE_KEYS = [
-  "zuno.play-history.v1",
-  "yt-music-dock.app-session.v1",
-  "zuno.offline-manifest.v1",
-  "ytc-local-playlists-v1",
-  "yt-music-dock:recent-playlists",
+  "amber.play-history.v1",
+  "amber.app-session.v1",
+  "amber.offline-manifest.v1",
+  "amber.local-playlists.v1",
+  "amber:recent-playlists",
 ];
 
 export function hasPriorUse(): boolean {

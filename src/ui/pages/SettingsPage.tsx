@@ -45,7 +45,6 @@ import {
   FolderIcon,
   FolderOpenIcon,
   KeyIcon,
-  LastFmIcon,
   LogFileIcon,
   LogoutIcon,
   LyricsIcon,
@@ -195,13 +194,8 @@ import {
   removeLocalPlaylistPath,
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
-import { LastFmService, type LastFmAuthStart, type LastFmSessionStatus } from "../../player/LastFm";
 import { DiscordRpcService } from "../../player/DiscordRPC";
 import { useDiscordPresenceEnabled } from "../settings/discord";
-import {
-  setLastFmScrobblingEnabled,
-  useLastFmScrobblingEnabled,
-} from "../settings/lastfm";
 import { isLinux, isTilingWindowManager, subscribeTilingWindowManager } from "../platform";
 import { GITHUB_NEW_ISSUE_URL, GITHUB_REPOSITORY_URL } from "../links";
 import { AccountAvatar, AccountSwitcher, AddGoogleAccountButton, GoogleAccountSwitcher } from "../components/AccountSwitcher";
@@ -733,10 +727,6 @@ export function SettingsPage({
   const [localPlaylistPathInputs, setLocalPlaylistPathInputs] = useState<Record<string, string>>({});
   const [localPlaylistError, setLocalPlaylistError] = useState<string | null>(null);
   const [localPlaylistBrowsingId, setLocalPlaylistBrowsingId] = useState<string | null>(null);
-  const [lastFmSession, setLastFmSession] = useState<LastFmSessionStatus | null>(null);
-  const [lastFmAuth, setLastFmAuth] = useState<LastFmAuthStart | null>(null);
-  const [lastFmBusy, setLastFmBusy] = useState(false);
-  const [lastFmError, setLastFmError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("about");
   const themePreference = useThemePreference();
   const [listeningShortcut, setListeningShortcut] = useState<KeyboardShortcutAction | null>(null);
@@ -789,7 +779,6 @@ export function SettingsPage({
     () => getOfflineMaxBytes() / 1024 ** 3,
   );
   const [clearingDownloads, setClearingDownloads] = useState(false);
-  const lastFmScrobblingEnabled = useLastFmScrobblingEnabled();
   const discordPresenceEnabled = useDiscordPresenceEnabled();
   const localPlaylists = useSyncExternalStore(
     subscribeToLocalPlaylists,
@@ -829,22 +818,6 @@ export function SettingsPage({
       })
       .catch(() => {
         if (active) setInstalledVersion("Unknown");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void LastFmService.getSession()
-      .then((session) => {
-        if (active) setLastFmSession(session);
-      })
-      .catch((error) => {
-        if (active) {
-          setLastFmError(error instanceof Error ? error.message : "Unable to load Last.fm connection.");
-        }
       });
     return () => {
       active = false;
@@ -992,49 +965,6 @@ export function SettingsPage({
       setLocalPlaylistName("");
     } catch (error) {
       setLocalPlaylistError(error instanceof Error ? error.message : "Unable to create local playlist.");
-    }
-  };
-
-  const handleStartLastFmAuth = async () => {
-    setLastFmBusy(true);
-    setLastFmError(null);
-    try {
-      const auth = await LastFmService.startAuth();
-      setLastFmAuth(auth);
-    } catch (error) {
-      setLastFmError(error instanceof Error ? error.message : "Unable to start Last.fm sign-in.");
-    } finally {
-      setLastFmBusy(false);
-    }
-  };
-
-  const handleFinishLastFmAuth = async () => {
-    if (!lastFmAuth) return;
-    setLastFmBusy(true);
-    setLastFmError(null);
-    try {
-      const session = await LastFmService.completeAuth(lastFmAuth.token);
-      setLastFmSession(session);
-      setLastFmAuth(null);
-      setLastFmScrobblingEnabled(true);
-    } catch (error) {
-      setLastFmError(error instanceof Error ? error.message : "Unable to finish Last.fm sign-in.");
-    } finally {
-      setLastFmBusy(false);
-    }
-  };
-
-  const handleDisconnectLastFm = async () => {
-    setLastFmBusy(true);
-    setLastFmError(null);
-    try {
-      await LastFmService.disconnect();
-      setLastFmSession(null);
-      setLastFmAuth(null);
-    } catch (error) {
-      setLastFmError(error instanceof Error ? error.message : "Unable to disconnect Last.fm.");
-    } finally {
-      setLastFmBusy(false);
     }
   };
 
@@ -1276,80 +1206,6 @@ export function SettingsPage({
             {libraryState.error && <p className="text-sm text-destructive">{libraryState.error}</p>}
           </section>
 
-          <section className={SETTINGS_CARD} aria-labelledby="lastfm-settings-title">
-            <SettingsCardHeader
-              title="Last.fm"
-              titleId="lastfm-settings-title"
-              icon={<LastFmIcon size={18} aria-hidden="true" />}
-              description={
-                lastFmSession
-                  ? `Connected as ${lastFmSession.username}`
-                  : "Connect Last.fm to scrobble your listening history."
-              }
-              status={
-                <span className={lastFmSession ? "text-primary" : "text-muted-foreground"}>
-                  {lastFmSession ? "Connected" : "Signed out"}
-                </span>
-              }
-            />
-
-            <div className="flex flex-col gap-5">
-              <SettingToggle
-                title="Scrobble plays"
-                description="Send now playing updates and scrobbles after a track reaches the Last.fm listening threshold."
-                checked={lastFmSession ? lastFmScrobblingEnabled : false}
-                disabled={!lastFmSession}
-                onCheckedChange={setLastFmScrobblingEnabled}
-              />
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
-                  <strong>Account connection</strong>
-                  <span>
-                    {lastFmAuth
-                      ? "Approve the connection in your browser, then finish it here."
-                      : lastFmSession
-                        ? "Disconnecting stops future Last.fm updates from this app."
-                        : "A browser window will open so you can approve this app on Last.fm."}
-                  </span>
-                </span>
-                {lastFmSession ? (
-                  <button
-                    className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    disabled={lastFmBusy}
-                    onClick={() => void handleDisconnectLastFm()}
-                  >
-                    <LastFmIcon size={18} />
-                    {lastFmBusy ? "Disconnecting..." : "Disconnect"}
-                  </button>
-                ) : lastFmAuth ? (
-                  <button
-                    className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    disabled={lastFmBusy}
-                    onClick={() => void handleFinishLastFmAuth()}
-                  >
-                    <LastFmIcon size={18} />
-                    {lastFmBusy ? "Finishing..." : "Finish connection"}
-                  </button>
-                ) : (
-                  <button
-                    className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    disabled={lastFmBusy}
-                    onClick={() => void handleStartLastFmAuth()}
-                  >
-                    <LastFmIcon size={18} />
-                    {lastFmBusy ? "Opening..." : "Connect Last.fm"}
-                  </button>
-                )}
-              </div>
-
-              {lastFmError && <p className="text-sm text-destructive">{lastFmError}</p>}
-            </div>
-          </section>
-
           <section className={SETTINGS_CARD} aria-labelledby="discord-settings-title">
             <h2 className="text-lg font-semibold text-foreground" id="discord-settings-title">
               Discord
@@ -1574,7 +1430,7 @@ export function SettingsPage({
               title="Storage"
               titleId="library-storage-title"
               icon={<DownloadIcon size={18} aria-hidden="true" />}
-              description="How much disk Zuno is allowed to use."
+              description="How much disk Amber is allowed to use."
             />
 
             <div className="flex flex-wrap items-end justify-between gap-4 py-2">
@@ -1835,12 +1691,12 @@ export function SettingsPage({
               title="System"
               titleId="library-system-title"
               icon={<SettingsIcon size={18} aria-hidden="true" />}
-              description="How Zuno behaves outside the window."
+              description="How Amber behaves outside the window."
             />
 
             <SettingToggle
               title="Launch at startup"
-              description="Start Zuno when your computer starts."
+              description="Start Amber when your computer starts."
               checked={autostartEnabled}
               disabled={autostartLoading}
               onCheckedChange={(checked) => void handleAutostartChange(checked)}
@@ -1851,7 +1707,7 @@ export function SettingsPage({
 
             <SettingToggle
               title="Minimize to tray"
-              description="Closing the window hides Zuno to the system tray and keeps playing. Quit from the tray icon."
+              description="Closing the window hides Amber to the system tray and keeps playing. Quit from the tray icon."
               checked={minimizeToTray}
               onCheckedChange={setMinimizeToTray}
             />
@@ -2151,7 +2007,7 @@ export function SettingsPage({
               title="Playback method"
               description={
                 audioEngineMode === "native"
-                  ? "Zuno plays each track itself. About 90 MB lighter, slower to start, no gapless or crossfade."
+                  ? "Amber plays each track itself. About 90 MB lighter, slower to start, no gapless or crossfade."
                   : "A hidden YouTube frame plays each track. Costs about 90 MB, starts faster, required for gapless and crossfade."
               }
             >
@@ -2264,7 +2120,7 @@ export function SettingsPage({
               title="Session"
               titleId="session-settings-title"
               icon={<QueuePanelIcon size={18} aria-hidden="true" />}
-              description="What comes back when you reopen Zuno."
+              description="What comes back when you reopen Amber."
             />
 
             <SettingToggle

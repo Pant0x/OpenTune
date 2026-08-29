@@ -20,7 +20,7 @@ Runs before React mounts, in this order:
 6. `Promise.all` of ~18 `hydrate*` functions (paperPc, theme, windowControls, miniPlayer, playerControls, queuePanel, tray, audioQuality, audioEngineMode, lastFm, discord, sidebar, keyboardShortcuts, toolbarItems, homeSections, playbackSettings, playHistory, sessionRestore) — these reconcile localStorage against Rust-owned durable settings.
 7. `DiscordRpcService.init()`.
 8. `window.error` + `window.unhandledrejection` → `logInternalError`.
-9. `createRoot().render(<StrictMode><ErrorBoundary label="Zuno"><App/></ErrorBoundary></StrictMode>)` — the outermost boundary exists because a desktop shell has no address bar to reload a blank window from.
+9. `createRoot().render(<StrictMode><ErrorBoundary label="Amber"><App/></ErrorBoundary></StrictMode>)` — the outermost boundary exists because a desktop shell has no address bar to reload a blank window from.
 10. `syncLocalAudioWatcher()` and `listen("local-audio-changed")` → `notifyLocalPlaylistsChanged()`.
 
 ### `src/mini.tsx` — mini-player window

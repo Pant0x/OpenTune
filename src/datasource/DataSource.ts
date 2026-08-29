@@ -56,7 +56,7 @@ export abstract class DataSource {
   search?(query: string, onUpdate?: (results: SearchResults) => void): Promise<SearchResults>;
   /** One filtered search. Narrower and deeper than `search`, which samples every category. */
   searchCategory?(query: string, category: SearchCategory): Promise<SearchResults>;
-  /** Resolves a pasted YouTube link. Null when it points at something Zuno cannot open. */
+  /** Resolves a pasted YouTube link. Null when it points at something Amber cannot open. */
   resolveLink?(url: string): Promise<ResolvedLink | null>;
   searchTracks?(query: string, onUpdate?: (tracks: Track[]) => void): Promise<Track[]>;
   getSearchSuggestions?(query: string, onUpdate?: (suggestions: string[]) => void): Promise<string[]>;

@@ -1,7 +1,7 @@
 import type { Tab } from "../ui/types/tab";
 import type { TabManagerSession } from "./TabManager";
 
-const STORAGE_KEY = "yt-music-dock.app-session.v1";
+const STORAGE_KEY = "amber.app-session.v1";
 
 export interface AppSession {
   version: 1;

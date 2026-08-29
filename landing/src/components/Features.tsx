@@ -180,7 +180,7 @@ const FEATURES: readonly Feature[] = [
     id: "local",
     title: "Your local files, in the same list",
     body:
-      "Point Zuno at folders on your machine and they sit alongside your library — nothing uploaded, and a tag editor for fixing metadata.",
+      "Point Amber at folders on your machine and they sit alongside your library — nothing uploaded, and a tag editor for fixing metadata.",
     visual: <LocalVisual />,
   },
   {

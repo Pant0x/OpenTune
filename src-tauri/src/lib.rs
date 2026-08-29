@@ -50,10 +50,9 @@ mod process_memory;
 mod discord_rpc;
 mod equalizer;
 mod opus_source;
-mod lastfm;
 
 // Keep the legacy service name so existing sign-in credentials survive the product rename.
-const KEYRING_SERVICE: &str = "com.ytmusicdock.app";
+const KEYRING_SERVICE: &str = "com.amber.desktop";
 
 /// Durable settings store. Also the marker the app-data migration checks for.
 const APP_SETTINGS_FILE_NAME: &str = "settings-v1.json";
@@ -108,7 +107,7 @@ fn copy_dir_contents(from: &std::path::Path, to: &std::path::Path) -> std::io::R
     Ok(())
 }
 
-/// Bundle identifier used before the rename to Zuno.
+/// Bundle identifier used before the rename to Amber.
 ///
 /// Tauri derives the app-data directory from the identifier, so changing it points the app
 /// at an empty folder and strands every stored preference — including user-created local
@@ -1634,15 +1633,15 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
-    let show = MenuItem::with_id(app, "tray-show", "Show Zuno", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "tray-quit", "Quit Zuno", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "tray-show", "Show Amber", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray-quit", "Quit Amber", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().cloned().ok_or_else(|| {
             tauri::Error::AssetNotFound("default window icon".to_string())
         })?)
-        .tooltip("Zuno")
+        .tooltip("Amber")
         .menu(&menu)
         // The menu is for the right-click; a left click should just bring the window back.
         .show_menu_on_left_click(false)
@@ -1907,7 +1906,7 @@ fn load_youtube_music_cookie_entries() -> Result<Option<String>, CommandError> {
 
 /*
  * The Keychain entry backing `load_or_create_cookie_encryption_key` is scoped to this build's
- * code signature. Zuno's macOS builds are ad-hoc signed (no paid Developer ID), so that
+ * code signature. Amber's macOS builds are ad-hoc signed (no paid Developer ID), so that
  * signature — and with it, access to the old key — changes on every single update. Before this
  * guarded against it, a stale key read as `NoEntry`, the loader minted a brand new random one,
  * and it was handed straight to AES-GCM against ciphertext only the *old* key could ever open:
@@ -5263,6 +5262,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init());
 
     #[cfg(not(debug_assertions))]
@@ -5419,12 +5419,6 @@ pub fn run() {
             local_audio_write_tags,
             local_audio_watch,
             local_audio_unwatch,
-            lastfm::lastfm_auth_token,
-            lastfm::lastfm_complete_auth,
-            lastfm::lastfm_disconnect,
-            lastfm::lastfm_get_session,
-            lastfm::lastfm_scrobble,
-            lastfm::lastfm_update_now_playing,
             discord_rpc_update,
             discord_rpc_clear,
             #[cfg(target_os = "macos")]

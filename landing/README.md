@@ -1,6 +1,6 @@
-# Zuno — marketing site
+# Amber — marketing site
 
-The public landing page. A separate Vite project that shares Zuno's look but none of its build.
+The public landing page. A separate Vite project that shares Amber's look but none of its build.
 
 ```bash
 cd landing
@@ -39,15 +39,15 @@ other untouched.
 
   ```bash
   cp ../assets/img/Logo.png public/logo.png
-  cp ../docs/zuno-d.PNG public/screenshot-dark.png
-  cp ../docs/zuno-l.PNG public/screenshot-light.png
+  cp ../docs/Amber-d.PNG public/screenshot-dark.png
+  cp ../docs/Amber-l.PNG public/screenshot-light.png
   ```
 
 ## Downloads
 
 `src/releases.ts` reads the newest release from the GitHub API at page load and points each
 platform button at the matching installer. Asset names carry the version
-(`Zuno_1.1.1_x64-setup.exe`), so there is no stable per-file URL to hardcode.
+(`Amber_1.1.1_x64-setup.exe`), so there is no stable per-file URL to hardcode.
 
 Every button falls back to the releases page — while the request is in flight, if it fails, and
 if a release is missing an asset for that platform. A rate-limited or offline visitor still gets

@@ -1,8 +1,8 @@
 [package]
-name = "zuno"
+name = "amber"
 version = "1.4.0"
-description = "Zuno - a desktop music client"
-authors = ["you"]
+description = "Amber - a desktop music client"
+authors = ["Panto"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "zuno_lib"
+name = "amber_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -34,6 +34,7 @@ discord-rich-presence = "0.2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 md5 = "0.8.0"
 lofty = "0.24.0"
 notify = "8.2.0"

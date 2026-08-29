@@ -41,7 +41,7 @@ export const OS_ICON = {
 } as const;
 
 /**
- * The two services Zuno talks to, for the hero's floating badges.
+ * The two services Amber talks to, for the hero's floating badges.
  *
  * Aspect ratios differ wildly and both are wrong to guess at: the Discord mark is 256×199 and
  * the Last.fm one is the wordmark at 512×131, so each call site sizes its own.

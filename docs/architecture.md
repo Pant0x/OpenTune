@@ -1,4 +1,4 @@
-# Architecture — Zuno
+# Architecture — Amber
 
 An unofficial desktop YouTube Music client. Tauri 2 (Rust) shell + React 19 / TypeScript
 front end, bundled by Vite 7. No router and no Redux — plain classes with `useSyncExternalStore`
@@ -6,7 +6,7 @@ and direct Tauri IPC. The UI is built on Tailwind v4 plus animated components ve
 [beUI](https://beui.dev) registry, with [Solar](https://solar-icons.vercel.app) icons.
 
 - Version: `1.2.1` (`package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` are kept in lockstep)
-- Bundle id: `com.zuno.desktop` · Rust crate `zuno` / lib `zuno_lib`
+- Bundle id: `com.amber.desktop` · Rust crate `Amber` / lib `Amber_lib`
 - Platforms: Windows, macOS, Linux
 - Companion docs: [frontend.md](./frontend.md) (UI), [backend.md](./backend.md) (Rust/IPC)
 
@@ -364,9 +364,9 @@ without user interaction.
 Storage differs by OS: Windows/Linux split the header into ≤900-byte chunks across up to 16 keyring
 entries plus a `chunks:<n>` manifest (keyrings cap entry size); macOS encrypts the header with
 AES-256-GCM into `youtube-music-session-v1.bin` under the app data dir and keeps only the 32-byte
-key in the keychain. The keyring service name is still the legacy `com.ytmusicdock.app` so existing
+key in the keychain. The keyring service name is still the legacy `com.amber.desktop` so existing
 sign-ins survived the rename, and `migrate_legacy_app_data` copies over data from the older
-`com.justanothermusicclient.desktop` identifier on first run.
+`com.amber-musicplayer.desktop` identifier on first run.
 
 ### 4.5 Search and browse
 
@@ -414,7 +414,7 @@ while `loadTrack`/`playTrackById` first *claim* the focused tab as the new owner
 | Data cache | `<app_cache_dir>/data-cache-v1/entries/<fnv1a>.json` | Library, playlists, albums, artists, tracks, browse pages, lyrics, search results. LRU-evicted to a configurable budget (default 4 GiB) |
 | Offline audio | `<app_data_dir>/offline-audio-v1/<trackId>.bin` | Downloaded track bytes. The frontend keeps the metadata manifest in localStorage and reconciles it against `offline_audio_list`. Pruned oldest-first to a configurable ceiling (default 8 GiB) |
 | In-memory media bodies | `MediaServer.items`, Rust process | The audio currently playing and the one preloaded. Hard cap of 3 entries, coldest evicted — see [backend.md](./backend.md) §3 |
-| Secrets | OS keyring (`com.ytmusicdock.app`) — plus an AES-GCM file on macOS | YouTube cookie header, Last.fm session key |
+| Secrets | OS keyring (`com.amber.desktop`) — plus an AES-GCM file on macOS | YouTube cookie header, Last.fm session key |
 | Logs | `<app_log_dir>/current.log` | Truncated on every launch; older `*.log` files deleted |
 
 "Delete all app data" in Settings clears them: `clearAppSettings()`, `clearCache()`,

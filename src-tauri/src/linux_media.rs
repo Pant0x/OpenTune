@@ -48,8 +48,8 @@ impl LinuxMediaSession {
         }
 
         let config = PlatformConfig {
-            dbus_name: "zuno",
-            display_name: "Zuno",
+            dbus_name: "Amber",
+            display_name: "Amber",
             hwnd: None,
         };
 

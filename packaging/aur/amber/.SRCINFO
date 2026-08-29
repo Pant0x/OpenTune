@@ -1,0 +1,24 @@
+pkgbase = amber
+	pkgdesc = YouTube Music as a focused desktop app — tabs, offline downloads, synced lyrics
+	pkgver = 1.4.0
+	pkgrel = 1
+	url = https://github.com/Pant0x/Amber-Music-Platform
+	arch = x86_64
+	license = Apache-2.0
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	depends = libayatana-appindicator
+	depends = gst-plugins-base
+	depends = gst-plugins-good
+	depends = gst-libav
+	optdepends = gst-plugins-bad: extra container and codec support
+	optdepends = gst-plugins-ugly: extra codec support
+	optdepends = xdg-utils: opening links and the log file from inside the app
+	optdepends = libnotify: desktop notifications
+	conflicts = amber-bin
+	options = !strip
+	options = !emptydirs
+	source = amber-1.4.0.deb::https://github.com/Pant0x/Amber-Music-Platform/releases/download/v1.4.0/Amber_1.4.0_amd64.deb
+	sha256sums = SKIP
+
+pkgname = amber

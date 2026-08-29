@@ -1,4 +1,4 @@
-# Publishes zuno to the AUR whenever a release is published.
+# Publishes Amber to the AUR whenever a release is published.
 #
 # Runs from CI because the AUR needs an Arch environment and an SSH key, and the maintainer
 # develops on Windows — doing this by hand meant either a VM or the package going stale.
@@ -54,7 +54,7 @@ jobs:
             # disagree about what was just shipped. There is no tag in a `workflow_run` event.
             version="$(grep -m1 '"version"' package.json | cut -d'"' -f4)"
           fi
-          echo "Publishing zuno ${version}"
+          echo "Publishing Amber ${version}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install packaging tools
@@ -67,7 +67,7 @@ jobs:
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
 
       - name: Update version and checksum
-        working-directory: packaging/aur/zuno
+        working-directory: packaging/aur/Amber
         run: |
           version="${{ steps.version.outputs.version }}"
           sed -i "s/^pkgver=.*/pkgver=${version}/" PKGBUILD
@@ -81,7 +81,7 @@ jobs:
           su builder -c "updpkgsums && makepkg --printsrcinfo > .SRCINFO"
 
       - name: Build it before anyone else has to
-        working-directory: packaging/aur/zuno
+        working-directory: packaging/aur/Amber
         run: su builder -c "makepkg -sf --noconfirm"
 
       - name: Publish
@@ -110,10 +110,10 @@ jobs:
           # that fallback reported "No AUR repo yet", built a root commit with no history, and
           # tried to push it over the real package. It was saved only by push rejecting a
           # non-fast-forward. A failure here should stop the job and be read.
-          git clone ssh://aur@aur.archlinux.org/zuno.git /tmp/aur
+          git clone ssh://aur@aur.archlinux.org/Amber.git /tmp/aur
 
           # Only these two files belong in an AUR repo — no sources, no built packages.
-          cp packaging/aur/zuno/PKGBUILD packaging/aur/zuno/.SRCINFO /tmp/aur/
+          cp packaging/aur/Amber/PKGBUILD packaging/aur/Amber/.SRCINFO /tmp/aur/
 
           cd /tmp/aur
           # `--quiet` alone reports nothing on a fresh repo where the files are untracked.
@@ -122,5 +122,5 @@ jobs:
             echo "AUR already at ${version}, nothing to push."
             exit 0
           fi
-          git commit -m "zuno ${version}"
+          git commit -m "Amber ${version}"
           git push -u origin master

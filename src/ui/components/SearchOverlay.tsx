@@ -8,7 +8,7 @@ import { useTrackContextMenu } from "./TrackContextMenu";
 import { isMacOS, primaryModifierLabel } from "../platform";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 
-const RECENT_SEARCHES_KEY = "yt-music-dock:recent-searches";
+const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 5;
 
 function normalizeSearchText(value: string): string {

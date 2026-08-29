@@ -183,7 +183,7 @@ function Tile({
 
 const ASSURANCES: readonly string[] = [
   "No telemetry — no analytics, crash reporting or usage pings",
-  "Your own Google sign-in — Zuno has no account to create",
+  "Your own Google sign-in — Amber has no account to create",
   "Apache 2.0, built from the public tree by CI",
 ];
 

@@ -4,11 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { DiscordIcon, GitHubIcon, LastFmIcon, LoginIcon, SettingsIcon, YouTubeMusicIcon } from "@/ui/icons";
+import { DiscordIcon, GitHubIcon, LoginIcon, SettingsIcon, YouTubeMusicIcon } from "@/ui/icons";
 import { GITHUB_REPOSITORY_URL } from "../links";
 import { DiscordRpcService } from "../../player/DiscordRPC";
 import { useDiscordPresenceEnabled } from "../settings/discord";
-import { setLastFmScrobblingEnabled, useLastFmScrobblingEnabled } from "../settings/lastfm";
 import { setYouTubeScrobbling, useYouTubeScrobbling } from "../settings/youtubeAccount";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
@@ -32,7 +31,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { motion } from "motion/react";
-import appIcon from "../../../assets/img/Logo.png";
+import appIcon from "../../../assets/img/logo2-noBG.png";
 
 interface TitleBarProps {
   tabs: Tab[];
@@ -104,12 +103,10 @@ export function TitleBar({
   const showCustomWindowControls = !nativeWindowControls
     && (!isLinux || !tilingWindowManager || forceWindowControls);
   const discordEnabled = useDiscordPresenceEnabled();
-  const lastFmEnabled = useLastFmScrobblingEnabled();
   const ytScrobblingEnabled = useYouTubeScrobbling();
   const notificationsVisible = useToolbarItemVisible("notifications");
   const downloadsVisible = useToolbarItemVisible("downloads");
   const discordVisible = useToolbarItemVisible("discord");
-  const lastFmVisible = useToolbarItemVisible("lastfm");
   const ytMusicVisible = useToolbarItemVisible("ytmusic");
   const githubVisible = useToolbarItemVisible("github");
   const homePointerRef = useRef<{
@@ -219,7 +216,7 @@ export function TitleBar({
           src={appIcon}
           alt=""
         /> 
-        {!hideHomeText && <h3 >zuno_</h3>}
+        {!hideHomeText && <h3 >amber_</h3>}
       </button>
 
       <MusicTabs
@@ -283,31 +280,6 @@ export function TitleBar({
               className={cn(
                 "transition-opacity",
                 discordEnabled ? "opacity-100 text-primary" : "opacity-40",
-              )}
-            />
-          </Button>
-        </Tooltip>
-        )}
-        {lastFmVisible && (
-        <Tooltip
-          side="bottom"
-          content={lastFmEnabled ? "Last.fm scrobbling on" : "Last.fm scrobbling off"}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setLastFmScrobblingEnabled(!lastFmEnabled)}
-            aria-pressed={lastFmEnabled}
-            aria-label={
-              lastFmEnabled ? "Turn off Last.fm scrobbling" : "Turn on Last.fm scrobbling"
-            }
-          >
-            <LastFmIcon
-              size={16}
-              aria-hidden="true"
-              className={cn(
-                "transition-opacity",
-                lastFmEnabled ? "opacity-100 text-primary" : "opacity-40",
               )}
             />
           </Button>

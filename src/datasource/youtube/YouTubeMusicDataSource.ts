@@ -4957,7 +4957,7 @@ export class YouTubeMusicDataSource extends DataSource {
   private getLyricsRequestHeaders(): Record<string, string> {
     return {
       Accept: "application/json",
-      "User-Agent": "Zuno/1.0",
+      "User-Agent": "Amber/1.0",
     };
   }
 
@@ -5872,7 +5872,7 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   /**
-   * Browse ids for the surfaces Zuno exposes.
+   * Browse ids for the surfaces Amber exposes.
    *
    * These are stable YouTube Music feed ids rather than anything we construct, which is why
    * they are literals: there is no endpoint that enumerates them.
@@ -6365,7 +6365,7 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   /**
-   * Turns a pasted YouTube link into something Zuno can open.
+   * Turns a pasted YouTube link into something Amber can open.
    *
    * Nearly every link names its target in the URL itself, so parseYouTubeLink answers offline
    * and the API is only consulted for the shapes it cannot: `@handles`, `/c/` vanity paths and

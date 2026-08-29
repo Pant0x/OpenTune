@@ -1,5 +1,5 @@
-const STORAGE_KEY = "yt-music-dock:recent-playlists";
-const CHANGE_EVENT = "yt-music-dock:recent-playlists-changed";
+const STORAGE_KEY = "amber:recent-playlists";
+const CHANGE_EVENT = "amber:recent-playlists-changed";
 
 type RecentPlaylistMap = Record<string, number>;
 

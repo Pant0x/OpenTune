@@ -11,8 +11,8 @@ const PLATFORM_LABEL: Record<PlatformId, string> = {
   linux: "Linux",
 };
 
-const DEMO_VIDEO = "https://pub-493a5d4ea10b45dcaa83917aa3856a32.r2.dev/zunodem.mp4";
-const DEMO_POSTER = "./zuno-d1-1.2.PNG";
+const DEMO_VIDEO = "https://pub-493a5d4ea10b45dcaa83917aa3856a32.r2.dev/Amberdem.mp4";
+const DEMO_POSTER = "./Amber-d1-1.2.PNG";
 /** Read off the file's own header. Reserves the box before a byte arrives, and sets the frame's
  *  aspect — the stage is cut to the footage rather than the footage cropped to the stage. */
 const DEMO_W = 1234;
@@ -171,7 +171,7 @@ export function Hero({
           className="hero-in relative text-[clamp(56px,9vw,96px)] font-bold leading-none tracking-[-0.045em] text-foreground"
           style={step(1)}
         >
-          zuno_
+          Amber_
           {release ? (
             <span className="absolute left-[calc(100%+0.5rem)] top-1 whitespace-nowrap rounded-full border border-primary/40 px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-primary max-sm:hidden">
               v{release.version}

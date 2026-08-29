@@ -64,7 +64,6 @@ import {
 } from "../player/playerStore";
 import { clearAppSession, loadAppSession, saveAppSession } from "../player/appSession";
 import { useMediaSession } from "../player/useMediaSession";
-import { LastFmService } from "../player/LastFm";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import { AuthOverlay } from "./components/AuthOverlay";
@@ -119,15 +118,14 @@ import {
   useKeyboardShortcuts,
   type KeyboardShortcutAction,
 } from "./settings/keyboardShortcuts";
-import { useLastFmScrobblingEnabled } from "./settings/lastfm";
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
 const restoredSession = loadAppSession();
 const LOADING_SCREEN_FADE_MS = 80;
 const LOADING_SCREEN_MAX_MS = 4000;
-const ONBOARDING_COMPLETE_KEY = "yt-music-dock:onboarding-complete";
+const ONBOARDING_COMPLETE_KEY = "amber:onboarding-complete";
 const ONBOARDING_COMPLETE_SETTING_KEY = "onboardingComplete";
-const KEYCHAIN_NOTICE_COMPLETE_KEY = "yt-music-dock:keychain-notice-complete";
+const KEYCHAIN_NOTICE_COMPLETE_KEY = "amber:keychain-notice-complete";
 const LOADING_SCREEN_MIN_MS = 1000;
 const MOUSE_BACK_BUTTON = 3;
 const MOUSE_FORWARD_BUTTON = 4;
@@ -307,7 +305,6 @@ export default function App() {
   const miniPlayerEnabled = useMiniPlayerEnabled();
   const miniPlayerWindowLive = useMiniPlayerWindowLive();
   const keyboardShortcuts = useKeyboardShortcuts();
-  const lastFmScrobblingEnabled = useLastFmScrobblingEnabled();
   // The stylesheet kills CSS animation via !important; this is the JS half. Motion writes
   // inline styles, so no stylesheet can reach it — and its own `useReducedMotion` reads the
   // OS media query alone, which is why this is the app's hook and not that one.
@@ -639,34 +636,7 @@ export default function App() {
   }, []);
 
 
-  useEffect(() => {
-    const syncLastFm = () => {
-      LastFmService.updatePlayback({
-        track: playerState.currentTrack,
-        status: playerState.status,
-        currentTime: playerController.getCurrentTime(),
-        duration: playerController.getDuration(),
-        enabled: lastFmScrobblingEnabled,
-      });
-    };
 
-    /*
-     * The single call is the one that matters on every other status: it is what tells the
-     * scrobbler a track was paused, changed or stopped. The interval exists only to watch a
-     * playing track cross its scrobble threshold, so it has nothing to do while the position
-     * is not moving — and it was running once a second for the whole session regardless, with
-     * scrobbling switched off, with nothing loaded, engine reads and all.
-     */
-    syncLastFm();
-    if (!lastFmScrobblingEnabled || playerState.status !== "playing") return;
-
-    const intervalId = window.setInterval(syncLastFm, 1000);
-    return () => window.clearInterval(intervalId);
-  }, [
-    lastFmScrobblingEnabled,
-    playerState.currentTrack,
-    playerState.status,
-  ]);
 
   const activeViewKey = [
     activeTabId,
@@ -1116,7 +1086,7 @@ export default function App() {
 
     if (looksLikeYouTubeLink(query)) {
       void handleOpenLink(query, openInNewTab).then((opened) => {
-        // Not a link Zuno can open after all — fall back to searching for the text, so a
+        // Not a link Amber can open after all — fall back to searching for the text, so a
         // paste that resolves to nothing still does something.
         if (!opened) runSearch(query, openInNewTab);
       });

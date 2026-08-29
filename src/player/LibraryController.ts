@@ -111,7 +111,7 @@ function isSignInCancellation(error: unknown): boolean {
 }
 
 /** Local mirror of dislikes: YouTube stores the rating but exposes no list to read it back. */
-const DISLIKED_TRACKS_STORAGE_KEY = "zuno:disliked-tracks-v1";
+const DISLIKED_TRACKS_STORAGE_KEY = "amber:disliked-tracks-v1";
 
 function readDislikedTrackIds(): Set<string> {
   try {

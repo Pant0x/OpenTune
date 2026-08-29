@@ -1,23 +1,28 @@
 import { useSyncExternalStore } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import {
+  BaseDirectory,
+  readDir,
+  writeFile,
+  remove,
+  mkdir,
+  exists,
+  stat,
+} from "@tauri-apps/plugin-fs";
 import type { Track } from "../datasource/types";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../internal/logging";
 import { getAppSetting, setAppSetting } from "../internal/appSettings";
 import { getDownloadQuality, type AudioQuality } from "../internal/audioQuality";
+import { tauriFetch } from "../datasource/youtube/tauriFetch";
+import { revokeOfflineBlobUrl } from "./offlinePlayback";
 
-const MANIFEST_KEY = "zuno.offline-manifest.v1";
-const MAX_BYTES_KEY = "zuno.offline-max-bytes.v1";
+const MANIFEST_KEY = "amber.offline-manifest.v1";
+const MAX_BYTES_KEY = "amber.offline-max-bytes.v1";
+const OFFLINE_DIR = "amber/downloads";
+const CHUNK_BYTES = 4 * 1024 * 1024; // 4 MiB per spec
 
 /** Default ceiling for downloaded audio. Roughly 1,500 songs at typical bitrates. */
 export const DEFAULT_OFFLINE_MAX_BYTES = 8 * 1024 * 1024 * 1024;
 
-/**
- * One download at a time.
- *
- * Downloads compete with playback for the same connection, and a track that is buffering now
- * matters more than one being saved for later. Serial keeps that contention predictable.
- */
 const DOWNLOAD_CONCURRENCY = 1;
 
 export type OfflineStatus = "absent" | "queued" | "downloading" | "ready" | "failed";
@@ -30,16 +35,8 @@ export interface OfflineEntry {
 
 export interface OfflineState {
   entries: Record<string, OfflineEntry>;
-  /** 0-100 for the track currently downloading. Absent when the size is unknown. */
   progress: number | null;
-  /** Track ids waiting their turn, in order. */
   queued: string[];
-  /**
-   * Metadata for everything queued or downloading.
-   *
-   * Held in state rather than only in the worker's map because the Downloads list and the
-   * player bar both need to render a song that has no file yet — an id alone cannot be shown.
-   */
   pending: Record<string, Track>;
   downloadingId: string | null;
   failed: Record<string, string>;
@@ -67,7 +64,7 @@ function emit(): void {
 
 function asManifest(parsed: unknown): Record<string, OfflineEntry> | null {
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, OfflineEntry>
+    ? (parsed as Record<string, OfflineEntry>)
     : null;
 }
 
@@ -75,19 +72,10 @@ function readManifest(): Record<string, OfflineEntry> {
   try {
     return asManifest(JSON.parse(localStorage.getItem(MANIFEST_KEY) ?? "{}")) ?? {};
   } catch {
-    // A corrupt manifest is rebuilt from disk by reconcile() below.
     return {};
   }
 }
 
-/**
- * The same manifest, kept outside webview storage.
- *
- * Downloads are the one thing here that cannot be re-derived: the audio is on disk but the
- * titles and artists that make it playable live only in this manifest, and losing it used to
- * mean the next launch deleted gigabytes as untracked orphans. Local storage is not a safe
- * enough home for that on its own.
- */
 async function readDurableManifest(): Promise<Record<string, OfflineEntry>> {
   return asManifest(await getAppSetting<unknown>(MANIFEST_KEY)) ?? {};
 }
@@ -126,15 +114,37 @@ export function setOfflineMaxBytes(maxBytes: number): void {
   void prune();
 }
 
-/**
- * Matches the manifest against what is actually on disk.
- *
- * Disk decides availability — it is the only thing that determines whether a track will play —
- * but the manifest decides what is *known*, and the two disagreements are not symmetric. An
- * entry with no file is dropped; a file with no entry is only an orphan when there was a
- * manifest to be absent from. No manifest at all reads as a lost manifest rather than an empty
- * library, and deleting the user's downloads on that guess cannot be undone.
- */
+async function ensureOfflineDir(): Promise<void> {
+  try {
+    if (!(await exists(OFFLINE_DIR, { baseDir: BaseDirectory.AppData }))) {
+      await mkdir(OFFLINE_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
+    }
+  } catch {}
+}
+
+async function listOnDisk(): Promise<Array<{ trackId: string; byteLength: number }>> {
+  try {
+    await ensureOfflineDir();
+    const entries = await readDir(OFFLINE_DIR, { baseDir: BaseDirectory.AppData });
+    const result: Array<{ trackId: string; byteLength: number }> = [];
+    for (const entry of entries) {
+      if (!entry.name?.endsWith(".bin")) continue;
+      const trackId = entry.name.slice(0, -4);
+      try {
+        const meta = await stat(`${OFFLINE_DIR}/${entry.name}`, {
+          baseDir: BaseDirectory.AppData,
+        });
+        result.push({ trackId, byteLength: meta.size ?? 0 });
+      } catch {
+        result.push({ trackId, byteLength: 0 });
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
 export function reconcileManifest(
   manifest: Record<string, OfflineEntry>,
   onDisk: ReadonlyArray<{ trackId: string; byteLength: number }>,
@@ -148,32 +158,27 @@ export function reconcileManifest(
     entries[trackId] = { ...entry, byteLength };
   }
 
-  const orphans = Object.keys(manifest).length === 0
-    ? []
-    : [...byId.keys()].filter((trackId) => !entries[trackId]);
+  const orphans =
+    Object.keys(manifest).length === 0
+      ? []
+      : [...byId.keys()].filter((trackId) => !entries[trackId]);
   return { entries, orphans };
 }
 
-/**
- * Reconciles the manifest against what is actually on disk.
- *
- * The two can drift: a manifest write can fail, the app can be killed mid-download, or the
- * data directory can be cleared out from underneath us.
- */
 export async function hydrateOfflineStore(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
 
-  // Both copies, because either one alone can be the survivor: local storage is the hot path,
-  // the durable file is what is left when local storage is cleared out from underneath us.
   const manifest = { ...(await readDurableManifest()), ...readManifest() };
   try {
-    const onDisk = await invoke<Array<{ trackId: string; byteLength: number }>>(
-      "offline_audio_list",
-    );
+    const onDisk = await listOnDisk();
     const { entries, orphans } = reconcileManifest(manifest, onDisk);
     for (const trackId of orphans) {
-      void invoke("offline_audio_remove", { trackId }).catch(() => {});
+      try {
+        await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+          baseDir: BaseDirectory.AppData,
+        });
+      } catch {}
     }
 
     commitEntries(entries);
@@ -187,16 +192,11 @@ export async function hydrateOfflineStore(): Promise<void> {
 }
 
 /**
- * Real transfer progress, streamed from Rust.
- *
- * Only the active download reports, because only one runs at a time — keeping a map keyed by
- * track id would be state that can never hold more than one entry.
+ * No Rust progress events - progress is updated locally during chunk assembly.
+ * Keep feed as no-op for compatibility, or optionally emit synthetic progress.
  */
 export function startOfflineProgressFeed(): void {
-  void listen<{ trackId: string; percent: number }>("offline-download-progress", (event) => {
-    if (event.payload.trackId !== state.downloadingId) return;
-    setState({ progress: event.payload.percent });
-  });
+  // Progress now driven directly in pump() via setState({progress})
 }
 
 export function getOfflineStatus(trackId: string): OfflineStatus {
@@ -211,18 +211,10 @@ export function isTrackDownloaded(trackId: string): boolean {
   return Boolean(state.entries[trackId]);
 }
 
-/**
- * The stored metadata for a downloaded track, or undefined.
- *
- * The manifest keeps the whole Track, not just the id, precisely so playback can name a song
- * with no network — the audio being on disk is useless if the title and artist still require
- * a lookup that cannot happen offline.
- */
 export function getOfflineTrack(trackId: string): Track | undefined {
   return state.entries[trackId]?.track;
 }
 
-/** Resolves the stream URL for a track. Callers pass this in so the store stays data-source agnostic. */
 type StreamUrlResolver = (
   track: Track,
   quality: AudioQuality,
@@ -261,8 +253,11 @@ export function cancelDownload(trackId: string): void {
 
 export async function removeDownload(trackId: string): Promise<void> {
   cancelDownload(trackId);
+  revokeOfflineBlobUrl(trackId);
   try {
-    await invoke("offline_audio_remove", { trackId });
+    await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+      baseDir: BaseDirectory.AppData,
+    });
   } catch (error) {
     logInternalWarn("offlineStore.remove failed", {
       trackId,
@@ -278,21 +273,95 @@ export async function removeAllDownloads(): Promise<void> {
   setState({ queued: [], pending: {}, failed: {} });
   pendingTracks.clear();
   for (const trackId of ids) {
-    await invoke("offline_audio_remove", { trackId }).catch(() => {});
+    revokeOfflineBlobUrl(trackId);
+    try {
+      await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+        baseDir: BaseDirectory.AppData,
+      });
+    } catch {}
   }
   commitEntries({});
 }
 
-/** Track objects for queued ids, so the worker has metadata without re-fetching. */
 const pendingTracks = new Map<string, Track>();
 
+/**
+ * Chunk Assembly: allocate single target Uint8Array(totalBytes) and .set(chunkBytes, offset)
+ * Faster and less memory than repeated concatenation.
+ */
+async function downloadToFile(
+  url: string,
+  trackId: string,
+): Promise<{ totalBytes: number }> {
+  await ensureOfflineDir();
+
+  // Try to get total size via HEAD or first chunk content-range
+  // Fallback: fetch whole file if range not supported
+  const headRes = await tauriFetch(url, { method: "HEAD" }).catch(() => null);
+  let totalBytes: number | null = null;
+  const clen = headRes?.headers.get("content-length") ?? headRes?.headers.get("Content-Length");
+  if (clen) totalBytes = Number(clen);
+  // Also try to parse clen from URL (?clen=) as fallback
+  if (!totalBytes || !Number.isFinite(totalBytes)) {
+    try {
+      const u = new URL(url);
+      const c = u.searchParams.get("clen");
+      if (c) totalBytes = Number(c);
+    } catch {}
+  }
+
+  // If no total, fetch whole file as single blob
+  if (!totalBytes || totalBytes <= 0) {
+    const res = await tauriFetch(url);
+    if (!res.ok) throw new Error(`Download failed HTTP ${res.status}`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, buf, {
+      baseDir: BaseDirectory.AppData,
+    });
+    return { totalBytes: buf.byteLength };
+  }
+
+  // Chunked download with single allocation
+  const total = totalBytes;
+  const target = new Uint8Array(total);
+  let offset = 0;
+  let received = 0;
+
+  while (offset < total) {
+    const end = Math.min(offset + CHUNK_BYTES - 1, total - 1);
+    const res = await tauriFetch(url, {
+      headers: { Range: `bytes=${offset}-${end}` },
+    });
+    // Some servers ignore Range and return 200 with full body on first chunk - handle
+    if (res.status === 200 && offset === 0 && total > CHUNK_BYTES) {
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.byteLength === total) {
+        await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, buf, {
+          baseDir: BaseDirectory.AppData,
+        });
+        return { totalBytes: total };
+      }
+    }
+    if (!res.ok && res.status !== 206) {
+      throw new Error(`Chunk ${offset}-${end} failed HTTP ${res.status}`);
+    }
+    const chunk = new Uint8Array(await res.arrayBuffer());
+    target.set(chunk, offset);
+    offset += chunk.byteLength;
+    received += chunk.byteLength;
+    const percent = Math.round((received / total) * 100);
+    setState({ progress: percent });
+    // Handle short chunk (EOF)
+    if (chunk.byteLength === 0) break;
+  }
+
+  await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, target, {
+    baseDir: BaseDirectory.AppData,
+  });
+  return { totalBytes: total };
+}
+
 async function pump(): Promise<void> {
-  /*
-   * `downloadingId` is only ever set by a running pump, so finding it set while none is
-   * running means a previous one died mid-flight — a reload during a download, or a throw
-   * that escaped. Left alone it would gate every future pump and downloads would silently
-   * stop forever, which is exactly the failure this clears.
-   */
   if (!pumping && state.downloadingId !== null) {
     logInternalWarn("offlineStore.pump clearing stale download", {
       trackId: state.downloadingId,
@@ -312,7 +381,7 @@ async function pump(): Promise<void> {
     while (state.queued.length > 0) {
       const [trackId, ...rest] = state.queued;
       const track = pendingTracks.get(trackId);
-      setState({ queued: rest, downloadingId: trackId, progress: null });
+      setState({ queued: rest, downloadingId: trackId, progress: 0 });
 
       if (!track) {
         setState({ downloadingId: null, progress: null });
@@ -321,9 +390,9 @@ async function pump(): Promise<void> {
 
       try {
         logInternalInfo("offlineStore.download start", { trackId, title: track.title });
-        const { url, mimeType, cookie } = await resolveStreamUrl(track, getDownloadQuality());
-        const byteLength = await invoke<number>("offline_audio_save", { url, trackId, cookie });
-        logInternalInfo("offlineStore.download complete", { trackId, byteLength });
+        const { url, mimeType } = await resolveStreamUrl(track, getDownloadQuality());
+        const { totalBytes } = await downloadToFile(url, trackId);
+        logInternalInfo("offlineStore.download complete", { trackId, byteLength: totalBytes });
         pendingTracks.delete(trackId);
         {
           const { [trackId]: _done, ...pending } = state.pending;
@@ -331,11 +400,17 @@ async function pump(): Promise<void> {
         }
         commitEntries({
           ...state.entries,
-          [trackId]: { track: { ...track, mimeType }, byteLength, downloadedAt: Date.now() },
+          [trackId]: { track: { ...track, mimeType }, byteLength: totalBytes, downloadedAt: Date.now() },
         });
         setState({ downloadingId: null, progress: null });
         await prune();
       } catch (error) {
+        // Remove partial file on failure
+        try {
+          await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+            baseDir: BaseDirectory.AppData,
+          });
+        } catch {}
         pendingTracks.delete(trackId);
         const { [trackId]: _failed, ...pending } = state.pending;
         const message = error instanceof Error ? error.message : String(error);
@@ -350,22 +425,32 @@ async function pump(): Promise<void> {
     }
   } finally {
     pumping = false;
-    // DOWNLOAD_CONCURRENCY is 1 today; kept explicit so raising it is a one-line change.
     if (DOWNLOAD_CONCURRENCY > 1 && state.queued.length > 0) void pump();
   }
 }
 
-/** Trims the store back under its ceiling, oldest download first. */
 async function prune(): Promise<void> {
   const maxBytes = getOfflineMaxBytes();
   if (state.usedBytes <= maxBytes) return;
 
   try {
-    await invoke("offline_audio_prune", { maxBytes });
-    const onDisk = await invoke<Array<{ trackId: string; byteLength: number }>>(
-      "offline_audio_list",
+    // Sort by downloadedAt (oldest first)
+    const sorted = Object.entries(state.entries).sort(
+      (a, b) => a[1].downloadedAt - b[1].downloadedAt,
     );
-    const kept = new Set(onDisk.map((entry) => entry.trackId));
+    let used = state.usedBytes;
+    const kept = new Set(Object.keys(state.entries));
+    for (const [trackId, entry] of sorted) {
+      if (used <= maxBytes) break;
+      try {
+        await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+          baseDir: BaseDirectory.AppData,
+        });
+        revokeOfflineBlobUrl(trackId);
+      } catch {}
+      kept.delete(trackId);
+      used -= entry.byteLength;
+    }
     const entries = Object.fromEntries(
       Object.entries(state.entries).filter(([trackId]) => kept.has(trackId)),
     );

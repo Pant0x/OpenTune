@@ -20,11 +20,11 @@ function equal(actual: unknown, expected: unknown, message: string): void {
   check(actual === expected, `${message}: expected ${String(expected)}, got ${String(actual)}`);
 }
 
-const { parseZunoJson, parseM3u, sanitizeFileName } = __parseForTest;
+const { parseAmberJson, parseM3u, sanitizeFileName } = __parseForTest;
 
-// --- Zuno JSON round trip -------------------------------------------------
+// --- Amber JSON round trip -------------------------------------------------
 const exported = JSON.stringify({
-  format: "zuno-playlist",
+  format: "amber-playlist",
   version: 1,
   title: "Late night",
   tracks: [
@@ -33,7 +33,7 @@ const exported = JSON.stringify({
   ],
 });
 
-const parsed = parseZunoJson(exported);
+const parsed = parseAmberJson(exported);
 check(parsed !== null, "a valid export parses");
 equal(parsed?.title, "Late night", "title survives the round trip");
 equal(parsed?.tracks.length, 2, "every track survives");
@@ -42,16 +42,16 @@ equal(parsed?.tracks[0].source, "youtube", "no local path means a remote track")
 
 // Entries without an id cannot be played, so they are dropped rather than half-imported.
 const withJunk = JSON.stringify({
-  format: "zuno-playlist",
+  format: "amber-playlist",
   version: 1,
   title: "T",
   tracks: [{ title: "no id" }, { id: "ok", title: "Fine", artist: "C" }],
 });
-equal(parseZunoJson(withJunk)?.tracks.length, 1, "entries without an id are dropped");
+equal(parseAmberJson(withJunk)?.tracks.length, 1, "entries without an id are dropped");
 
-// Anything not written by Zuno is refused rather than silently producing an empty playlist.
-equal(parseZunoJson(JSON.stringify({ format: "spotify", tracks: [] })), null, "foreign formats refused");
-equal(parseZunoJson(JSON.stringify({ format: "zuno-playlist" })), null, "missing tracks refused");
+// Anything not written by Amber is refused rather than silently producing an empty playlist.
+equal(parseAmberJson(JSON.stringify({ format: "spotify", tracks: [] })), null, "foreign formats refused");
+equal(parseAmberJson(JSON.stringify({ format: "amber-playlist" })), null, "missing tracks refused");
 
 // --- M3U ------------------------------------------------------------------
 const m3u = [

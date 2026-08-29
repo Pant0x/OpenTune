@@ -6,7 +6,7 @@ import { Mono, Section } from "./components/ui";
 import { GITHUB_REPO, RELEASES_URL } from "./releases";
 
 /**
- * The Zuno character, looping.
+ * The Amber character, looping.
  *
  * The one place with room for personality — everything else on the page is doing a job. Muted,
  * looping and `playsInline` so it behaves like a graphic rather than media: no controls, nothing
@@ -16,7 +16,7 @@ function Character() {
   return (
     <video
       className="size-16 shrink-0 rounded-2xl bg-card/40 object-cover"
-      src="./zuno-character.mp4"
+      src="./Amber-character.mp4"
       autoPlay
       muted
       loop
@@ -35,7 +35,7 @@ function Footer() {
           <div className="flex max-w-sm flex-col gap-2">
             <span className="flex items-center gap-2 text-base font-bold text-foreground">
               <img className="size-5" src="./logo.png" alt="" />
-              zuno_
+              Amber_
             </span>
             <Mono className="leading-relaxed">
               an independent, unofficial project. not affiliated with, authorised by or endorsed

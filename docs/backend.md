@@ -1,6 +1,6 @@
 # Backend — Rust / Tauri
 
-`src-tauri/` — Tauri 2, edition 2021, crate `zuno`, lib target `zuno_lib`.
+`src-tauri/` — Tauri 2, edition 2021, crate `Amber`, lib target `Amber_lib`.
 See [architecture.md](./architecture.md) for the system view.
 
 ---
@@ -66,7 +66,7 @@ Serving the frontend over `http://localhost` in release builds is deliberate: th
 player API will not initialize under the `tauri://` custom protocol origin.
 
 `migrate_legacy_app_data` copies app data from the pre-rename
-`com.justanothermusicclient.desktop` identifier into `com.zuno.desktop` on first run.
+`com.amber-musicplayer.desktop` identifier into `com.amber.desktop` on first run.
 
 ### Window events
 
@@ -78,8 +78,8 @@ player API will not initialize under the `tauri://` custom protocol origin.
 
 ### Tray
 
-`build_tray()` installs a `main-tray` icon with a two-item menu (**Show Zuno** / **Quit Zuno**).
-Left click restores the window; the menu is right-click only. **Quit Zuno** is the one path that
+`build_tray()` installs a `main-tray` icon with a two-item menu (**Show Amber** / **Quit Amber**).
+Left click restores the window; the menu is right-click only. **Quit Amber** is the one path that
 always exits regardless of the minimize-to-tray setting.
 
 ---
@@ -170,7 +170,7 @@ the whole thing: a suffix match alone would hand the session to `notyoutube.com`
 account and keeps its cache, while a genuinely different account drops it. An empty value returns
 `None` rather than `""`, so two unknowns don't compare equal.
 
-**Storage** (service name `com.ytmusicdock.app`, kept from before the rename):
+**Storage** (service name `com.amber.desktop`, kept from before the rename):
 
 - Windows / Linux — the header is split into ≤900-byte chunks across at most 16 keyring entries, plus a `chunks:<n>` manifest entry. Keyring backends cap individual secret sizes; a cookie header is far larger.
 - macOS — the header is encrypted with AES-256-GCM (random 12-byte nonce prefixed to the ciphertext) into `<app_data_dir>/youtube-music-session-v1.bin`; only the 32-byte key lives in the keychain. This avoids repeated keychain prompts for 16 separate entries.
@@ -379,7 +379,7 @@ playback status, and timeline position. Button presses are emitted back to JS as
 **macOS media** (`macos_media.rs`): populates `MPNowPlayingInfoCenter` through `objc2`. Requires
 `macOSPrivateApi: true` in `tauri.conf.json`.
 
-**Linux media** (`linux_media.rs`): registers an MPRIS2 D-Bus interface (`org.mpris.MediaPlayer2.zuno`)
+**Linux media** (`linux_media.rs`): registers an MPRIS2 D-Bus interface (`org.mpris.MediaPlayer2.Amber`)
 via `souvlaki`. Button/seek events come back as `linux-media-control` payloads, same shape as the
 Windows path. Runs unconditionally alongside the WebKitGTK `navigator.mediaSession` bridge.
 
@@ -426,8 +426,8 @@ Defense in depth that *is* in place:
 "plugins": { "updater": {
   "pubkey": "<minisign public key>",
   "endpoints": [
-    "https://github.com/noFAYZ/zuno/releases/latest/download/latest.json",
-    "https://raw.githubusercontent.com/noFAYZ/zuno/updater-channel/latest.json"
+    "https://github.com/Pant0x/Amber-Music-Platform/releases/latest/download/latest.json",
+    "https://raw.githubusercontent.com/Pant0x/Amber-Music-Platform/updater-channel/latest.json"
   ]}}
 ```
 

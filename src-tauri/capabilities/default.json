@@ -22,6 +22,14 @@
     "process:allow-restart",
     "dialog:allow-open",
     "dialog:allow-message",
+    "fs:default",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-remove",
+    "fs:allow-stat",
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:webview:allow-create-webview-window",
@@ -80,13 +88,7 @@
       "delete_youtube_credentials",
       "load_youtube_music_cookie",
       "sign_in_youtube_music",
-      "delete_youtube_music_cookie",
-      "lastfm_auth_token",
-      "lastfm_complete_auth",
-      "lastfm_disconnect",
-      "lastfm_get_session",
-      "lastfm_scrobble",
-      "lastfm_update_now_playing"
+      "delete_youtube_music_cookie"
     ]
   }
 }
