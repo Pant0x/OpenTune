@@ -95,38 +95,23 @@ export function HomeDestinations({
             whileTap={{ scale: 0.98 }}
             transition={{ type: "spring", stiffness: 520, damping: 34 }}
             className={cn(
-              // `pl-12` is the stamp's gutter: it ends at 36px, so the text clears it by 12px.
-              "group/dest relative flex items-center overflow-hidden rounded-xl bg-card/80 p-3 pl-12 text-left border border-border",
-              "transition-colors hover:bg-card",
+              "group/dest relative flex items-center gap-3.5 rounded-xl bg-card/80 p-3.5 text-left border border-border/80 shadow-xs",
+              "transition-all hover:bg-card hover:border-primary/40 hover:shadow-sm",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >
-            {/*
-              Stamped rather than sat in a chip, and cropped only on the left — an icon clipped
-              on three sides reads as an accident rather than a decision.
-            */}
-            <card.icon
-              size={38}
-              /*
-               * Optical compensation. 1.5 is tuned for a 20px glyph; at 48px the same value is
-               * proportionally a third as heavy and the icon reads as wire. Scaling the stroke
-               * with the size is what keeps the weight looking constant.
-               */
-              strokeWidth={1.85}
-              className="pointer-events-none absolute -left-3 top-1/2 -translate-y-1/2 text-gray-300 transition-colors group-hover/dest:text-red-400"
-              aria-hidden="true"
-            />
+            <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover/dest:bg-primary/20">
+              <card.icon
+                size={22}
+                strokeWidth={1.8}
+                aria-hidden="true"
+              />
+            </div>
 
-            {/* `relative` puts the text above the absolutely positioned stamp. */}
-            <span className="relative flex min-w-0 flex-col gap-0.5">
-              <span className="truncate text-sm font-semibold leading-none text-foreground">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="truncate text-sm font-semibold leading-tight text-foreground">
                 {card.label}
               </span>
-              {/*
-                Live state and the static hint are different kinds of thing, so they are not
-                styled the same. A count is a reading — foreground, tabular so it cannot jitter
-                as it changes. The hint is a description of a place you have not been yet.
-              */}
               {card.badge ? (
                 <span className="truncate text-xs font-medium tabular-nums text-foreground/75">
                   {card.badge}

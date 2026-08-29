@@ -115,7 +115,11 @@ impl DiscordRpcManager {
         let artwork_image = data.artwork_url.clone();
         let artwork_key = artwork_image.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
 
-        let large_text_str = format!("{} - {}", data.title, data.artist);
+        let large_text_str = if !data.album.trim().is_empty() {
+            format!("{} • {}", data.album, data.artist)
+        } else {
+            format!("{} • Amber", data.title)
+        };
 
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -384,7 +388,11 @@ impl DiscordRpcManager {
 
                             let state_str = data.artist.clone();
                             let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
-                            let large_text_str = format!("{} - {}", data.title, data.artist);
+                            let large_text_str = if !data.album.trim().is_empty() {
+                                format!("{} • {}", data.album, data.artist)
+                            } else {
+                                format!("{} • Amber", data.title)
+                            };
                             let activity_name = "Amber".to_string();
 
                             let mut activity = json!({
