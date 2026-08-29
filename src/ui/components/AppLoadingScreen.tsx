@@ -1,7 +1,6 @@
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-/* import appIcon from "../../../assets/img/Logo.png"; 
-*/import appIcon from "../../../assets/img/Logo.png";
+import loadingVideo from "../../../assets/img/Loading.mp4";
 
 /*
  * The accent bloom, as a gradient rather than a blurred circle.
@@ -55,24 +54,20 @@ export function AppLoadingScreen({ isLeaving }: AppLoadingScreenProps) {
       />
 
       <div className="relative flex flex-col items-center gap-5">
-{/*         <motion.img
+        <motion.video
           initial={{ opacity: 0, scale: 0.92 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="size-20 rounded-2xl"
-          src={appIcon}
-          alt=""
-        />  */}
+          className="size-28 rounded-2xl object-cover drop-shadow-2xl"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+        >
+          <source src={loadingVideo} type="video/mp4" />
+        </motion.video>
 
-<motion.img
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="size-20 rounded-2xl drop-shadow-2xl"
-          src={appIcon}
-          alt=""
-        />
- 
       <div className="flex items-end gap-4">
        {/*  <AudioLoader /> */}  <strong className="text-sm font-medium text-foreground">{loadingLine}</strong>
       </div>

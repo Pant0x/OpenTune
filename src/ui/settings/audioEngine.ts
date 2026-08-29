@@ -35,7 +35,7 @@ const STORAGE_KEY = "audio-engine-mode";
 /** Exported so `AudioEngine` can free its decks the moment the mode stops being `iframe`. */
 export const AUDIO_ENGINE_MODE_CHANGE_EVENT = "audio-engine-mode-change";
 const CHANGE_EVENT = AUDIO_ENGINE_MODE_CHANGE_EVENT;
-const DEFAULT_MODE: AudioEngineMode = "rust";
+const DEFAULT_MODE: AudioEngineMode = "iframe";
 
 export const AUDIO_ENGINE_MODES: ReadonlyArray<{
   value: AudioEngineMode;
@@ -43,19 +43,9 @@ export const AUDIO_ENGINE_MODES: ReadonlyArray<{
   hint: string;
 }> = [
   {
-    value: "rust",
-    label: "Rust audio",
-    hint: "Decoded in the app. Lowest memory, gapless and crossfade, falls back if a track is refused.",
-  },
-  {
     value: "iframe",
     label: "YouTube player",
-    hint: "Google's own player for everything. Runs a hidden youtube.com frame, ~90 MB.",
-  },
-  {
-    value: "native",
-    label: "Native audio",
-    hint: "Plays through the webview. Keeps a second copy of each track in memory, no gapless.",
+    hint: "A hidden YouTube frame plays each track. Required for gapless and crossfade.",
   },
 ];
 
@@ -71,7 +61,9 @@ let cachedMode: AudioEngineMode | null = null;
 
 function readMode(): AudioEngineMode {
   if (cachedMode === null) {
-    cachedMode = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode) ?? DEFAULT_MODE;
+    const stored = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode) ?? DEFAULT_MODE;
+    // Migrate old Rust/Native installs to iframe (only engine kept)
+    cachedMode = stored === "iframe" ? stored : "iframe";
   }
   return cachedMode;
 }
@@ -105,19 +97,15 @@ export function getAudioEngineMode(): AudioEngineMode {
 
 /**
  * True when playback does *not* go through the YouTube IFrame.
- *
- * Deliberately covers both non-iframe engines. Every caller of this asks the same question —
- * "is a signed URL being resolved here rather than by Google's embed" — which is what gates
- * stream warming, play reporting and the error copy. Use `usesRustAudioEngine` for the narrower
- * question of *which* of the two.
+ * Kept for compatibility - now always false since only iframe remains.
  */
 export function usesNativeAudioEngine(): boolean {
-  return readMode() !== "iframe";
+  return false;
 }
 
 /** True when Rust decodes and plays the audio itself, with no `<audio>` element involved. */
 export function usesRustAudioEngine(): boolean {
-  return readMode() === "rust";
+  return false;
 }
 
 export function setAudioEngineMode(mode: AudioEngineMode) {

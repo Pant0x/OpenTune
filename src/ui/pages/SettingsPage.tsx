@@ -164,9 +164,6 @@ import {
   useYouTubeScrobbling,
 } from "../settings/youtubeAccount";
 import {
-  AUDIO_ENGINE_MODES,
-  setAudioEngineMode,
-  useAudioEngineMode,
   type AudioEngineMode,
 } from "../settings/audioEngine";
 import {
@@ -176,6 +173,7 @@ import {
   useOutputDevice,
   type OutputDevice,
 } from "../settings/audioOutputDevice";
+
 import {
   captureKeyboardShortcut,
   formatKeyboardShortcut,
@@ -734,7 +732,6 @@ export function SettingsPage({
   const miniPlayerEnabled = useMiniPlayerEnabled();
   const miniPlayerHoverAction = useMiniPlayerHoverAction();
   const sidebarMode = useSidebarMode();
-  const audioEngineMode = useAudioEngineMode();
   const authenticatedStreaming = useAuthenticatedStreaming();
   const youtubeScrobbling = useYouTubeScrobbling();
   const preferredLyricsSource = usePreferredLyricsSourceId();
@@ -2005,39 +2002,18 @@ export function SettingsPage({
 
             <SettingRow
               title="Playback method"
-              description={
-                audioEngineMode === "native"
-                  ? "Amber plays each track itself. About 90 MB lighter, slower to start, no gapless or crossfade."
-                  : "A hidden YouTube frame plays each track. Costs about 90 MB, starts faster, required for gapless and crossfade."
-              }
+              description="A hidden YouTube frame plays each track. Required for gapless and crossfade."
             >
               {() => (
-                <Select
-                  className="w-52"
-                  value={audioEngineMode}
-                  onValueChange={(value) => setAudioEngineMode(value as AudioEngineMode)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AUDIO_ENGINE_MODES.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="flex h-9 items-center rounded-md border border-input bg-background px-3 text-sm text-foreground">
+                  YouTube player
+                </span>
               )}
             </SettingRow>
 
             <p className="px-1 text-xs text-muted-foreground">
-              Applies from the next track.
+              YouTube player is the only playback method in Amber.
             </p>
-
-            <OutputDeviceSetting engineMode={audioEngineMode} />
-
-            <EqualizerSettings engineMode={audioEngineMode} />
 
             <SettingToggle
               title="Resolve streams as your account"
@@ -2235,3 +2211,7 @@ export function SettingsPage({
     </main>
   );
 }
+
+// Unused - kept for future Rust engine expansion
+void EqualizerSettings;
+void OutputDeviceSetting;

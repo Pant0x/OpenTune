@@ -404,7 +404,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     scrollToLine(nextIndex, !reduce);
   };
 
-  const sourceLabel = lyrics?.sourceLabel;
+  // sourceLabel hidden per user request - keep lyrics fetching but hide badge
+  void lyrics?.sourceLabel;
   const timingLabel = hasLines ? (isSynced ? "Synced" : "Unsynced") : null;
   const emptyMessage = !isOnline
     ? "You're offline. Lyrics need a connection."
@@ -636,11 +637,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               {timingLabel}
             </span>
           )}
-          {lyrics?.attempts?.length ? (
-            <LyricsSourcePanel attempts={lyrics.attempts} activeId={lyrics.sourceId} />
-          ) : (
-            sourceLabel && <span className="truncate">via {sourceLabel}</span>
-          )}
         </span>
         {isSynced && track && <LyricsOffsetControl trackId={track.id} offset={offset} />}
       </footer>
@@ -773,6 +769,8 @@ const SyncedLine = memo(function SyncedLine({
   );
 });
 
+void LYRICS_SOURCES;
+// Hidden per user request - API badges removed
 /**
  * Which sources were tried, in priority order, and what each one did.
  *
@@ -780,7 +778,7 @@ const SyncedLine = memo(function SyncedLine({
  * listener nothing to act on and gives a bug report nothing to go on. This turns it into a
  * fact: which of the five ranked sources was asked, how long it took, and why it lost.
  */
-function LyricsSourcePanel({
+function _LyricsSourcePanel({
   attempts,
   activeId,
 }: {
@@ -857,6 +855,7 @@ function LyricsSourcePanel({
     </FloatingPanel>
   );
 }
+void _LyricsSourcePanel;
 
 function formatOffset(offset: number): string {
   if (offset === 0) return "In sync";

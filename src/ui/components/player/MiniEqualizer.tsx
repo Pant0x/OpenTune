@@ -13,7 +13,6 @@ import {
   useEqualizer,
   useEqualizerEnabled,
 } from "../../settings/equalizer";
-import { useAudioEngineMode } from "../../settings/audioEngine";
 
 /** Height of the bar well. Ten of these plus the preamp fit a 256px popup without scrolling. */
 const WELL_PX = 56;
@@ -139,7 +138,7 @@ function MiniEqBar({
 export function MiniEqualizer() {
   const equalizer = useEqualizer();
   const enabled = useEqualizerEnabled();
-  const available = useAudioEngineMode() === "rust";
+  const available = false; // Rust engine removed - only YouTube player
   const flat = isEqualizerFlat(equalizer);
   const activePreset = activeEqualizerPreset(equalizer);
   const labelId = useId();
