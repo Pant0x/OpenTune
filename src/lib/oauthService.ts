@@ -1,4 +1,4 @@
-import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+﻿import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { supabase } from "./supabaseClient";
 
 export const OAUTH_POPUP_LABEL = "amber_oauth_popup";

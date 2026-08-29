@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { supabase } from "../../lib/supabaseClient";
 import { signInWithOAuthPopup } from "../../lib/oauthService";
+import { libraryController } from "../../player/playerStore";
 import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
-import loadingVideo from "../../../assets/img/Loading.mp4";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -148,19 +148,40 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   };
 
   const handleOAuth = async (provider: "google" | "discord") => {
-    if (!supabase) return;
     setBusy(true);
     setError(null);
     setSuccessMessage(null);
 
-    try {
-      await signInWithOAuthPopup(provider);
-      onAuthSuccess?.();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "OAuth sign-in failed.");
-    } finally {
-      setBusy(false);
+    if (provider === "google") {
+      try {
+        await libraryController.signIn();
+        if (libraryController.getState().status === "ready") {
+          onAuthSuccess?.();
+          onClose();
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Google sign-in failed.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (provider === "discord") {
+      if (!supabase) {
+        setError("Supabase client is not configured.");
+        setBusy(false);
+        return;
+      }
+      try {
+        await signInWithOAuthPopup("discord");
+        onAuthSuccess?.();
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Discord sign-in failed.");
+      } finally {
+        setBusy(false);
+      }
     }
   };
 
@@ -204,20 +225,20 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <CloseIcon size={18} />
           </button>
 
-          {/* Video Animation Banner */}
+          {/* Amber Brand Logo */}
           <div className="flex flex-col items-center mb-5">
-            <div className="relative size-20 rounded-2xl overflow-hidden shadow-lg ring-1 ring-white/10 mb-3 bg-black/40">
-              <video
-                className="size-full object-cover"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-              >
-                <source src={loadingVideo} type="video/mp4" />
-              </video>
-            </div>
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              className="relative size-16 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10 mb-3 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center p-2.5 border border-primary/30"
+            >
+              <img
+                src="/icons/128x128.png"
+                alt="Amber"
+                className="size-full object-contain"
+              />
+            </motion.div>
             <h2 id="auth-modal-title" className="text-xl font-bold text-foreground">
               {mode === "signin" ? "Sign In to Amber" : "Create Amber Account"}
             </h2>
