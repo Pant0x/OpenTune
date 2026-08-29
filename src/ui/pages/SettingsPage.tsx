@@ -102,7 +102,7 @@ import {
   usePotatoPcMode,
 } from "../settings/renderEffects";
 import { setMadeForYouVisible, useMadeForYouVisible } from "../settings/homeSections";
-import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { AuthModal } from "../components/AuthModal";
 import { ExternalLinkButton } from "../components/ExternalLinkButton";
 import {
   AUTO_LYRICS_SOURCE,
@@ -691,10 +691,11 @@ interface SettingsPageProps {
 export function SettingsPage({
   libraryController,
   libraryState,
-  onRestartOnboarding,
+  onRestartOnboarding: _onRestartOnboarding,
   onSignIn,
   onDeleteAllAppData,
 }: SettingsPageProps) {
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [cacheSizeGb, setCacheSizeGb] = useState(DEFAULT_CACHE_SIZE_GB.toString());
   const [cacheBusy, setCacheBusy] = useState(false);
@@ -1196,10 +1197,13 @@ export function SettingsPage({
                   Sign out
                 </button>
               ) : (
-                <GoogleSignInButton
-                  isBusy={authBusy}
-                  onClick={() => void onSignIn()}
-                />
+                <button
+                  className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  type="button"
+                  onClick={() => setIsAuthModalOpen(true)}
+                >
+                  Sign In / Sign Up
+                </button>
               )}
             </div>
 
@@ -1305,20 +1309,7 @@ export function SettingsPage({
                 <p className="text-sm text-destructive">{updateError}</p>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
-                  <strong>Quick start</strong>
-                  <span>Replay the guided introduction.</span>
-                </span>
-                <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  onClick={onRestartOnboarding}
-                >
-                  <RefreshIcon size={18} />
-                  Start onboarding
-                </button>
-              </div>
+
             </div>
           </section>
         </div>
@@ -1465,123 +1456,128 @@ export function SettingsPage({
               description="How much disk Amber is allowed to use."
             />
 
-            <div className="flex flex-wrap items-end justify-between gap-4 py-2">
-              <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
-                <strong>Cache</strong>
-                <span className="tabular-nums">
-                  {cacheStats
-                    ? `${formatBytes(cacheStats.usedBytes)} of ${formatBytes(cacheStats.maxBytes)}`
-                    : "Loading…"}
-                  {cacheStats ? ` · ${cacheStats.entryCount} items` : ""}
-                </span>
-              </span>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {/* The caption sits above the field rather than inside it: nested in a
-                    fixed-width pill it wrapped onto two lines and squeezed the number. */}
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  Maximum size
-                  <span className="flex w-28 items-center gap-1.5 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring/60">
-                    <input
-                      className="w-full min-w-0 bg-transparent tabular-nums outline-none"
-                      type="number"
-                      min="0.25"
-                      max="64"
-                      step="0.25"
-                      value={cacheSizeGb}
-                      disabled={cacheBusy}
-                      onChange={(event) => setCacheSizeGb(event.target.value)}
-                    />
-                    <span className="shrink-0 text-muted-foreground">GB</span>
+            <div className="flex flex-col gap-4 divide-y divide-border/40">
+              {/* Cache row */}
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
+                  <strong>Cache</strong>
+                  <span className="tabular-nums">
+                    {cacheStats
+                      ? `${formatBytes(cacheStats.usedBytes)} of ${formatBytes(cacheStats.maxBytes)}`
+                      : "Loading…"}
+                    {cacheStats ? ` · ${cacheStats.entryCount} items` : ""}
                   </span>
-                </label>
-                <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  disabled={cacheBusy}
-                  onClick={() => void saveCacheSize()}
-                >
-                  Save
-                </button>
-                <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  disabled={cacheBusy}
-                  onClick={() => void handleClearCache()}
-                >
-                  <TrashIcon size={18} />
-                  Clear cache
-                </button>
-              </div>
-            </div>
-
-            {cacheError && <p className="text-sm text-destructive">{cacheError}</p>}
-
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
-                <strong>Downloads</strong>
-                <span>
-                  {offlineState.usedBytes > 0 || Object.keys(offlineState.entries).length > 0
-                    ? `${Object.keys(offlineState.entries).length} songs · ${formatBytes(offlineState.usedBytes)}`
-                    : "No songs downloaded yet."}
-                  {offlineState.downloadingId
-                    ? offlineState.progress !== null
-                      ? ` · downloading ${offlineState.progress}%`
-                      : " · downloading"
-                    : ""}
-                  {offlineState.queued.length > 0
-                    ? ` · ${offlineState.queued.length} queued`
-                    : ""}
                 </span>
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  Maximum size
-                  <span className="flex w-28 items-center gap-1.5 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring/60">
-                    <input
-                      className="w-full min-w-0 bg-transparent outline-none"
-                      type="number"
-                      min={1}
-                      max={512}
-                      value={Math.round(offlineMaxGb)}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        if (!Number.isFinite(next)) return;
-                        setOfflineMaxGb(next);
-                        setOfflineMaxBytes(Math.max(1, next) * 1024 ** 3);
-                      }}
-                      aria-label="Maximum download size in gigabytes"
-                    />
-                    <span className="shrink-0 text-xs text-muted-foreground">GB</span>
-                  </span>
-                </label>
-                <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  disabled={clearingDownloads || Object.keys(offlineState.entries).length === 0}
-                  onClick={() => {
-                    setClearingDownloads(true);
-                    void removeAllDownloads().finally(() => setClearingDownloads(false));
-                  }}
-                >
-                  <TrashIcon size={18} />
-                  {clearingDownloads ? "Removing..." : "Remove all"}
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Max size</span>
+                    <span className="flex w-24 items-center gap-1 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary/60 border border-border/40">
+                      <input
+                        className="w-full min-w-0 bg-transparent tabular-nums outline-none text-right font-medium"
+                        type="number"
+                        min="0.25"
+                        max="64"
+                        step="0.25"
+                        value={cacheSizeGb}
+                        disabled={cacheBusy}
+                        onChange={(event) => setCacheSizeGb(event.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveCacheSize();
+                        }}
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground font-normal">GB</span>
+                    </span>
+                  </label>
+                  <button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-foreground bg-card hover:bg-muted/80 transition-colors border border-border/40 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    type="button"
+                    disabled={cacheBusy}
+                    onClick={() => void saveCacheSize()}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors border border-destructive/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    type="button"
+                    disabled={cacheBusy}
+                    onClick={() => void handleClearCache()}
+                  >
+                    <TrashIcon size={15} />
+                    Clear cache
+                  </button>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
+              {cacheError && <p className="text-xs text-destructive pt-1">{cacheError}</p>}
+
+              {/* Downloads row */}
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
+                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
+                  <strong>Downloads</strong>
+                  <span>
+                    {offlineState.usedBytes > 0 || Object.keys(offlineState.entries).length > 0
+                      ? `${Object.keys(offlineState.entries).length} songs · ${formatBytes(offlineState.usedBytes)}`
+                      : "No songs downloaded yet."}
+                    {offlineState.downloadingId
+                      ? offlineState.progress !== null
+                        ? ` · downloading ${offlineState.progress}%`
+                        : " · downloading"
+                      : ""}
+                    {offlineState.queued.length > 0
+                      ? ` · ${offlineState.queued.length} queued`
+                      : ""}
+                  </span>
+                </span>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Max size</span>
+                    <span className="flex w-24 items-center gap-1 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary/60 border border-border/40">
+                      <input
+                        className="w-full min-w-0 bg-transparent outline-none text-right font-medium"
+                        type="number"
+                        min={1}
+                        max={512}
+                        value={Math.round(offlineMaxGb)}
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          if (!Number.isFinite(next)) return;
+                          setOfflineMaxGb(next);
+                          setOfflineMaxBytes(Math.max(1, next) * 1024 ** 3);
+                        }}
+                        aria-label="Maximum download size in gigabytes"
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground font-normal">GB</span>
+                    </span>
+                  </label>
+                  <button
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors border border-destructive/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    type="button"
+                    disabled={clearingDownloads || Object.keys(offlineState.entries).length === 0}
+                    onClick={() => {
+                      setClearingDownloads(true);
+                      void removeAllDownloads().finally(() => setClearingDownloads(false));
+                    }}
+                  >
+                    <TrashIcon size={15} />
+                    {clearingDownloads ? "Removing..." : "Remove all"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Download location row */}
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
                 <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
                   <strong>Download location</strong>
-                  <span className="truncate text-xs">{downloadLocation}</span>
+                  <span className="truncate text-xs text-muted-foreground font-mono">{downloadLocation}</span>
                 </span>
                 <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-foreground bg-card hover:bg-muted/80 transition-colors border border-border/40 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   type="button"
                   disabled={browsingDownloadLocation}
                   onClick={() => void handleBrowseDownloadLocation()}
                 >
-                  <FolderOpenIcon size={18} />
+                  <FolderOpenIcon size={16} />
                   {browsingDownloadLocation ? "Choosing..." : "Browse"}
                 </button>
               </div>
@@ -2009,20 +2005,7 @@ export function SettingsPage({
               description="What actually plays the sound."
             />
 
-            <SettingRow
-              title="Playback method"
-              description="A hidden YouTube frame plays each track. Required for gapless and crossfade."
-            >
-              {() => (
-                <span className="flex h-9 items-center rounded-md border border-input bg-background px-3 text-sm text-foreground">
-                  YouTube player
-                </span>
-              )}
-            </SettingRow>
 
-            <p className="px-1 text-xs text-muted-foreground">
-              YouTube player is the only playback method in Amber.
-            </p>
 
             <SettingToggle
               title="Resolve streams as your account"
@@ -2217,6 +2200,11 @@ export function SettingsPage({
 
         </div>
       </div>
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
     </main>
   );
 }

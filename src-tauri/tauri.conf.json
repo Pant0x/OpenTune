@@ -18,9 +18,10 @@
         "transparent": true,
         "shadow": false,
         "width": 1280,
-        "height": 900,
-        "minWidth": 900,
-        "minHeight": 600
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 540,
+        "maximized": true
       }
     ],
     "security": {

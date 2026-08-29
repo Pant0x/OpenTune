@@ -145,7 +145,7 @@ const YOUTUBE_LOGIN_DATA_DIR: &str = "youtube-login-webview";
 /// The same partition across launches, so the login window is not a fresh profile every time.
 #[cfg(target_os = "macos")]
 const YOUTUBE_LOGIN_DATA_STORE_ID: [u8; 16] = [
-    0x7a, 0x75, 0x6e, 0x6f, 0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x77, 0x65, 0x62, 0x76, 0x69, 0x65, 0x77,
+    0x61, 0x6d, 0x62, 0x65, 0x72, 0x6c, 0x6f, 0x67, 0x69, 0x6e, 0x77, 0x65, 0x62, 0x76, 0x69, 0x65,
 ];
 const YOUTUBE_PLAYER_API_URL: &str = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false";
 const YOUTUBE_MUSIC_PLAYER_API_URL: &str = "https://music.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false";

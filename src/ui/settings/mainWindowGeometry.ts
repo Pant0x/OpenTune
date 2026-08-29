@@ -20,8 +20,8 @@ const STORAGE_KEY = "main-window-geometry";
 const GEOMETRY_ENABLED_STORAGE_KEY = "main-window-geometry-persistence-enabled";
 const LEGACY_LOCATION_ENABLED_STORAGE_KEY = "main-window-location-persistence-enabled";
 const GEOMETRY_ENABLED_CHANGE_EVENT = "main-window-geometry-persistence-change";
-const MIN_WIDTH = 900;
-const MIN_HEIGHT = 600;
+const MIN_WIDTH = 960;
+const MIN_HEIGHT = 540;
 const SAVE_DELAY_MS = 250;
 
 interface MainWindowGeometry {

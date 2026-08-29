@@ -4,11 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { DiscordIcon, GitHubIcon, LoginIcon, SettingsIcon, YouTubeMusicIcon } from "@/ui/icons";
+import { GitHubIcon, LoginIcon, SettingsIcon } from "@/ui/icons";
 import { GITHUB_REPOSITORY_URL } from "../links";
-import { DiscordRpcService } from "../../player/DiscordRPC";
-import { useDiscordPresenceEnabled } from "../settings/discord";
-import { setYouTubeScrobbling, useYouTubeScrobbling } from "../settings/youtubeAccount";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
   isLinux,
@@ -25,7 +22,6 @@ import {
 import { Button } from "@/components/motion/button";
 import { libraryController, useLibraryState } from "../../player/playerStore";
 import { AccountAvatar, AccountSwitcher, GoogleAccountSwitcher } from "./AccountSwitcher";
-import { GoogleSignInButton } from "./GoogleSignInButton";
 import { DownloadsPanel } from "./DownloadsPanel";
 import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
@@ -104,12 +100,8 @@ export function TitleBar({
   );
   const showCustomWindowControls = !nativeWindowControls
     && (!isLinux || !tilingWindowManager || forceWindowControls);
-  const discordEnabled = useDiscordPresenceEnabled();
-  const ytScrobblingEnabled = useYouTubeScrobbling();
   const notificationsVisible = useToolbarItemVisible("notifications");
   const downloadsVisible = useToolbarItemVisible("downloads");
-  const discordVisible = useToolbarItemVisible("discord");
-  const ytMusicVisible = useToolbarItemVisible("ytmusic");
   const githubVisible = useToolbarItemVisible("github");
   const homePointerRef = useRef<{
     pointerId: number;
@@ -267,62 +259,7 @@ export function TitleBar({
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
         )}
         {downloadsVisible && <DownloadsPanel onOpenDownloads={onOpenDownloads} />}
-        {discordVisible && (
-        <Tooltip
-          side="bottom"
-          content={discordEnabled ? "Discord presence on" : "Discord presence off"}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => void DiscordRpcService.setEnabled(!discordEnabled)}
-            aria-pressed={discordEnabled}
-            aria-label={
-              discordEnabled ? "Turn off Discord presence" : "Turn on Discord presence"
-            }
-          >
-            <DiscordIcon
-              size={16}
-              aria-hidden="true"
-              className={cn(
-                "transition-opacity",
-                discordEnabled ? "opacity-100 text-primary" : "opacity-40",
-              )}
-            />
-          </Button>
-        </Tooltip>
-        )}
-        {ytMusicVisible && (
-        <Tooltip
-          side="bottom"
-          content={
-            ytScrobblingEnabled
-              ? "Adding plays to YouTube Music history"
-              : "Not adding plays to YouTube Music history"
-          }
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setYouTubeScrobbling(!ytScrobblingEnabled)}
-            aria-pressed={ytScrobblingEnabled}
-            aria-label={
-              ytScrobblingEnabled
-                ? "Stop adding plays to YouTube Music history"
-                : "Add plays to YouTube Music history"
-            }
-          >
-            <YouTubeMusicIcon
-              size={16}
-              aria-hidden="true"
-              className={cn(
-                "transition-opacity",
-                ytScrobblingEnabled ? "opacity-100 text-primary" : "opacity-40",
-              )}
-            />
-          </Button>
-        </Tooltip>
-        )}
+
 
         {githubVisible && (
         <Tooltip side="bottom" content="Source on GitHub">
@@ -444,7 +381,7 @@ export function TitleBar({
              * is where the device-code prompt is rendered — starting the flow from here would
              * put the code somewhere nobody is looking.
              */
-            <div className="flex flex-col items-center gap-1 px-2 pb-2 pt-3 text-center">
+            <div className="flex flex-col items-center gap-1.5 px-2 pb-2 pt-3 text-center">
               <span className="grid size-11 place-items-center rounded-full bg-primary/10 text-primary">
                 <LoginIcon size={20} aria-hidden="true" />
               </span>
@@ -452,29 +389,17 @@ export function TitleBar({
                 {isConnecting ? "Connecting…" : "Not signed in"}
               </p>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {isConnecting
-                  ? "Restoring your YouTube Music session."
-                  : "Connect YouTube Music for your library, playlists and likes."}
+                Sign in to access your library, playlists and favorites.
               </p>
-              <GoogleSignInButton
-                className="mt-2"
-                fullWidth
-                isBusy={isConnecting}
-                onClick={() => {
-                  setIsAccountPanelOpen(false);
-                  onOpenSettings();
-                }}
-              />
-              <span className="my-2 h-px bg-border w-full" aria-hidden="true" />
               <button
                 type="button"
-                className="w-full rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   setIsAccountPanelOpen(false);
                   setIsAuthModalOpen(true);
                 }}
               >
-                Sign in / Sign up
+                Sign In / Sign Up
               </button>
             </div>
           )}
