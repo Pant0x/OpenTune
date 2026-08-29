@@ -26,14 +26,14 @@ let cachedScrobbling: boolean | null = null;
 
 function readAuthenticatedStreaming(): boolean {
   if (cachedAuthenticatedStreaming === null) {
-    cachedAuthenticatedStreaming = readLocalBooleanSetting(AUTHENTICATED_STREAMING_KEY, false);
+    cachedAuthenticatedStreaming = readLocalBooleanSetting(AUTHENTICATED_STREAMING_KEY, true);
   }
   return cachedAuthenticatedStreaming;
 }
 
 function readScrobbling(): boolean {
   if (cachedScrobbling === null) {
-    cachedScrobbling = readLocalBooleanSetting(SCROBBLING_KEY, false);
+    cachedScrobbling = readLocalBooleanSetting(SCROBBLING_KEY, true);
   }
   return cachedScrobbling;
 }
@@ -98,8 +98,8 @@ export function setYouTubeScrobbling(enabled: boolean): void {
 
 export async function hydrateYouTubeAccountSettings(): Promise<void> {
   await Promise.all([
-    hydrateLocalBooleanSetting(AUTHENTICATED_STREAMING_KEY, false, CHANGE_EVENT),
-    hydrateLocalBooleanSetting(SCROBBLING_KEY, false, CHANGE_EVENT),
+    hydrateLocalBooleanSetting(AUTHENTICATED_STREAMING_KEY, true, CHANGE_EVENT),
+    hydrateLocalBooleanSetting(SCROBBLING_KEY, true, CHANGE_EVENT),
   ]);
   cachedAuthenticatedStreaming = null;
   cachedScrobbling = null;
@@ -107,9 +107,9 @@ export async function hydrateYouTubeAccountSettings(): Promise<void> {
 }
 
 export function useAuthenticatedStreaming(): boolean {
-  return useSyncExternalStore(subscribe, readAuthenticatedStreaming, () => false);
+  return useSyncExternalStore(subscribe, readAuthenticatedStreaming, () => true);
 }
 
 export function useYouTubeScrobbling(): boolean {
-  return useSyncExternalStore(subscribe, readScrobbling, () => false);
+  return useSyncExternalStore(subscribe, readScrobbling, () => true);
 }

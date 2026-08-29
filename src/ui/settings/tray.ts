@@ -16,7 +16,7 @@ const MINIMIZE_TO_TRAY_STORAGE_KEY = "minimize-to-tray";
 const CHANGE_EVENT = "tray-settings-change";
 
 function readMinimizeToTray() {
-  return readLocalBooleanSetting(MINIMIZE_TO_TRAY_STORAGE_KEY, false);
+  return readLocalBooleanSetting(MINIMIZE_TO_TRAY_STORAGE_KEY, true);
 }
 
 function subscribe(callback: () => void) {
@@ -34,9 +34,9 @@ export function setMinimizeToTray(enabled: boolean) {
 }
 
 export async function hydrateTraySettings() {
-  await hydrateLocalBooleanSetting(MINIMIZE_TO_TRAY_STORAGE_KEY, false, CHANGE_EVENT);
+  await hydrateLocalBooleanSetting(MINIMIZE_TO_TRAY_STORAGE_KEY, true, CHANGE_EVENT);
 }
 
 export function useMinimizeToTray() {
-  return useSyncExternalStore(subscribe, readMinimizeToTray, () => false);
+  return useSyncExternalStore(subscribe, readMinimizeToTray, () => true);
 }

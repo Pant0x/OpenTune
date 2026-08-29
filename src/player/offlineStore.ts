@@ -8,6 +8,7 @@ import {
   exists,
   stat,
 } from "@tauri-apps/plugin-fs";
+import { getDownloadLocation } from "../ui/settings/downloadLocation";
 import type { Track } from "../datasource/types";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../internal/logging";
 import { getAppSetting, setAppSetting } from "../internal/appSettings";
@@ -17,8 +18,15 @@ import { revokeOfflineBlobUrl } from "./offlinePlayback";
 
 const MANIFEST_KEY = "amber.offline-manifest.v1";
 const MAX_BYTES_KEY = "amber.offline-max-bytes.v1";
-const OFFLINE_DIR = "amber/downloads";
 const CHUNK_BYTES = 4 * 1024 * 1024; // 4 MiB per spec
+
+function getOfflineDir(): string {
+  try {
+    return getDownloadLocation() || "amber/downloads";
+  } catch {
+    return "amber/downloads";
+  }
+}
 
 /** Default ceiling for downloaded audio. Roughly 1,500 songs at typical bitrates. */
 export const DEFAULT_OFFLINE_MAX_BYTES = 8 * 1024 * 1024 * 1024;
@@ -116,8 +124,8 @@ export function setOfflineMaxBytes(maxBytes: number): void {
 
 async function ensureOfflineDir(): Promise<void> {
   try {
-    if (!(await exists(OFFLINE_DIR, { baseDir: BaseDirectory.AppData }))) {
-      await mkdir(OFFLINE_DIR, { baseDir: BaseDirectory.AppData, recursive: true });
+    if (!(await exists(getOfflineDir(), { baseDir: BaseDirectory.AppData }))) {
+      await mkdir(getOfflineDir(), { baseDir: BaseDirectory.AppData, recursive: true });
     }
   } catch {}
 }
@@ -125,13 +133,13 @@ async function ensureOfflineDir(): Promise<void> {
 async function listOnDisk(): Promise<Array<{ trackId: string; byteLength: number }>> {
   try {
     await ensureOfflineDir();
-    const entries = await readDir(OFFLINE_DIR, { baseDir: BaseDirectory.AppData });
+    const entries = await readDir(getOfflineDir(), { baseDir: BaseDirectory.AppData });
     const result: Array<{ trackId: string; byteLength: number }> = [];
     for (const entry of entries) {
       if (!entry.name?.endsWith(".bin")) continue;
       const trackId = entry.name.slice(0, -4);
       try {
-        const meta = await stat(`${OFFLINE_DIR}/${entry.name}`, {
+        const meta = await stat(`${getOfflineDir()}/${entry.name}`, {
           baseDir: BaseDirectory.AppData,
         });
         result.push({ trackId, byteLength: meta.size ?? 0 });
@@ -175,7 +183,7 @@ export async function hydrateOfflineStore(): Promise<void> {
     const { entries, orphans } = reconcileManifest(manifest, onDisk);
     for (const trackId of orphans) {
       try {
-        await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+        await remove(`${getOfflineDir()}/${trackId}.bin`, {
           baseDir: BaseDirectory.AppData,
         });
       } catch {}
@@ -255,7 +263,7 @@ export async function removeDownload(trackId: string): Promise<void> {
   cancelDownload(trackId);
   revokeOfflineBlobUrl(trackId);
   try {
-    await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+    await remove(`${getOfflineDir()}/${trackId}.bin`, {
       baseDir: BaseDirectory.AppData,
     });
   } catch (error) {
@@ -275,7 +283,7 @@ export async function removeAllDownloads(): Promise<void> {
   for (const trackId of ids) {
     revokeOfflineBlobUrl(trackId);
     try {
-      await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+      await remove(`${getOfflineDir()}/${trackId}.bin`, {
         baseDir: BaseDirectory.AppData,
       });
     } catch {}
@@ -315,7 +323,7 @@ async function downloadToFile(
     const res = await tauriFetch(url);
     if (!res.ok) throw new Error(`Download failed HTTP ${res.status}`);
     const buf = new Uint8Array(await res.arrayBuffer());
-    await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, buf, {
+    await writeFile(`${getOfflineDir()}/${trackId}.bin`, buf, {
       baseDir: BaseDirectory.AppData,
     });
     return { totalBytes: buf.byteLength };
@@ -336,7 +344,7 @@ async function downloadToFile(
     if (res.status === 200 && offset === 0 && total > CHUNK_BYTES) {
       const buf = new Uint8Array(await res.arrayBuffer());
       if (buf.byteLength === total) {
-        await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, buf, {
+        await writeFile(`${getOfflineDir()}/${trackId}.bin`, buf, {
           baseDir: BaseDirectory.AppData,
         });
         return { totalBytes: total };
@@ -355,7 +363,7 @@ async function downloadToFile(
     if (chunk.byteLength === 0) break;
   }
 
-  await writeFile(`${OFFLINE_DIR}/${trackId}.bin`, target, {
+  await writeFile(`${getOfflineDir()}/${trackId}.bin`, target, {
     baseDir: BaseDirectory.AppData,
   });
   return { totalBytes: total };
@@ -407,7 +415,7 @@ async function pump(): Promise<void> {
       } catch (error) {
         // Remove partial file on failure
         try {
-          await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+          await remove(`${getOfflineDir()}/${trackId}.bin`, {
             baseDir: BaseDirectory.AppData,
           });
         } catch {}
@@ -443,7 +451,7 @@ async function prune(): Promise<void> {
     for (const [trackId, entry] of sorted) {
       if (used <= maxBytes) break;
       try {
-        await remove(`${OFFLINE_DIR}/${trackId}.bin`, {
+        await remove(`${getOfflineDir()}/${trackId}.bin`, {
           baseDir: BaseDirectory.AppData,
         });
         revokeOfflineBlobUrl(trackId);

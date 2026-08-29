@@ -64,6 +64,7 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "../settings/theme";
+import { setDownloadLocation, useDownloadLocation } from "../settings/downloadLocation";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -100,6 +101,7 @@ import {
   useEffectDisabled,
   usePotatoPcMode,
 } from "../settings/renderEffects";
+import { supabase } from "../../lib/supabaseClient";
 import { setMadeForYouVisible, useMadeForYouVisible } from "../settings/homeSections";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { ExternalLinkButton } from "../components/ExternalLinkButton";
@@ -134,14 +136,6 @@ import {
   useNativeWindowControls,
   useWindowsStyleWindowControls,
 } from "../settings/windowControls";
-import {
-  resetMiniPlayerPosition,
-  setMiniPlayerEnabled,
-  setMiniPlayerHoverAction,
-  useMiniPlayerEnabled,
-  useMiniPlayerHoverAction,
-  type MiniPlayerHoverAction,
-} from "../settings/miniPlayer";
 import {
   setMainWindowGeometryPersistenceEnabled,
   useMainWindowGeometryPersistenceEnabled,
@@ -717,7 +711,6 @@ export function SettingsPage({
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [logOpening, setLogOpening] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
-  const [miniPlayerResetting, setMiniPlayerResetting] = useState(false);
   const [resetSettingsConfirming, setResetSettingsConfirming] = useState(false);
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
@@ -729,8 +722,6 @@ export function SettingsPage({
   const themePreference = useThemePreference();
   const [listeningShortcut, setListeningShortcut] = useState<KeyboardShortcutAction | null>(null);
   const keyboardShortcuts = useKeyboardShortcuts();
-  const miniPlayerEnabled = useMiniPlayerEnabled();
-  const miniPlayerHoverAction = useMiniPlayerHoverAction();
   const sidebarMode = useSidebarMode();
   const authenticatedStreaming = useAuthenticatedStreaming();
   const youtubeScrobbling = useYouTubeScrobbling();
@@ -740,6 +731,13 @@ export function SettingsPage({
   const madeForYouVisible = useMadeForYouVisible();
   const crossfadeSec = useCrossfadeSec();
   const gaplessEnabled = useGaplessEnabled();
+  const downloadLocation = useDownloadLocation();
+  const [browsingDownloadLocation, setBrowsingDownloadLocation] = useState(false);
+  const [supabaseUser, setSupabaseUser] = useState<any>(null);
+  const [supabaseEmail, setSupabaseEmail] = useState("");
+  const [supabasePassword, setSupabasePassword] = useState("");
+  const [spotifyLink, setSpotifyLink] = useState("");
+  const [supabaseBusy, setSupabaseBusy] = useState(false);
   const sessionRestoreEnabled = useSessionRestoreEnabled();
   const extraPlayerControlsAlwaysVisible = useExtraPlayerControlsAlwaysVisible();
   const compactPlayerBar = useCompactPlayerBar();
@@ -827,6 +825,17 @@ export function SettingsPage({
     return () => window.clearTimeout(timeout);
   }, [resetSettingsConfirming]);
 
+  useEffect(() => {
+    let active = true;
+    void supabase?.auth.getUser().then(({ data }) => {
+      if (active) setSupabaseUser(data.user ?? null);
+    });
+    const { data: sub } = supabase?.auth.onAuthStateChange((_e, session) => {
+      setSupabaseUser(session?.user ?? null);
+    }) ?? { data: { subscription: { unsubscribe: () => {} } } };
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   const handleCheckForUpdates = async () => {
     setUpdateStatus("checking");
     setUpdateResult(null);
@@ -893,15 +902,6 @@ export function SettingsPage({
       setLogError("Unable to open the log file.");
     } finally {
       setLogOpening(false);
-    }
-  };
-
-  const handleResetMiniPlayerPosition = async () => {
-    setMiniPlayerResetting(true);
-    try {
-      await resetMiniPlayerPosition();
-    } finally {
-      setMiniPlayerResetting(false);
     }
   };
 
@@ -995,6 +995,23 @@ export function SettingsPage({
       setLocalPlaylistError("Unable to open the folder picker.");
     } finally {
       setLocalPlaylistBrowsingId(null);
+    }
+  };
+
+  const handleBrowseDownloadLocation = async () => {
+    setBrowsingDownloadLocation(true);
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Choose download folder",
+      });
+      if (typeof selected !== "string") return;
+      setDownloadLocation(selected);
+    } catch {
+      // silent - user cancelled
+    } finally {
+      setBrowsingDownloadLocation(false);
     }
   };
 
@@ -1201,6 +1218,68 @@ export function SettingsPage({
             )}
 
             {libraryState.error && <p className="text-sm text-destructive">{libraryState.error}</p>}
+          </section>
+
+          <section className={SETTINGS_CARD} aria-labelledby="supabase-settings-title">
+            <SettingsCardHeader
+              title="Amber Account (Supabase)"
+              titleId="supabase-settings-title"
+              icon={<UserIcon size={18} aria-hidden="true" />}
+              description={supabaseUser ? `Signed in as ${supabaseUser.email}` : "Email, Google, Discord, or connect Spotify for imports."}
+              status={<span className={supabaseUser ? "text-primary" : "text-muted-foreground"}>{supabaseUser ? "Connected" : "Signed out"}</span>}
+            />
+            <div className="flex flex-col gap-4">
+              {supabaseUser ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-foreground truncate">{supabaseUser.email}</span>
+                  <button className="rounded-full bg-card px-4 py-2 text-sm hover:bg-muted" onClick={async () => { setSupabaseBusy(true); await supabase.auth.signOut(); setSupabaseBusy(false); }}>Sign out</button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Email" value={supabaseEmail} onChange={e => setSupabaseEmail(e.target.value)} />
+                    <input className="flex-1 min-w-36 rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="Password" type="password" value={supabasePassword} onChange={e => setSupabasePassword(e.target.value)} />
+                    <button disabled={supabaseBusy} className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={async () => { setSupabaseBusy(true); const { error } = await supabase.auth.signInWithPassword({ email: supabaseEmail, password: supabasePassword }); if (error) { const { error: sErr } = await supabase.auth.signUp({ email: supabaseEmail, password: supabasePassword }); if (sErr) alert(sErr.message); } setSupabaseBusy(false); }}>{supabaseBusy ? "..." : "Email Sign In / Up"}</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button disabled={supabaseBusy} className="rounded-full bg-card px-4 py-2 text-sm hover:bg-muted" onClick={async () => { setSupabaseBusy(true); await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } }); setSupabaseBusy(false); }}>Google</button>
+                    <button disabled={supabaseBusy} className="rounded-full bg-card px-4 py-2 text-sm hover:bg-muted" onClick={async () => { setSupabaseBusy(true); await supabase.auth.signInWithOAuth({ provider: "discord" }); setSupabaseBusy(false); }}>Discord</button>
+                    <button disabled={supabaseBusy} className="rounded-full bg-[#1DB954] px-4 py-2 text-sm text-white hover:opacity-90" onClick={async () => { setSupabaseBusy(true); const { data } = await supabase.auth.getUser(); if (data.user) { await (supabase.auth as any).linkIdentity({ provider: "spotify", options: { scopes: "playlist-read-private playlist-read-collaborative user-read-email", redirectTo: window.location.origin } }); } else { await supabase.auth.signInWithOAuth({ provider: "spotify", options: { scopes: "playlist-read-private playlist-read-collaborative", redirectTo: window.location.origin } }); } setSupabaseBusy(false); }}>Connect Spotify</button>
+                  </div>
+                </>
+              )}
+              <div className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
+                <div className="flex-1 min-w-48">
+                  <label className="text-xs text-muted-foreground">Spotify playlist link</label>
+                  <input className="mt-1 w-full rounded-lg bg-background px-3 py-2 text-sm outline-none ring-1 ring-border" placeholder="https://open.spotify.com/playlist/..." value={spotifyLink} onChange={e => setSpotifyLink(e.target.value)} />
+                </div>
+                <button className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90" onClick={async () => {
+                  const m = spotifyLink.match(/(?:open\.spotify\.com\/playlist\/|spotify:playlist:)([A-Za-z0-9]{22})/);
+                  if (!m) { alert("Invalid Spotify playlist link"); return; }
+                  const playlistId = m[1];
+                  const token = (await supabase.auth.getSession()).data.session && (await supabase.auth.getSession()).data.session?.provider_token ? (await supabase.auth.getSession()).data.session?.provider_token as unknown as string : null;
+                  // Fallback to getSpotifyAccessToken helper
+                  let accessToken: string | null = token;
+                  if (!accessToken) {
+                    try { const { getSpotifyAccessToken } = await import("../../lib/supabaseClient"); accessToken = await getSpotifyAccessToken(); } catch {}
+                  }
+                  if (!accessToken) { alert("Connect Spotify first via button above"); return; }
+                  try {
+                    const res = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`, { headers: { Authorization: `Bearer ${accessToken}` } });
+                    if (!res.ok) throw new Error(`Spotify ${res.status}`);
+                    const data = await res.json() as { items: Array<{ track: { name: string, artists: Array<{name:string}> } }> };
+                    const names = data.items.map(i => `${i.track.name} ${i.track.artists[0]?.name ?? ""}`.trim());
+                    // Create Amber playlist and search each track on YouTube
+                    const { libraryController, searchController } = await import("../../player/playerStore");
+                    const pl = await libraryController.createPlaylist(`Spotify ${playlistId.slice(0,6)}`);
+                    for (const q of names.slice(0,20)) {
+                      try { const r = await searchController.search(q); if (r.tracks[0]) await libraryController.addTrackToPlaylist(r.tracks[0], pl); } catch {}
+                    }
+                    alert(`Imported ${names.length} tracks to ${pl.title}`);
+                  } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+                }}>Import</button>
+              </div>
+            </div>
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="discord-settings-title">
@@ -1534,6 +1613,22 @@ export function SettingsPage({
                   {clearingDownloads ? "Removing..." : "Remove all"}
                 </button>
               </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border">
+                <span className={cn(SETTING_LABEL, "min-w-0 flex-1")}>
+                  <strong>Download location</strong>
+                  <span className="truncate text-xs">{downloadLocation}</span>
+                </span>
+                <button
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  type="button"
+                  disabled={browsingDownloadLocation}
+                  onClick={() => void handleBrowseDownloadLocation()}
+                >
+                  <FolderOpenIcon size={18} />
+                  {browsingDownloadLocation ? "Choosing..." : "Browse"}
+                </button>
+              </div>
             </div>
 
           </section>
@@ -1855,13 +1950,6 @@ export function SettingsPage({
               description="Choose the title bar buttons and compact player behavior."
             />
 
-            <SettingToggle
-              title="Mini player"
-              description="Show compact playback controls when the main window is not focused. Turning this off closes its window and frees around 30 MB."
-              checked={miniPlayerEnabled}
-              onCheckedChange={setMiniPlayerEnabled}
-            />
-
             <SettingRow
               title="Library sidebar"
               description="How much room the playlist rail takes. Expand on hover keeps the collapsed width while still letting you read the list."
@@ -1886,42 +1974,7 @@ export function SettingsPage({
               )}
             </SettingRow>
 
-            <SettingRow
-              title="Mini player hover bar"
-              description="Choose what the expanded hover slider controls."
-            >
-              {() => (
-                <Select
-                  className="w-44"
-                  value={miniPlayerHoverAction}
-                  onValueChange={(value) =>
-                    setMiniPlayerHoverAction(value as MiniPlayerHoverAction)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="seek">Song position</SelectItem>
-                    <SelectItem value="volume">Volume</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            </SettingRow>
 
-            <div className="flex items-center justify-between gap-4 py-2">
-              <span className={SETTING_LABEL}>
-                <strong>Mini player position</strong>
-                <span>Move the mini player back to the bottom center of this screen.</span>
-              </span>
-              <button
-                className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                type="button"
-                disabled={miniPlayerResetting}
-                onClick={() => void handleResetMiniPlayerPosition()}
-              >
-                {miniPlayerResetting ? "Resetting..." : "Reset position"}
-              </button>
-            </div>
 
             <SettingRow
               title="Window controls"

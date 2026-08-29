@@ -1,8 +1,11 @@
 import { readFile } from "@tauri-apps/plugin-fs";
 import { BaseDirectory } from "@tauri-apps/api/path";
 import { logInternalWarn } from "../internal/logging";
+import { getDownloadLocation } from "../ui/settings/downloadLocation";
 
-const OFFLINE_DIR = "amber/downloads";
+function getOfflineDir(): string {
+  try { return getDownloadLocation() || "amber/downloads"; } catch { return "amber/downloads"; }
+}
 
 /**
  * Active URL Revocation (RAM Cleanup)
@@ -31,7 +34,7 @@ export async function createOfflineBlobUrl(
   revokeOfflineBlobUrl(trackId);
 
   const fileName = `${trackId}.bin`;
-  const data = await readFile(`${OFFLINE_DIR}/${fileName}`, {
+  const data = await readFile(`${getOfflineDir()}/${fileName}`, {
     baseDir: BaseDirectory.AppData,
   });
 

@@ -42,7 +42,7 @@ function isMiniPlayerPosition(value: unknown): value is MiniPlayerPosition {
 }
 
 function readMiniPlayerEnabled() {
-  return readLocalBooleanSetting(STORAGE_KEY, true);
+  return readLocalBooleanSetting(STORAGE_KEY, false);
 }
 
 function isMiniPlayerHoverAction(value: unknown): value is MiniPlayerHoverAction {
@@ -118,7 +118,7 @@ export async function hydrateMiniPlayerSettings() {
   ) ?? "seek";
 
   await Promise.all([
-    hydrateLocalBooleanSetting(STORAGE_KEY, true, CHANGE_EVENT),
+    hydrateLocalBooleanSetting(STORAGE_KEY, false, CHANGE_EVENT),
     hydrateLocalJsonSetting(POSITION_STORAGE_KEY, isMiniPlayerPosition),
     hydrateLocalJsonSetting(HOVER_ACTION_STORAGE_KEY, isMiniPlayerHoverAction),
   ]);
@@ -264,7 +264,7 @@ export async function resetMiniPlayerPosition() {
 }
 
 export function useMiniPlayerEnabled() {
-  return useSyncExternalStore(subscribe, readMiniPlayerEnabled, () => true);
+  return useSyncExternalStore(subscribe, readMiniPlayerEnabled, () => false);
 }
 
 export function useMiniPlayerHoverAction() {

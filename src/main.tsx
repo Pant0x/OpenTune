@@ -10,7 +10,6 @@ import {
   applyNativeWindowControls,
   hydrateWindowControlSettings,
 } from "./ui/settings/windowControls";
-import { hydrateMiniPlayerSettings } from "./ui/settings/miniPlayer";
 import { hydratePlayerControlSettings } from "./ui/settings/playerControls";
 import { hydrateQueuePanelSettings } from "./ui/settings/queuePanel";
 import { hydrateTraySettings } from "./ui/settings/tray";
@@ -38,6 +37,7 @@ import { hydratePlayHistory } from "./player/playHistory";
 import { hydrateSessionRestoreSetting } from "./ui/settings/sessionRestore";
 import { hydrateToolbarItemSettings } from "./ui/settings/toolbarItems";
 import { hydrateHomeSectionSettings } from "./ui/settings/homeSections";
+import { hydrateDownloadLocation } from "./ui/settings/downloadLocation";
 import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEffects";
 import { startMemoryReport } from "./internal/memoryReport";
 
@@ -65,7 +65,6 @@ void Promise.all([
   hydrateTheme(),
   hydrateWindowControlSettings(),
   hydrateMediaSessionSettings(),
-  hydrateMiniPlayerSettings(),
   hydratePlayerControlSettings(),
   hydrateQueuePanelSettings(),
   hydrateTraySettings(),
@@ -82,6 +81,7 @@ void Promise.all([
   hydrateKeyboardShortcuts(),
   hydrateToolbarItemSettings(),
   hydrateHomeSectionSettings(),
+  hydrateDownloadLocation(),
   hydratePlaybackSettings(),
   hydratePlayHistory(),
   // Read synchronously from local storage at boot, so this only backfills a machine whose
