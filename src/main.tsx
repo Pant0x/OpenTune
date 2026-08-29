@@ -114,6 +114,13 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 /*
+ * Clean up Discord RPC on app close
+ */
+window.addEventListener("beforeunload", () => {
+  void DiscordRpcService.shutdown();
+});
+
+/*
  * The outermost boundary. Nothing below it can be recovered from selectively, so its only
  * job is to make sure a render error leaves something on screen with a button on it rather
  * than a blank window — a desktop shell has no address bar to reload from.

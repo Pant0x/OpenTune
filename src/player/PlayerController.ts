@@ -517,6 +517,22 @@ export class PlayerController {
     }
   }
 
+  async pause(): Promise<void> {
+    logInternalInfo("PlayerController.pause start", {
+      currentStatus: this.state.status,
+      currentTrackId: this.state.currentTrack?.id ?? null,
+    });
+    try {
+      this.audioEngine.pause();
+      this.setState({ status: "paused", error: null });
+      logInternalInfo("PlayerController.pause success");
+      // Update Discord presence to pause state (removes progress bar)
+      void DiscordRpcService.pausePlayback();
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
   async play(): Promise<void> {
     logInternalInfo("PlayerController.play start", {
       currentStatus: this.state.status,
@@ -561,20 +577,8 @@ export class PlayerController {
       }
 
       logInternalInfo("PlayerController.play success", { trackId: track.id });
-    } catch (error) {
-      this.setError(error);
-    }
-  }
-
-  async pause(): Promise<void> {
-    logInternalInfo("PlayerController.pause start", {
-      currentStatus: this.state.status,
-      currentTrackId: this.state.currentTrack?.id ?? null,
-    });
-    try {
-      this.audioEngine.pause();
-      this.setState({ status: "paused", error: null });
-      logInternalInfo("PlayerController.pause success");
+      // Update Discord presence to playing state (restores progress bar)
+      void DiscordRpcService.resumePlayback();
     } catch (error) {
       this.setError(error);
     }

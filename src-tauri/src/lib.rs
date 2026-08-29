@@ -5232,10 +5232,52 @@ fn discord_rpc_init(
                 eprintln!("[internal][discord_rpc] failed to initialize: {}", e);
                 return Err(CommandError::Any(format!("Failed to connect to Discord: {}", e)));
             }
+            // Start periodic refresh after successful connection
+            manager.start_periodic_refresh();
         }
         Err(e) => {
             eprintln!("[internal][discord_rpc] failed to lock manager: {}", e);
             return Err(CommandError::Any("Failed to lock Discord manager".to_string()));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_rpc_pause(
+    discord_manager: tauri::State<
+        '_,
+        std::sync::Arc<std::sync::Mutex<discord_rpc::DiscordRpcManager>>,
+    >,
+) -> Result<(), CommandError> {
+    match discord_manager.lock() {
+        Ok(manager) => {
+            if let Err(e) = manager.pause_presence() {
+                eprintln!("[internal][discord_rpc] failed to pause presence: {}", e);
+            }
+        }
+        Err(e) => {
+            eprintln!("[internal][discord_rpc] failed to lock manager: {}", e);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn discord_rpc_resume(
+    discord_manager: tauri::State<
+        '_,
+        std::sync::Arc<std::sync::Mutex<discord_rpc::DiscordRpcManager>>,
+    >,
+) -> Result<(), CommandError> {
+    match discord_manager.lock() {
+        Ok(manager) => {
+            if let Err(e) = manager.resume_presence() {
+                eprintln!("[internal][discord_rpc] failed to resume presence: {}", e);
+            }
+        }
+        Err(e) => {
+            eprintln!("[internal][discord_rpc] failed to lock manager: {}", e);
         }
     }
     Ok(())
@@ -5444,6 +5486,8 @@ pub fn run() {
             discord_rpc_update,
             discord_rpc_clear,
             discord_rpc_init,
+            discord_rpc_pause,
+            discord_rpc_resume,
             #[cfg(target_os = "macos")]
             macos_media::update_macos_media_session,
             #[cfg(target_os = "windows")]
