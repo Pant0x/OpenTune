@@ -65,12 +65,6 @@ import { clearAppSession, loadAppSession, saveAppSession } from "../player/appSe
 import { useMediaSession } from "../player/useMediaSession";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
-import { UpdateToast } from "./components/UpdateToast";
-import {
-  checkForUpdates,
-  isUpdateSnoozed,
-  type UpdateInfo,
-} from "../internal/updateChecker";
 import {
   clearAppSettings,
   getAppSetting,
@@ -370,11 +364,7 @@ const playerSession = usePlayerSession();
       cleanup?.();
     };
   }, []);
-  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
   const [isExpandedPlayerBar,setIsExpandedPlayerBar]=  useState(false)
-  const dismissAvailableUpdate = useCallback(() => {
-    setAvailableUpdate(null);
-  }, []);
 const loadingScreenDismissedRef = useRef(false);
   const loadingScreenStartedAtRef = useRef(performance.now());
   const lastErrorAlertRef = useRef<string | null>(null);
@@ -741,7 +731,6 @@ useMediaSession(playerState, playerController);
     sessionPersistenceDisabledRef.current = true;
     playerUIStore.setLyricsOpen(false);
     setIsSearchOpen(false);
-    setAvailableUpdate(null);
     setOnboardingComplete(null);
     setOnboardingStep(null);
     setShowOnboardingComplete(false);
@@ -1313,38 +1302,6 @@ const backOnboardingStep = () => {
     return () => window.clearTimeout(timer);
   }, [loadingScreenState, showOnboardingWelcome]);
 
-  useEffect(() => {
-    if (
-      loadingScreenState !== "hidden"
-      || showKeychainNotice
-      || showOnboardingWelcome
-    ) {
-      return;
-    }
-
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void checkForUpdates()
-        .then((update) => {
-          if (
-            active
-            && update
-            && !isUpdateSnoozed(update.version)
-          ) {
-            setAvailableUpdate(update);
-          }
-        })
-        .catch(() => {
-          // Startup update checks should not interrupt the app.
-        });
-    }, 3000);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [loadingScreenState, showKeychainNotice, showOnboardingWelcome]);
-
   const handleToggleLyrics = () => {
     if (playerUIState.isLyricsOpen) {
       playerUIStore.setLyricsOpen(false);
@@ -1914,12 +1871,6 @@ const backOnboardingStep = () => {
           )}
           {showOnboardingComplete && <OnboardingCompleteToast />}
         </>
-      )}
-      {availableUpdate && (
-        <UpdateToast
-          update={availableUpdate}
-          onDismiss={dismissAvailableUpdate}
-        />
       )}
 
 {/* <ReleaseNoteDialog
