@@ -139,12 +139,19 @@ function BrowseShelfSection({
           ref={scrollRef}
           className={cn(
             shelf.tracks.length >= 4
-              ? "grid grid-rows-4 grid-flow-col auto-cols-[minmax(280px,360px)] gap-x-4 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+              ? "grid grid-rows-4 grid-flow-col auto-cols-[300px] sm:auto-cols-[340px] md:auto-cols-[380px] gap-x-4 gap-y-1.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
               : "flex flex-col gap-1 max-w-2xl",
           )}
         >
           {shelf.tracks.map((track, index) => (
-            <div key={`${track.id}:${index}`} className={shelf.tracks.length >= 4 ? "snap-start" : undefined}>
+            <div
+              key={`${track.id}:${index}`}
+              className={cn(
+                shelf.tracks.length >= 4
+                  ? "w-[300px] sm:w-[340px] md:w-[380px] shrink-0 snap-start"
+                  : "w-full",
+              )}
+            >
               <TrackRow
                 track={track}
                 index={index}
