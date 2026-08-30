@@ -66,6 +66,14 @@ export function BrowsePage({
   onOpenPlaylist: (playlist: Playlist) => void;
 }) {
   const [surface, setSurface] = useState<BrowseTab>(initialTab);
+  
+  useEffect(() => {
+    if (initialTab) {
+      setSurface(initialTab);
+      setDrillDown([]);
+    }
+  }, [initialTab]);
+
   /*
    * Chips drill into further feeds. Kept as a stack inside this page rather than as new tabs:
    * a mood is a filter of the feed you are already in, not a separate destination, and going

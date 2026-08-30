@@ -4,15 +4,19 @@ import { Tooltip } from "@/components/motion/tooltip";
 import {
   CheckIcon,
   ClockIcon,
+  CloseIcon,
   DiceIcon,
+  HeartActiveIcon,
+  HeartIcon,
   PauseIcon,
+  PlayIcon,
   PlaylistAddIcon,
   ShuffleActiveIcon,
   ShuffleIcon,
   TrashIcon,
 } from "@/ui/icons";
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
-import { libraryController } from "../../../player/playerStore";
+import { libraryController, useLibraryState } from "../../../player/playerStore";
 import { logInternalError } from "../../../internal/logging";
 import type { Track } from "../../../datasource/types";
 import {
@@ -26,8 +30,10 @@ import {
   toggleQueuePanelCollapsed,
   useQueuePanelCollapsed,
 } from "../../settings/queuePanel";
-import { ArtistLinks } from "../ArtistLinks";
+import { ArtistLinks, useAlbumNavigation, useArtistNavigation } from "../ArtistLinks";
 import { TrackArtwork } from "../TrackArtwork";
+import { useTrackContextMenu } from "../TrackContextMenu";
+import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { SquareAltArrowLeftIcon, SquareAltArrowRightIcon } from "@solar-icons/react/linear";
 
 interface QueuePanelProps {
@@ -355,6 +361,17 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   dropTargetRef.current = dropTarget;
 
   const collapsed = useQueuePanelCollapsed();
+  const uiState = usePlayerUIState();
+  const activeTab = uiState.rightPanelTab ?? "nowplaying";
+  const libraryState = useLibraryState();
+  const navigateArtist = useArtistNavigation();
+  const navigateAlbum = useAlbumNavigation();
+  const { toggleTrackLike } = useTrackContextMenu();
+  const recentlyPlayed = useMemo(
+    () => libraryState.library?.recentlyPlayed ?? [],
+    [libraryState.library?.recentlyPlayed],
+  );
+
   const { queue, queueIndex, manualQueueLength, stopAfterQueueIndex, queueWindowStart } =
     usePlayerSessionSelector(selectQueueSlice, queueSliceEqual);
   // `stopAfterQueueIndex` comes off the session window-relative, like `queueIndex`; rebased once
@@ -368,20 +385,15 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   );
   const currentTrack = playerState.currentTrack;
   const isPlaying = playerState.status === "playing";
+  const isLiked = Boolean(
+    currentTrack && libraryState.library?.likedSongs?.some((t) => t.id === currentTrack.id),
+  );
+
   // Generating hits the network, so the row it was started from shows it is working.
   const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
   /* null = idle, string = the draft name being edited. */
   const [saveDraft, setSaveDraft] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  /*
-   * The auto-generated tail can run up to 100 tracks (`PERSISTED_QUEUE_AHEAD`), and rendering
-   * every one of them the moment the panel opens is exactly the "shows all songs at once" cost
-   * — a hundred rows of artwork, truncated titles and hover affordances nobody is looking at
-   * yet. Manual picks stay uncapped: that section is a handful of tracks by nature, not a
-   * generated tail. "Show more" over a virtualiser: reordering drags read live DOM nodes
-   * (`querySelectorAll("[data-queue-index]")`, `elementsFromPoint`), and a virtualiser that
-   * only mounts what's on screen would have nothing to find a drop target on below the fold.
-   */
   const [visibleAutomaticCount, setVisibleAutomaticCount] = useState(AUTOMATIC_PAGE_SIZE);
 
   /*
@@ -654,40 +666,254 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
       </div>
     );
 
+  if (collapsed) {
+    return (
+      <aside
+        ref={panelRef}
+        className="flex h-full flex-col items-center overflow-y-auto overscroll-contain bg-card py-2 select-none"
+        aria-label="Queue"
+      >
+        <Tooltip side="left" content="Expand panel">
+          <button type="button" className={ICON_BUTTON} onClick={toggleQueuePanelCollapsed}>
+            <SquareAltArrowLeftIcon size={22} aria-hidden="true" />
+            <span className="sr-only">Expand panel</span>
+          </button>
+        </Tooltip>
+
+        {currentTrack && (
+          <div className="my-3 flex flex-col items-center">
+            <span className="relative">
+              <TrackArtwork
+                className="size-11 rounded-lg ring-1 ring-primary/60 object-cover"
+                size={44}
+                artworkUrl={currentTrack.artworkUrl}
+                iconSize={20}
+              />
+              {isPlaying && (
+                <span
+                  className="absolute inset-0 grid place-items-center rounded-lg bg-background/60 backdrop-blur-[2px]"
+                  aria-hidden="true"
+                >
+                  <MusicVisualizer
+                    bars={4}
+                    className="[--music-gap:2px] [--music-height:16px] [--music-width:20px]"
+                  />
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
+        <span className="my-auto h-px w-6 rounded-full bg-border/40" />
+
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <span className="text-[10px] font-semibold text-muted-foreground tabular-nums">
+            {upcomingCount}
+          </span>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside
       ref={panelRef}
       className={cn(
-        "flex h-full flex-col overflow-y-auto overscroll-contain",
-        // Dragging over rows must not select their text.
+        "flex h-full flex-col overflow-y-auto overscroll-contain bg-card border-l border-border/40",
         draggedIndex !== null && "select-none",
       )}
-      aria-label="Queue"
+      aria-label="Now Playing and Queue"
     >
-      <header
-        className={cn(
-          "sticky top-0 z-10 flex shrink-0 items-center gap-1 bg-card",
-          collapsed ? "flex-col px-2 py-2" : "px-3 py-2.5",
-        )}
-      >
-        <Tooltip
-          side={collapsed ? "left" : "bottom"}
-          content={collapsed ? "Expand queue" : "Collapse queue"}
-        >
-          <button type="button" className={ICON_BUTTON} onClick={toggleQueuePanelCollapsed}>
-            {collapsed ? (
-              <SquareAltArrowLeftIcon size={22} aria-hidden="true" />
-            ) : (
-              <SquareAltArrowRightIcon size={22} aria-hidden="true" />
+      {/* Top Header with 3 Spotify Tabs + Action Buttons */}
+      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/40 bg-card/95 backdrop-blur-md px-3 py-2">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => playerUIStore.setRightPanelTab("nowplaying")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "nowplaying"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
             )}
-            <span className="sr-only">{collapsed ? "Expand queue" : "Collapse queue"}</span>
+          >
+            Now Playing
           </button>
-        </Tooltip>
+          <button
+            type="button"
+            onClick={() => playerUIStore.setRightPanelTab("queue")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "queue"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Queue
+          </button>
+          <button
+            type="button"
+            onClick={() => playerUIStore.setRightPanelTab("recent")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "recent"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Recently played
+          </button>
+        </div>
 
-        {!collapsed && (
-          <div className="flex min-w-0 flex-1 flex-col">
-            <h2 className="text-sm font-semibold text-foreground">Up next</h2>
-            <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-0.5">
+          <Tooltip side="bottom" content="Collapse panel">
+            <button type="button" className={ICON_BUTTON} onClick={toggleQueuePanelCollapsed}>
+              <SquareAltArrowRightIcon size={18} aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip side="bottom" content="Close panel">
+            <button type="button" className={ICON_BUTTON} onClick={onClose}>
+              <CloseIcon size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
+      </header>
+
+      {/* ── Tab 1: Now Playing / Song View (Spotify style) ── */}
+      {activeTab === "nowplaying" && (
+        <div className="flex flex-1 flex-col overflow-y-auto p-4 gap-4">
+          {currentTrack ? (
+            <>
+              {/* Large Cover Art */}
+              <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-muted/20 shadow-2xl ring-1 ring-border/20">
+                <TrackArtwork
+                  className="size-full object-cover rounded-2xl"
+                  size={400}
+                  artworkUrl={currentTrack.artworkUrl}
+                  iconSize={56}
+                />
+              </div>
+
+              {/* Title & Artist & Like */}
+              <div className="flex items-start justify-between gap-3 pt-1">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h2 className="text-xl font-bold text-foreground leading-tight line-clamp-2">
+                    {currentTrack.title}
+                  </h2>
+                  <div className="text-sm text-muted-foreground">
+                    <ArtistLinks
+                      artists={currentTrack.artists}
+                      fallback={currentTrack.artist}
+                      className="hover:underline hover:text-foreground transition-colors"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={cn(
+                    "shrink-0 p-2 rounded-full transition-transform active:scale-95",
+                    isLiked
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/40",
+                  )}
+                  onClick={() => toggleTrackLike(currentTrack)}
+                  title={isLiked ? "Unlike track" : "Like track"}
+                >
+                  {isLiked ? <HeartActiveIcon size={22} /> : <HeartIcon size={22} />}
+                </button>
+              </div>
+
+              {/* About the artist Card (Spotify-style) */}
+              <div
+                className="relative overflow-hidden rounded-2xl bg-secondary/30 border border-border/40 p-4 transition-all hover:bg-secondary/40 cursor-pointer group flex flex-col gap-3"
+                onClick={() => {
+                  if (navigateArtist && currentTrack.artist) {
+                    navigateArtist(
+                      {
+                        id: currentTrack.artists?.[0]?.id || "",
+                        name: currentTrack.artist,
+                      },
+                      false,
+                    );
+                  }
+                }}
+              >
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  About the artist
+                </span>
+                <div className="flex items-center gap-3">
+                  <div className="size-12 rounded-full overflow-hidden bg-muted/40 shrink-0 ring-1 ring-border/50">
+                    <TrackArtwork
+                      className="size-full object-cover"
+                      size={48}
+                      artworkUrl={currentTrack.artworkUrl}
+                      iconSize={20}
+                    />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-sm text-foreground truncate group-hover:underline">
+                        {currentTrack.artist}
+                      </span>
+                      <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold">
+                        ✓
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">Verified Artist</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                  Click to explore top tracks, discography, and albums from {currentTrack.artist}.
+                </p>
+              </div>
+
+              {/* From the album Card (Spotify-style) */}
+              {currentTrack.album && (
+                <div
+                  className="rounded-2xl bg-secondary/30 border border-border/40 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-secondary/40 transition-colors group"
+                  onClick={() => {
+                    if (navigateAlbum) {
+                      navigateAlbum({
+                        id: currentTrack.albumId || currentTrack.album!,
+                        title: currentTrack.album!,
+                        artist: currentTrack.artist,
+                      });
+                    }
+                  }}
+                >
+                  <div className="size-12 rounded-lg overflow-hidden bg-muted/40 shrink-0">
+                    <TrackArtwork
+                      className="size-full object-cover"
+                      size={48}
+                      artworkUrl={currentTrack.artworkUrl}
+                      iconSize={20}
+                    />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      From the album
+                    </span>
+                    <span className="font-semibold text-sm text-foreground truncate group-hover:underline">
+                      {currentTrack.album}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground p-8">
+              Play a song to view details, lyrics, and artist info.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab 2: Queue View (Spotify style) ── */}
+      {activeTab === "queue" && (
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          {/* Action Toolbar for Queue */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border/20">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>{upcomingCount === 0 ? "Nothing queued" : `${upcomingCount} songs`}</span>
               {remaining && (
                 <>
@@ -695,201 +921,205 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   <span>{remaining}</span>
                 </>
               )}
-            </p>
-          </div>
-        )}
-
-        {!collapsed && upcomingCount > 0 && (
-          <>
-            <Tooltip content="Shuffle what's next">
-              <button
-                type="button"
-                className={ICON_BUTTON}
-                onClick={() => playerController.shuffleUpcomingQueue()}
-              >
-                <ShuffleIcon size={16} aria-hidden="true" />
-                <span className="sr-only">Shuffle what's next</span>
-              </button>
-            </Tooltip>
-            <Tooltip content="Shuffle the whole playlist">
-              <button
-                type="button"
-                className={ICON_BUTTON}
-                onClick={() => playerController.shuffleEntirePlaylist()}
-              >
-                <ShuffleActiveIcon size={16} aria-hidden="true" />
-                <span className="sr-only">Shuffle the whole playlist</span>
-              </button>
-            </Tooltip>
-            <Tooltip content="Save the queue as a playlist">
-              <button
-                type="button"
-                className={cn(ICON_BUTTON, saveState === "saved" && "text-primary")}
-                onClick={() => setSaveDraft((draft) => (draft === null ? "My queue" : null))}
-                aria-expanded={saveDraft !== null}
-              >
-                {saveState === "saving" ? (
-                  <Loader variant="spinner" size={15} />
-                ) : saveState === "saved" ? (
-                  <CheckIcon size={16} aria-hidden="true" />
-                ) : (
-                  <PlaylistAddIcon size={16} aria-hidden="true" />
-                )}
-                <span className="sr-only">Save the queue as a playlist</span>
-              </button>
-            </Tooltip>
-            <Tooltip content="Clear the queue">
-              <button
-                type="button"
-                className={cn(ICON_BUTTON, "hover:text-primary")}
-                onClick={() => playerController.clearUpcomingQueue()}
-              >
-                <TrashIcon size={16} aria-hidden="true" />
-                <span className="sr-only">Clear the queue</span>
-              </button>
-            </Tooltip>
-          </>
-        )}
-      </header>
-
-      {/* Opens under the header so the queue it is about stays in view. */}
-      {!collapsed && saveDraft !== null && (
-        <div className="mx-2 mb-1 flex shrink-0 flex-col gap-2 rounded-xl bg-card p-2">
-          <input
-            autoFocus
-            value={saveDraft}
-            onChange={(event) => setSaveDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void handleSaveQueue();
-              if (event.key === "Escape") setSaveDraft(null);
-            }}
-            aria-label="New playlist name"
-            className="w-full min-w-0 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-inset focus:ring-border"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-muted-foreground">
-              {upcomingCount + (currentTrack ? 1 : 0)} songs
-            </span>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                className="rounded-full px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => setSaveDraft(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={saveState === "saving" || !saveDraft.trim()}
-                className="rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => void handleSaveQueue()}
-              >
-                {saveState === "saving" ? "Saving..." : "Save"}
-              </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* The track playing right now, pinned above the list. Without it the panel opens on a
-          list of songs with no anchor — you can see what is next but not what it follows. */}
-      {currentTrack && (
-        <div
-          className={cn(
-            "flex shrink-0 items-center rounded bg-primary/5",
-            collapsed ? "mx-2 mb-1 justify-center p-1.5" : "mx-2 mb-1 gap-2.5 p-2",
-          )}
-        >
-          <span className="relative shrink-0">
-            <TrackArtwork
-              className={cn(
-                "rounded ring-1 ring-primary/60",
-                collapsed ? "size-11" : "size-10",
-              )}
-              size={collapsed ? 44 : 40}
-              artworkUrl={currentTrack.artworkUrl}
-              iconSize={collapsed ? 20 : 18}
-            />
-            {/*
-              The same meter the track rows use — one now-playing indicator across the app,
-              rather than two hand-rolled ones that drift apart.
-
-              On a scrim covering the whole cover, not floated over the bottom edge: these are
-              accent-tinted bars a few pixels tall, and against a busy album cover they were
-              effectively invisible. Same treatment as the hover position badge below.
-            */}
-            {isPlaying && (
-              <span
-                className="absolute inset-0 grid place-items-center rounded bg-background/60 backdrop-blur-[2px]"
-                aria-hidden="true"
-              >
-                <MusicVisualizer
-                  bars={4}
-                  className="[--music-gap:2px] [--music-height:16px] [--music-width:20px]"
-                />
-              </span>
+            {upcomingCount > 0 && (
+              <div className="flex items-center gap-1">
+                <Tooltip content="Shuffle what's next">
+                  <button
+                    type="button"
+                    className={ICON_BUTTON}
+                    onClick={() => playerController.shuffleUpcomingQueue()}
+                  >
+                    <ShuffleIcon size={15} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Shuffle all">
+                  <button
+                    type="button"
+                    className={ICON_BUTTON}
+                    onClick={() => playerController.shuffleEntirePlaylist()}
+                  >
+                    <ShuffleActiveIcon size={15} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Save as playlist">
+                  <button
+                    type="button"
+                    className={cn(ICON_BUTTON, saveState === "saved" && "text-primary")}
+                    onClick={() => setSaveDraft((draft) => (draft === null ? "My queue" : null))}
+                  >
+                    {saveState === "saving" ? (
+                      <Loader variant="spinner" size={14} />
+                    ) : saveState === "saved" ? (
+                      <CheckIcon size={15} aria-hidden="true" />
+                    ) : (
+                      <PlaylistAddIcon size={15} aria-hidden="true" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip content="Clear queue">
+                  <button
+                    type="button"
+                    className={cn(ICON_BUTTON, "hover:text-primary")}
+                    onClick={() => playerController.clearUpcomingQueue()}
+                  >
+                    <TrashIcon size={15} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              </div>
             )}
-          </span>
+          </div>
 
-          {!collapsed && (
-            <span className="flex min-w-0 flex-col">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
-                {isPlaying ? "Now playing" : "Paused"}
-              </span>
-              <span className="truncate text-sm font-medium text-foreground">
-                {currentTrack.title}
-              </span>
-              <ArtistLinks
-                className="truncate text-xs text-muted-foreground"
-                artists={currentTrack.artists}
-                fallback={currentTrack.artist}
+          {/* Save queue draft modal */}
+          {saveDraft !== null && (
+            <div className="mx-2 my-2 flex shrink-0 flex-col gap-2 rounded-xl bg-card border border-border/40 p-2.5">
+              <input
+                autoFocus
+                value={saveDraft}
+                onChange={(event) => setSaveDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void handleSaveQueue();
+                  if (event.key === "Escape") setSaveDraft(null);
+                }}
+                aria-label="New playlist name"
+                className="w-full rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
-            </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {upcomingCount + (currentTrack ? 1 : 0)} songs
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    className="rounded-full px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSaveDraft(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saveState === "saving" || !saveDraft.trim()}
+                    className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                    onClick={() => void handleSaveQueue()}
+                  >
+                    {saveState === "saving" ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-      )}
 
-      {upcomingCount === 0 ? (
-        collapsed ? null : (
-          <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-            Nothing queued. Songs you add with "Play next" land here.
-          </p>
-        )
-      ) : (
-        <div className={cn("flex flex-col gap-0.5 pb-2", collapsed ? "px-1.5" : "px-2")}>
-          {manual.length > 0 && (
-            <>
-              {sectionLabel("Added by you", manual.length)}
-              {renderRows(manual)}
-            </>
-          )}
-          {automatic.length > 0 && (
-            <>
-              {manual.length > 0 && sectionLabel("Up next", automatic.length)}
-              {renderRows(automatic.slice(0, visibleAutomaticCount))}
-              {automatic.length > visibleAutomaticCount && (
-                <ShowMoreQueueButton
-                  collapsed={collapsed}
-                  remaining={automatic.length - visibleAutomaticCount}
-                  onClick={() =>
-                    setVisibleAutomaticCount((count) => count + AUTOMATIC_PAGE_SIZE)}
+          {/* Pinned Current Track */}
+          {currentTrack && (
+            <div className="mx-3 my-2 flex shrink-0 items-center gap-3 rounded-xl bg-primary/10 p-2.5 border border-primary/20">
+              <span className="relative shrink-0">
+                <TrackArtwork
+                  className="size-10 rounded-lg ring-1 ring-primary/40 object-cover"
+                  size={40}
+                  artworkUrl={currentTrack.artworkUrl}
+                  iconSize={18}
                 />
+                {isPlaying && (
+                  <span
+                    className="absolute inset-0 grid place-items-center rounded-lg bg-background/60 backdrop-blur-[2px]"
+                    aria-hidden="true"
+                  >
+                    <MusicVisualizer
+                      bars={4}
+                      className="[--music-gap:2px] [--music-height:16px] [--music-width:20px]"
+                    />
+                  </span>
+                )}
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+                  {isPlaying ? "Now playing" : "Paused"}
+                </span>
+                <span className="truncate text-sm font-semibold text-foreground">
+                  {currentTrack.title}
+                </span>
+                <ArtistLinks
+                  className="truncate text-xs text-muted-foreground"
+                  artists={currentTrack.artists}
+                  fallback={currentTrack.artist}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Queue Rows */}
+          {upcomingCount === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              Nothing queued. Songs you add with "Play next" land here.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-0.5 px-2 pb-4">
+              {manual.length > 0 && (
+                <>
+                  {sectionLabel("Added by you", manual.length)}
+                  {renderRows(manual)}
+                </>
               )}
-            </>
+              {automatic.length > 0 && (
+                <>
+                  {manual.length > 0 && sectionLabel("Up next", automatic.length)}
+                  {renderRows(automatic.slice(0, visibleAutomaticCount))}
+                  {automatic.length > visibleAutomaticCount && (
+                    <ShowMoreQueueButton
+                      collapsed={collapsed}
+                      remaining={automatic.length - visibleAutomaticCount}
+                      onClick={() =>
+                        setVisibleAutomaticCount((count) => count + AUTOMATIC_PAGE_SIZE)}
+                    />
+                  )}
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {/* Collapsed has no room for a close button in the header, and the player bar's queue
-          button already closes the panel, so this only exists when expanded. */}
-      {!collapsed && (
-        <button
-          type="button"
-          className="mx-2 mb-2 mt-auto shrink-0 rounded py-1.5 text-xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onClose}
-        >
-          Hide queue
-        </button>
+      {/* ── Tab 3: Recently Played View (Spotify style) ── */}
+      {activeTab === "recent" && (
+        <div className="flex flex-1 flex-col overflow-y-auto px-2 py-2">
+          {recentlyPlayed.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              No recently played songs recorded yet.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {recentlyPlayed.map((track, idx) => (
+                <button
+                  key={`${track.id}-${idx}`}
+                  type="button"
+                  onClick={() => void playerController.loadTrack(track)}
+                  className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-card ring-1 ring-border/20">
+                    <TrackArtwork
+                      className="size-full object-cover"
+                      size={40}
+                      artworkUrl={track.artworkUrl}
+                      iconSize={18}
+                    />
+                    <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                      <PlayIcon size={18} className="text-white fill-white" />
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                      {track.title}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {track.artist}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </aside>
   );

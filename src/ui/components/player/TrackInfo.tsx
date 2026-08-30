@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { HeartActiveIcon, HeartBrokenIcon, HeartIcon } from "@/ui/icons";
 import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
-import { usePlayerUIState } from "../../stores/playerUIStore";
+import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { TrackArtwork } from "../TrackArtwork";
 import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
@@ -58,29 +58,41 @@ export function TrackInfo() {
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
       {uiState.showAlbumArt && (
-        <TrackArtwork
-          className="size-12 shrink-0  object-cover"
-          size={48}
-          artworkUrl={currentTrack.artworkUrl}
-          iconSize={22}
-        />
+        <button
+          type="button"
+          onClick={() => playerUIStore.openNowPlaying()}
+          title="Open Now Playing view"
+          className="group relative size-12 shrink-0 overflow-hidden rounded cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <TrackArtwork
+            className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105"
+            size={48}
+            artworkUrl={currentTrack.artworkUrl}
+            iconSize={22}
+          />
+        </button>
       )}
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div ref={titleViewportRef} className="relative min-w-0 overflow-hidden">
+        <div
+          ref={titleViewportRef}
+          className="relative min-w-0 overflow-hidden cursor-pointer"
+          onClick={() => playerUIStore.openNowPlaying()}
+          title="Open Now Playing view"
+        >
           {/* Hidden measuring copy — Marquee duplicates its children, so width
               must be read from a single stable node. */}
           <span
             ref={titleTextRef}
             aria-hidden={isTitleOverflowing}
             className={cn(
-              "block whitespace-nowrap text-sm font-medium text-foreground",
+              "block whitespace-nowrap text-sm font-medium text-foreground hover:underline",
               isTitleOverflowing && "invisible absolute",
             )}
           >
             {currentTrack.title}
           </span>
           {isTitleOverflowing && (
-            <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground">
+            <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:underline">
               <span className="whitespace-nowrap" title={currentTrack.title}>
                 {currentTrack.title}
               </span>

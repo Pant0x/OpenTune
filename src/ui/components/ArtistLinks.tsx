@@ -42,6 +42,10 @@ export function useAlbumNavigation() {
   return useContext(AlbumNavigationContext);
 }
 
+export function useArtistNavigation() {
+  return useContext(ArtistNavigationContext);
+}
+
 function getFallbackArtists(fallback: string): ArtistReference[] {
   return fallback
     .split(",")

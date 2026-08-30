@@ -81,6 +81,11 @@ impl DiscordRpcManager {
 
     /// Update Discord presence with current track info
     pub fn update_presence(&self, data: DiscordPresenceData) -> Result<(), String> {
+        // If not playing, hide activity completely (exactly like Spotify)
+        if !data.is_playing {
+            return self.clear_presence();
+        }
+
         // Store the latest presence for reconnection/retry purposes
         {
             let mut last = self.last_presence.lock().map_err(|e| e.to_string())?;
@@ -105,20 +110,15 @@ impl DiscordRpcManager {
         let elapsed = data.current_time;
         let duration = data.duration;
 
-        // Keep owned values alive while building the activity
-        let state_str = if data.is_playing {
-            data.artist.clone()
-        } else {
-            format!("{} (paused)", data.artist)
-        };
+        let state_str = data.artist.clone();
 
         let artwork_image = data.artwork_url.clone();
         let artwork_key = artwork_image.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
 
         let large_text_str = if !data.album.trim().is_empty() {
-            format!("{} • {}", data.album, data.artist)
+            data.album.clone()
         } else {
-            format!("{} • Amber", data.title)
+            "Amber".to_string()
         };
 
         let now_secs = SystemTime::now()
@@ -139,8 +139,6 @@ impl DiscordRpcManager {
             "assets": {
                 "large_image": artwork_key,
                 "large_text": large_text_str,
-                "small_image": AMBER_LOGO_ASSET_KEY,
-                "small_text": "Amber",
             },
             "buttons": [
                 {
@@ -226,19 +224,9 @@ impl DiscordRpcManager {
         Ok(())
     }
 
-    /// Pause presence - removes timestamps so progress bar stops
+    /// Pause presence - clears activity so it disappears like Spotify
     pub fn pause_presence(&self) -> Result<(), String> {
-        let last = {
-            let last_lock = self.last_presence.lock().map_err(|e| e.to_string())?;
-            last_lock.clone()
-        };
-
-        if let Some(mut data) = last {
-            data.is_playing = false;
-            self.update_presence(data)
-        } else {
-            Ok(())
-        }
+        self.clear_presence()
     }
 
     /// Resume presence - restores timestamps for progress bar

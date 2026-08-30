@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+export type RightPanelTab = "nowplaying" | "queue" | "recent";
+
 export interface PlayerUIState {
   isSeeking: boolean;
   isDraggingVolume: boolean;
@@ -7,6 +9,7 @@ export interface PlayerUIState {
   isLyricsOpen: boolean;
   isLyricsFullscreen: boolean;
   isQueueOpen: boolean;
+  rightPanelTab: RightPanelTab;
 }
 
 type Listener = () => void;
@@ -19,6 +22,7 @@ class PlayerUIStore {
     isLyricsOpen: false,
     isLyricsFullscreen: false,
     isQueueOpen: false,
+    rightPanelTab: "nowplaying",
   };
   private listeners = new Set<Listener>();
 
@@ -74,6 +78,14 @@ class PlayerUIStore {
 
   toggleQueue() {
     this.setState({ isQueueOpen: !this.state.isQueueOpen });
+  }
+
+  setRightPanelTab(rightPanelTab: RightPanelTab) {
+    this.setState({ rightPanelTab, isQueueOpen: true });
+  }
+
+  openNowPlaying() {
+    this.setState({ rightPanelTab: "nowplaying", isQueueOpen: true });
   }
 }
 

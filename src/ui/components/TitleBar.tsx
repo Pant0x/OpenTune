@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { GitHubIcon, LoginIcon, SettingsIcon } from "@/ui/icons";
+import { DiscordIcon, GitHubIcon, LoginIcon, SettingsIcon } from "@/ui/icons";
+import { useDiscordPresenceEnabled, setDiscordPresenceEnabled } from "../settings/discord";
 import { GITHUB_REPOSITORY_URL } from "../links";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
@@ -103,6 +104,7 @@ export function TitleBar({
   const notificationsVisible = useToolbarItemVisible("notifications");
   const downloadsVisible = useToolbarItemVisible("downloads");
   const githubVisible = useToolbarItemVisible("github");
+  const discordPresenceEnabled = useDiscordPresenceEnabled();
   const homePointerRef = useRef<{
     pointerId: number;
     startX: number;
@@ -273,6 +275,21 @@ export function TitleBar({
           </Button>
         </Tooltip>
         )}
+
+        <Tooltip side="bottom" content={discordPresenceEnabled ? "Discord Presence: Active" : "Discord Presence: Disabled"}>
+          <Button
+            variant='ghost'
+            size='icon'
+            onClick={() => setDiscordPresenceEnabled(!discordPresenceEnabled)}
+            aria-label={discordPresenceEnabled ? "Disable Discord Rich Presence" : "Enable Discord Rich Presence"}
+            className={cn(
+              "transition-colors",
+              discordPresenceEnabled ? "text-[#5865F2]" : "text-muted-foreground/40 hover:text-muted-foreground",
+            )}
+          >
+            <DiscordIcon size={16} aria-hidden="true" />
+          </Button>
+        </Tooltip>
 
         <Tooltip side="bottom" content="Settings">
         <Button

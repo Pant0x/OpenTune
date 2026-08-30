@@ -190,6 +190,14 @@ export class DiscordRpcService {
     // Store current track data for pause/resume operations
     this.currentTrackData = safeData;
 
+    if (!safeData.isPlaying) {
+      this.lastSentKey = nextKey;
+      try {
+        await invoke("discord_rpc_clear");
+      } catch {}
+      return;
+    }
+
     try {
       logInternalDebug("Discord.updatePresence", {
         title: safeData.title,

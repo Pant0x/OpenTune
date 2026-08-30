@@ -1131,15 +1131,13 @@ useMediaSession(playerState, playerController);
     setNextTabId((currentId) => currentId + 1);
   };
 
-  const handleOpenBrowse = (browseTab?: string) => {
+  const handleOpenBrowse = (requestedTab: string = "explore") => {
     playerUIStore.setLyricsOpen(false);
     const existing = tabs.find((tab) => tab.view === "browse");
     if (existing) {
-      // Reusing the tab must still honour the requested section, or "Downloads" would land
-      // on whatever the Browse tab happened to be showing.
-      if (browseTab && existing.browseTab !== browseTab) {
+      if (existing.browseTab !== requestedTab) {
         setTabs((prevTabs) =>
-          prevTabs.map((tab) => (tab.id === existing.id ? { ...tab, browseTab } : tab)));
+          prevTabs.map((tab) => (tab.id === existing.id ? { ...tab, browseTab: requestedTab } : tab)));
       }
       setActiveTabId(existing.id);
       return;
@@ -1148,7 +1146,7 @@ useMediaSession(playerState, playerController);
     const newId = nextTabId.toString();
     setTabs((prevTabs) => [
       ...prevTabs,
-      { id: newId, view: "browse", title: "Browse", browseTab },
+      { id: newId, view: "browse", title: "Browse", browseTab: requestedTab },
     ]);
     setActiveTabId(newId);
     setNextTabId((currentId) => currentId + 1);
@@ -1661,20 +1659,10 @@ const backOnboardingStep = () => {
             !playerUIState.isLyricsOpen
             && (activeTab?.view === "playlist" || activeTab?.view === "album")
           }
+          rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} /> : undefined}
           rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
           onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : setQueuePanelWidth}
           scrollKey={activeViewKey}
-          /*
-            Bound straight to `isQueuePanelOpen`, not a delayed mirror of it: `AnimatePresence`
-            in Layout already keeps the last-rendered panel mounted for the whole exit
-            animation on its own. An extra `showQueueMounted` state used to sit between this
-            and the panel, unmounting it 200ms after close on a hardcoded guess — which meant
-            the close animation didn't start until that guess elapsed, then had to play out a
-            spring on top of it. Removing the mirror is what makes closing start immediately.
-          */
-          rightPanel={isQueuePanelOpen ? (
-            <QueuePanel onClose={() => setIsQueuePanelOpen(false)} />
-          ) : undefined}
         >
 {/* <ExpandedPlayerBar 
         isOpen={isExpandedPlayerBar} 
