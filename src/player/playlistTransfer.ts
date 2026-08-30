@@ -211,53 +211,77 @@ export async function importPlaylistFile(): Promise<ImportedPlaylist | null> {
 
 /**
  * Imports a Spotify playlist by URL.
- * Fetches the playlist data from Spotify's API using the user's access token.
+ * Fetches the playlist data from Spotify's API using the user's OAuth access token or public token.
  */
 export async function importSpotifyPlaylist(spotifyUrl: string): Promise<ImportedPlaylist | null> {
-  if (!supabase) {
-    throw new Error("Supabase not configured. Cannot import Spotify playlists.");
-  }
-
   // Extract playlist ID from URL
-  const playlistIdMatch = spotifyUrl.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/) || 
-                           spotifyUrl.match(/spotify:playlist:([a-zA-Z0-9]+)/);
-  
+  const playlistIdMatch =
+    spotifyUrl.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/) ||
+    spotifyUrl.match(/spotify:playlist:([a-zA-Z0-9]+)/);
+
   if (!playlistIdMatch) {
-    throw new Error("Invalid Spotify playlist URL. Expected format: https://open.spotify.com/playlist/... or spotify:playlist:...");
+    throw new Error(
+      "Invalid Spotify playlist URL. Expected format: https://open.spotify.com/playlist/... or spotify:playlist:...",
+    );
   }
 
   const playlistId = playlistIdMatch[1];
 
-  // Get Spotify access token from Supabase session
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.provider_token) {
-    throw new Error("No Spotify account connected. Please sign in with Spotify in the account panel.");
+  // Try Spotify OAuth provider token first (allows accessing user's private playlists)
+  let accessToken: string | null = null;
+  if (supabase) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      accessToken = session?.provider_token ?? null;
+    } catch {
+      // ignore
+    }
   }
 
-  const accessToken = session.provider_token;
+  // Fallback to anonymous Web Player token for public playlists
+  if (!accessToken) {
+    accessToken = await getSpotifyAnonymousToken();
+  }
+
+  if (!accessToken) {
+    throw new Error("Unable to connect to Spotify. Please check your internet connection or sign in with Spotify.");
+  }
 
   // Fetch playlist metadata
-  const playlistResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+  let playlistResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
 
-  if (!playlistResponse.ok) {
-    if (playlistResponse.status === 401) {
-      throw new Error("Spotify access token expired. Please reconnect your Spotify account.");
+  // If OAuth token expired, try anonymous token
+  if (!playlistResponse.ok && (playlistResponse.status === 401 || playlistResponse.status === 403)) {
+    const anonToken = await getSpotifyAnonymousToken();
+    if (anonToken && anonToken !== accessToken) {
+      accessToken = anonToken;
+      playlistResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
     }
+  }
+
+  if (!playlistResponse.ok) {
     if (playlistResponse.status === 404) {
-      throw new Error("Playlist not found. Check the URL and make sure it's a public playlist or you have access to it.");
+      throw new Error("Playlist not found. Check the URL and make sure it is a valid playlist.");
     }
     throw new Error(`Failed to fetch Spotify playlist: ${playlistResponse.status}`);
   }
 
   const playlistData = await playlistResponse.json();
   const title = playlistData.name || "Imported Spotify playlist";
+  const artworkUrl: string | undefined = playlistData.images?.[0]?.url;
 
   // Fetch all tracks (handle pagination)
-  let tracks: Track[] = [];
+  const tracks: Track[] = [];
   let nextUrl: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
 
   while (nextUrl) {
@@ -268,19 +292,21 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
     });
 
     if (!tracksResponse.ok) {
-      throw new Error(`Failed to fetch playlist tracks: ${tracksResponse.status}`);
+      break;
     }
 
     const tracksData = await tracksResponse.json();
-    
-    for (const item of tracksData.items) {
-      if (!item.track || item.track.is_local) continue;
-      
+
+    for (const item of tracksData.items ?? []) {
+      if (!item?.track || item.track.is_local) continue;
+
       const track = item.track;
-      const artists = track.artists.map((a: { name: string }) => a.name).join(", ");
+      const artists = Array.isArray(track.artists)
+        ? track.artists.map((a: { name: string }) => a.name).join(", ")
+        : "";
       const durationSec = track.duration_ms ? Math.round(track.duration_ms / 1000) : undefined;
-      const artworkUrl = track.album?.images?.[0]?.url;
-      
+      const trackArtwork = track.album?.images?.[0]?.url;
+
       tracks.push({
         id: `spotify:${track.id}`,
         source: "spotify",
@@ -288,20 +314,21 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
         artist: artists,
         album: track.album?.name,
         durationSec,
-        artworkUrl,
-        artists: track.artists.map((a: { name: string; id?: string }) => ({
-          name: a.name,
-          id: a.id,
-        })),
+        artworkUrl: trackArtwork,
+        artists: Array.isArray(track.artists)
+          ? track.artists.map((a: { name: string; id?: string }) => ({
+              name: a.name,
+              id: a.id,
+            }))
+          : [],
       });
     }
 
     nextUrl = tracksData.next;
   }
 
-  logInternalInfo("playlistTransfer.importSpotify", { playlistId, trackCount: tracks.length });
+  logInternalInfo("playlistTransfer.importSpotify", { playlistId, trackCount: tracks.length, hasArtwork: Boolean(artworkUrl) });
 
-  return { title, tracks };
 }
 
 /**

@@ -275,15 +275,8 @@ function CreatePlaylistButton({
   };
 
   const submit = async () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setError("Give the playlist a name.");
-      inputRef.current?.focus();
-      return;
-    }
     if (busy) return;
 
-    // For Spotify, we need a URL
     if (destination === "spotify") {
       const spotifyUrl = spotifyUrlRef.current?.value?.trim();
       if (!spotifyUrl) {
@@ -291,34 +284,49 @@ function CreatePlaylistButton({
         spotifyUrlRef.current?.focus();
         return;
       }
-    }
 
-    setBusy(true);
-    try {
-      if (destination === "spotify") {
-        // Import Spotify playlist
-        const spotifyUrl = spotifyUrlRef.current?.value?.trim();
-        const imported = await importSpotifyPlaylist(spotifyUrl!);
+      setBusy(true);
+      setError(null);
+      try {
+        const imported = await importSpotifyPlaylist(spotifyUrl);
         if (!imported) return;
 
         const created = await libraryController.createPlaylist(imported.title, {
           local: false,
         });
+        if (imported.artworkUrl) {
+          created.artworkUrl = imported.artworkUrl;
+        }
         await libraryController.addTracksToPlaylist(imported.tracks, created);
-        
-        setName("");
+
         setError(null);
         setOpen(false);
         onCreated(created);
-      } else {
-        const created = await libraryController.createPlaylist(trimmed, {
-          local: destination === "local",
-        });
-        setName("");
-        setError(null);
-        setOpen(false);
-        onCreated(created);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not import the Spotify playlist.");
+      } finally {
+        setBusy(false);
       }
+      return;
+    }
+
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Give the playlist a name.");
+      inputRef.current?.focus();
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await libraryController.createPlaylist(trimmed, {
+        local: destination === "local",
+      });
+      setName("");
+      setError(null);
+      setOpen(false);
+      onCreated(created);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the playlist.");
     } finally {
@@ -446,17 +454,25 @@ function CreatePlaylistButton({
           disabled={busy}
           onClick={() => void submit()}
         >
-          {busy ? "Creating..." : "Create playlist"}
+          {destination === "spotify"
+            ? busy
+              ? "Importing..."
+              : "Import playlist"
+            : busy
+              ? "Creating..."
+              : "Create playlist"}
         </button>
 
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-full px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => void importFromFile()}
-        >
-          Import from file...
-        </button>
+        {destination === "youtube" ? (
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-full px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => void importFromFile()}
+          >
+            Import from file...
+          </button>
+        ) : null}
       </div>
     </FloatingPanel>
   );
