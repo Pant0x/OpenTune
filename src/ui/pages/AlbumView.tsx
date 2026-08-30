@@ -76,16 +76,25 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
     setIsLoading(true);
     setError(null);
     let showedTracks = false;
+    const applyAlbumMeta = (items: Track[]) =>
+      items.map((t) => ({
+        ...t,
+        album: album.title || t.album,
+        albumId: album.id || t.albumId,
+        artworkUrl: album.artworkUrl || t.artworkUrl,
+      }));
+
     void libraryController.getAlbumTracks(album, (updatedTracks) => {
       if (!active) return;
-      showedTracks = updatedTracks.length > 0;
-      setTracks(updatedTracks);
-      if (updatedTracks.length > 0) setIsLoading(false);
+      const formatted = applyAlbumMeta(updatedTracks);
+      showedTracks = formatted.length > 0;
+      setTracks(formatted);
+      if (formatted.length > 0) setIsLoading(false);
     })
       .then((items) => {
         if (!active) return;
         showedTracks = true;
-        setTracks(items);
+        setTracks(applyAlbumMeta(items));
       })
       .catch(() => {
         if (active && !showedTracks) setError("Unable to load this album.");

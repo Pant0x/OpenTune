@@ -1177,19 +1177,19 @@ export class YouTubeMusicDataSource extends DataSource {
   private toAlbumTrack(item: MusicItem, album: Album): Track | null {
     const track = this.toTrack(item);
     if (!track) return null;
-    if (track.artist && track.artist !== "Unknown artist") return track;
 
     const fallbackArtist = album.artist && album.artist !== "Unknown artist"
       ? album.artist
       : undefined;
-    if (!fallbackArtist) return track;
 
     return {
       ...track,
-      artist: fallbackArtist,
+      album: album.title || track.album,
+      albumId: album.id || track.albumId,
+      artworkUrl: album.artworkUrl || track.artworkUrl,
+      artist: (track.artist && track.artist !== "Unknown artist") ? track.artist : (fallbackArtist ?? track.artist),
       artists: track.artists?.length
         ? track.artists
-        : album.artists?.length === 1
           ? album.artists
           : undefined,
     };

@@ -392,7 +392,6 @@ const loadingScreenDismissedRef = useRef(false);
   }, []);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const isQueuePanelOpen = activeTab?.isQueueOpen ?? false;
   const canNavigateBack = (activeTab?.navigationHistory?.back.length ?? 0) > 0;
   const canNavigateForward = (activeTab?.navigationHistory?.forward.length ?? 0) > 0;
 
@@ -551,19 +550,6 @@ const loadingScreenDismissedRef = useRef(false);
       })
     );
   }, [activeTabId]);
-
-  const setIsQueuePanelOpen = useCallback(
-    (open: boolean) => {
-      setTabs((prevTabs) =>
-        prevTabs.map((tab) =>
-          tab.id === activeTabId
-            ? { ...tab, isQueueOpen: open }
-            : tab
-        )
-      );
-    },
-    [activeTabId],
-  );
 
 useMediaSession(playerState, playerController);
 
@@ -1321,9 +1307,7 @@ const backOnboardingStep = () => {
   };
 
   const handleToggleQueue = () => {
-    // Toggle asynchronously to avoid triggering synchronous store updates
-    // during React commit phase which can cause "Maximum update depth".
-    setTimeout(() => setIsQueuePanelOpen(!isQueuePanelOpen), 0);
+    playerUIStore.setQueueOpen(!playerUIState.isQueueOpen);
   };
 
   const handleKeychainNoticeContinue = () => {
@@ -1829,7 +1813,7 @@ const backOnboardingStep = () => {
             <PlayerBar
               onToggleLyrics={handleToggleLyrics}
               onToggleQueue={handleToggleQueue}
-              isQueueOpen={isQueuePanelOpen}
+              isQueueOpen={playerUIState.isQueueOpen}
               onConnectionRestored={handleConnectionRestored}
               handlePlayerBarClick={handlePlayerBarClick}
             />
