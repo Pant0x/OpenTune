@@ -10,7 +10,7 @@ import { DiceCard } from "../components/DiceCard";
 import { PickCard } from "../components/PickCard";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
-import { HomeDestinations, type HomeDestinationHandlers } from "../components/HomeDestinations";
+import type { HomeDestinationHandlers } from "../components/HomeDestinations";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { usePlayHistory } from "../../player/playHistory";
 import { useMadeForYouVisible } from "../settings/homeSections";
@@ -76,7 +76,7 @@ interface HomePageProps {
   libraryState: LibraryState;
   searchController: SearchController;
   onSignIn: () => Promise<void>;
-  destinations: HomeDestinationHandlers;
+  destinations?: HomeDestinationHandlers;
   onOpenAlbum?: (album: Album) => void;
   onOpenArtist?: (artist: Artist) => void;
   onOpenPlaylist?: (playlist: Playlist) => void;
@@ -127,7 +127,7 @@ export function HomePage({
   libraryState,
   searchController,
   onSignIn,
-  destinations,
+  destinations: _destinations,
   onOpenAlbum,
   onOpenArtist,
   onOpenPlaylist,
@@ -397,30 +397,15 @@ export function HomePage({
         </section>
       )}
 
-      {/* Top Shelf: Quick picks / Personalized tracks */}
-      {homeShelves.length > 0 && (
+      {homeShelves.length > 0 ? (
         <BrowseShelves
-          shelves={[homeShelves[0]]}
+          shelves={homeShelves}
           playerController={playerController}
           onOpenAlbum={onOpenAlbum ?? (() => {})}
           onOpenArtist={onOpenArtist ?? (() => {})}
           onOpenPlaylist={onOpenPlaylist ?? (() => {})}
         />
-      )}
-
-      {/* Navigation Shortcuts */}
-      <HomeDestinations {...destinations} />
-
-      {/* All remaining personalized shelves: Albums for you, Mixed for you, Trending, etc. */}
-      {homeShelves.length > 1 ? (
-        <BrowseShelves
-          shelves={homeShelves.slice(1)}
-          playerController={playerController}
-          onOpenAlbum={onOpenAlbum ?? (() => {})}
-          onOpenArtist={onOpenArtist ?? (() => {})}
-          onOpenPlaylist={onOpenPlaylist ?? (() => {})}
-        />
-      ) : homeShelves.length === 0 ? (
+      ) : (
         <>
           {showMadeForYou && madeForYouSection}
 
@@ -529,7 +514,7 @@ export function HomePage({
             </div>
           )}
         </>
-      ) : null}
+      )}
     </div>
   );
 }
