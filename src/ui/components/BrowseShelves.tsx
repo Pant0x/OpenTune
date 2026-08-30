@@ -138,13 +138,13 @@ function BrowseShelfSection({
         <div
           ref={scrollRef}
           className={cn(
-            shelf.tracks.length > 4
+            shelf.tracks.length >= 4
               ? "grid grid-rows-4 grid-flow-col auto-cols-[minmax(280px,360px)] gap-x-4 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
-              : "flex flex-col gap-0.5",
+              : "flex flex-col gap-1 max-w-2xl",
           )}
         >
           {shelf.tracks.map((track, index) => (
-            <div key={`${track.id}:${index}`} className="snap-start">
+            <div key={`${track.id}:${index}`} className={shelf.tracks.length >= 4 ? "snap-start" : undefined}>
               <TrackRow
                 track={track}
                 index={index}
