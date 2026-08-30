@@ -72,7 +72,7 @@ function BrowseShelfSection({
   onOpenPlaylist: (playlist: Playlist) => void;
   onFollowLink?: (link: BrowseLink) => void;
 }) {
-  const { openTrackMenu, openPlaylistPicker } = useTrackContextMenu();
+  const { openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -139,7 +139,7 @@ function BrowseShelfSection({
           ref={scrollRef}
           className={cn(
             shelf.tracks.length >= 4
-              ? "grid grid-rows-4 grid-flow-col auto-cols-[300px] sm:auto-cols-[340px] md:auto-cols-[380px] gap-x-4 gap-y-1.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+              ? "grid grid-rows-4 grid-flow-col auto-cols-[340px] sm:auto-cols-[380px] md:auto-cols-[420px] gap-x-6 gap-y-1.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
               : "flex flex-col gap-1 max-w-2xl",
           )}
         >
@@ -148,7 +148,7 @@ function BrowseShelfSection({
               key={`${track.id}:${index}`}
               className={cn(
                 shelf.tracks.length >= 4
-                  ? "w-[300px] sm:w-[340px] md:w-[380px] shrink-0 snap-start"
+                  ? "w-[340px] sm:w-[380px] md:w-[420px] shrink-0 snap-start"
                   : "w-full",
               )}
             >
@@ -160,9 +160,6 @@ function BrowseShelfSection({
                 isPlaying={isPlaying && currentTrackId === track.id}
                 onSelect={() => playShelfTrack(shelf.tracks, track)}
                 onContextMenu={(event) => openTrackMenu(event, track)}
-                onQuickAdd={() => openPlaylistPicker(track)}
-                onQuickAddToQueue={() => playerController.addToQueue(track)}
-                showDownload
                 showRating
               />
             </div>

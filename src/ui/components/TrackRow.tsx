@@ -12,15 +12,15 @@ import { Tooltip } from "@/components/motion/tooltip";
 import {
   CheckActiveIcon,
   CheckIcon,
-  DislikeActiveIcon,
-  DislikeIcon,
   DownloadIcon,
-  HeartActiveIcon,
-  HeartIcon,
   ListIcon,
   MenuDotsIcon,
   PlaylistAddIcon,
   PlayActiveIcon,
+  ThumbsDownActiveIcon,
+  ThumbsDownIcon,
+  ThumbsUpActiveIcon,
+  ThumbsUpIcon,
 } from "@/ui/icons";
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
 import {
@@ -267,15 +267,15 @@ function RatingActions({ track }: { track: Track }) {
   };
 
   return (
-    <span className="flex shrink-0 items-center">
+    <span className="flex shrink-0 items-center gap-0.5">
       {button(
         "like",
-        rating === "like" ? <HeartActiveIcon size={17} /> : <HeartIcon size={17} />,
+        rating === "like" ? <ThumbsUpActiveIcon size={16} /> : <ThumbsUpIcon size={16} />,
         "Like",
       )}
       {button(
         "dislike",
-        rating === "dislike" ? <DislikeActiveIcon size={17} /> : <DislikeIcon size={17} />,
+        rating === "dislike" ? <ThumbsDownActiveIcon size={16} /> : <ThumbsDownIcon size={16} />,
         "Dislike",
       )}
     </span>
