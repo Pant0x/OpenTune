@@ -121,13 +121,9 @@ impl DiscordRpcManager {
         let start_ts = now_secs - elapsed as i64;
         let end_ts = start_ts + duration as i64;
 
-        let mut assets = json!({
+        let assets = json!({
             "large_image": artwork_key,
         });
-
-        if !data.album.trim().is_empty() {
-            assets["large_text"] = json!(data.album);
-        }
 
         let mut activity = json!({
             "name": "Amber",
@@ -347,13 +343,9 @@ impl DiscordRpcManager {
                             let state_str = data.artist.clone();
                             let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
 
-                            let mut assets = json!({
+                            let assets = json!({
                                 "large_image": artwork_key,
                             });
-
-                            if !data.album.trim().is_empty() {
-                                assets["large_text"] = json!(data.album);
-                            }
 
                             let activity = json!({
                                 "name": "Amber",
