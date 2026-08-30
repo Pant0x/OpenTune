@@ -274,20 +274,18 @@ export class DiscordRpcService {
     }
   }
 
+  static resetLastSentKey(): void {
+    this.lastSentKey = null;
+  }
+
   /**
    * Clear Discord presence (show as idle)
    */
   static async clearPresence(): Promise<void> {
-    if (!this.isEnabled) {
-      return;
-    }
-
     try {
       logInternalDebug("Discord.clearPresence", {});
       await invoke("discord_rpc_clear");
       await this.stopPeriodicUpdates();
-      // The next real track has to go out even if it matches whatever was showing before
-      // the clear.
       this.lastSentKey = null;
       this.currentTrackData = null;
       logInternalDebug("Discord.clearPresence.success", {});

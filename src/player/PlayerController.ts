@@ -11,6 +11,7 @@ import { getOfflineTrack, isTrackDownloaded } from "./offlineStore";
 import { hasPreloadDeck } from "./preloadDeck";
 import { getAudioEngineMode } from "../ui/settings/audioEngine";
 import { DiscordRpcService } from "./DiscordRPC";
+import { getDiscordPresenceEnabled } from "../ui/settings/discord";
 import {
   MAX_CROSSFADE_SEC,
   readPlaybackSettings,
@@ -226,6 +227,16 @@ export class PlayerController {
     this.audioEngine.setOnEnded(() => {
       void this.handleTrackEnded();
     });
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("discord-settings-change", () => {
+        if (getDiscordPresenceEnabled()) {
+          DiscordRpcService.resetLastSentKey();
+          this.updateDiscordPresence();
+        } else {
+          void DiscordRpcService.clearPresence();
+        }
+      });
+    }
   }
 
   subscribe(listener: Listener): () => void {
