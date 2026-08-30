@@ -139,6 +139,8 @@ impl DiscordRpcManager {
             "assets": {
                 "large_image": artwork_key,
                 "large_text": large_text_str,
+                "small_image": AMBER_LOGO_ASSET_KEY,
+                "small_text": "Amber",
             },
             "buttons": [
                 {

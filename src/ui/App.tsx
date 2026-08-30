@@ -37,9 +37,9 @@ const SettingsPage = lazy(() =>
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
 import { TrackContextMenuProvider } from "./components/TrackContextMenu";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
 import { PlaylistContextMenuProvider } from "./components/PlaylistContextMenu";
-import { ArtistNavigationProvider } from "./components/ArtistLinks";
+import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
+import { AlbumNavigationProvider, ArtistNavigationProvider } from "./components/ArtistLinks";
 import { cn } from "@/lib/utils";
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
@@ -1583,6 +1583,7 @@ const backOnboardingStep = () => {
 
   return (
     <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
+    <AlbumNavigationProvider onNavigate={handleNavigateAlbum}>
     <ArtistNavigationProvider onNavigate={handleNavigateArtist}>
     <TrackContextMenuProvider
       libraryController={libraryController}
@@ -1643,6 +1644,11 @@ const backOnboardingStep = () => {
           onSidebarWidthChange={setSidebarWidth}
           onNavigateAlbum={handleNavigateAlbum}
           onNavigatePlaylist={handleNavigatePlaylist}
+          onNavigateHistory={handleOpenHistory}
+          onNavigateLibrary={handleOpenLibrary}
+          onNavigateBrowse={() => handleOpenBrowse()}
+          onNavigateDownloads={() => handleOpenBrowse("downloads")}
+          onSearch={(q, openInNewTab = false) => handleSearch(q, openInNewTab)}
           showSearchBar={activeTab?.view !== "settings" && !playerUIState.isLyricsOpen}
           onOpenSearch={() => setIsSearchOpen(true)}
           canGoBack={canNavigateBack}
@@ -1901,6 +1907,7 @@ const backOnboardingStep = () => {
     </PlaylistContextMenuProvider>
     </TrackContextMenuProvider>
     </ArtistNavigationProvider>
+    </AlbumNavigationProvider>
     </MotionConfig>
   );
 }

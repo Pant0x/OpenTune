@@ -13,6 +13,11 @@ interface LayoutProps {
   onSidebarWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
+  onNavigateHistory?: () => void;
+  onNavigateLibrary?: () => void;
+  onNavigateBrowse?: () => void;
+  onNavigateDownloads?: () => void;
+  onSearch?: (query: string, openInNewTab?: boolean) => void;
   showSearchBar: boolean;
   onOpenSearch: () => void;
   canGoBack: boolean;
@@ -45,6 +50,11 @@ export function Layout({
   onSidebarWidthChange,
   onNavigateAlbum,
   onNavigatePlaylist,
+  onNavigateHistory,
+  onNavigateLibrary,
+  onNavigateBrowse,
+  onNavigateDownloads,
+  onSearch,
   showSearchBar,
   onOpenSearch,
   canGoBack,
@@ -238,6 +248,10 @@ export function Layout({
             onWidthChange={onSidebarWidthChange}
             onNavigateAlbum={onNavigateAlbum}
             onNavigatePlaylist={onNavigatePlaylist}
+            onNavigateHistory={onNavigateHistory}
+            onNavigateLibrary={onNavigateLibrary}
+            onNavigateBrowse={onNavigateBrowse}
+            onNavigateDownloads={onNavigateDownloads}
           />
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
@@ -286,6 +300,7 @@ export function Layout({
           {showSearchBar && (
             <div className="relative">
               <SearchBar
+                onSearch={onSearch}
                 onOpen={onOpenSearch}
                 canGoBack={canGoBack}
                 canGoForward={canGoForward}

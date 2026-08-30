@@ -7,13 +7,40 @@ import {
   useMemo,
   useRef,
 } from "react";
-import type { Artist, ArtistReference } from "../../datasource/types";
+import type { Album, Artist, ArtistReference } from "../../datasource/types";
 import { cn } from "@/lib/utils";
 import { isMacOS } from "../platform";
 
 type NavigateArtist = (artist: Artist, openInNewTab: boolean) => void;
+type NavigateAlbum = (album: Album, openInNewTab?: boolean) => void;
 
 const ArtistNavigationContext = createContext<NavigateArtist | null>(null);
+const AlbumNavigationContext = createContext<NavigateAlbum | null>(null);
+
+export function AlbumNavigationProvider({
+  children,
+  onNavigate,
+}: {
+  children: ReactNode;
+  onNavigate: NavigateAlbum;
+}) {
+  const navigateRef = useRef(onNavigate);
+  navigateRef.current = onNavigate;
+  const navigate = useMemo<NavigateAlbum>(
+    () => (album, openInNewTab = false) => navigateRef.current(album, openInNewTab),
+    [],
+  );
+
+  return (
+    <AlbumNavigationContext.Provider value={navigate}>
+      {children}
+    </AlbumNavigationContext.Provider>
+  );
+}
+
+export function useAlbumNavigation() {
+  return useContext(AlbumNavigationContext);
+}
 
 function getFallbackArtists(fallback: string): ArtistReference[] {
   return fallback

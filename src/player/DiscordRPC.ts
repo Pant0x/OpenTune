@@ -19,16 +19,12 @@ export interface DiscordPresenceData {
 }
 
 const DISCORD_TEXT_LIMIT = 128;
-const DISCORD_ASSET_URL_LIMIT = 256;
-const TRUSTED_ARTWORK_HOSTS = new Set([
-  "i.ytimg.com",
-  "lh3.googleusercontent.com",
-  "yt3.ggpht.com",
-]);
+const DISCORD_ASSET_URL_LIMIT = 1024;
 const TRUSTED_PRESENCE_LINK_HOSTS = new Set([
   "music.youtube.com",
   "youtube.com",
   "www.youtube.com",
+  "github.com",
 ]);
 
 function sanitizeDiscordText(value: string): string {
@@ -43,7 +39,6 @@ function sanitizeArtworkUrl(value?: string): string | undefined {
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "https:") return undefined;
-    if (!TRUSTED_ARTWORK_HOSTS.has(parsed.hostname)) return undefined;
     const url = parsed.toString();
     if (url.length > DISCORD_ASSET_URL_LIMIT) return undefined;
     return url;

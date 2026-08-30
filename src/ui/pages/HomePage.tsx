@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CylinderCarousel } from "@/components/motion/cylinder-carousel";
-import { PlayActiveIcon } from "@/ui/icons";
+import { PlayActiveIcon, ArrowLeftIcon, ArrowRightIcon } from "@/ui/icons";
 import type { Track } from "../../datasource/types";
 import type { LibraryController, LibraryState } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
@@ -24,40 +23,6 @@ const FALLBACK_QUERIES = [
   "late night music",
   "discover weekly",
 ];
-
-/*
- * The carousel hands each item a square slot; PickCard is portrait and centres itself inside
- * it, so PICKS_ITEM_SIZE is the card's *height* and the width follows from PICKS_ASPECT.
- * Telling the carousel that aspect (see `itemAspect`) is what lets the cards grow this
- * large: without it the fit rule reserves width for a square the card never fills.
- */
-const PICKS_ASPECT = 3 / 4;
-const PICKS_VISIBLE_ITEMS = 5;
-const PICKS_ITEM_SIZE = 250;
-/** How far the carousel shrinks its edge cards. */
-const PICKS_MIN_SCALE = 0.72;
-
-/*
- * Skeleton slots to feed the carousel while suggestions load. Unlike the other loading counts on
- * this page, there is no real count to match here — `topSuggestions` does not exist yet — so
- * this is just enough for the wraparound to feel like a shelf rather than three cards rattling
- * around an empty drum.
- */
-const PICKS_SKELETON_COUNT = 8;
-
-/*
- * Curve depth. The default is 35% of the item size, which on cards this large lifts the
- * centre ones ~38px above the midline — past the stage's clip-path, so their tops get cut.
- * A flatter arc keeps the cylinder legible and the row inside its box.
- */
-const PICKS_ARC = 68;
-
-/*
- * Stage height must clear the tallest thing that can happen: the card, plus half the arc
- * (convex raises the centre cards), plus the hover lift. Sized so nothing reaches the clip
- * edge rather than exactly hugging the card.
- */
-const PICKS_STAGE_HEIGHT = PICKS_ITEM_SIZE + PICKS_ARC ;
 
 /*
  * How each section is sliced from the underlying lists — named rather than left as the literal
@@ -198,7 +163,9 @@ export function HomePage({
     let loadPromise = suggestionLoads.get(suggestionCacheKey);
     if (!loadPromise) {
       loadPromise = (async () => {
-        const seeds = shuffle(recentlyPlayed).slice(0, 3);
+        const likedSongs = libraryState.library?.likedSongs ?? [];
+        const candidatePool = [...recentlyPlayed, ...likedSongs];
+        const seeds = shuffle(candidatePool).slice(0, 4);
         let loaded: Track[] = [];
 
         if (seeds.length > 0) {
@@ -270,79 +237,86 @@ export function HomePage({
     }, 720);
   };
 
+  const madeForYouScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollMadeForYou = (direction: "left" | "right") => {
+    if (madeForYouScrollRef.current) {
+      const scrollAmount = 400;
+      madeForYouScrollRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
+
   const madeForYouSection = (
     <section
-      className={`${"flex flex-col gap-3 overflow-y-visible"} ${
+      className={`flex flex-col gap-3.5 ${
         isLoadingSuggestions ? "opacity-60" : "opacity-100 transition-opacity"
       }`}
     >
-        
       <div className="flex items-center justify-between gap-3">
-        <h3>Made for you</h3>
+        <h2 className="text-xl font-bold tracking-tight text-foreground">Made for you</h2>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => scrollMadeForYou("left")}
+            className="flex size-8 items-center justify-center rounded-full bg-card border border-border/40 text-muted-foreground transition-all hover:bg-card/80 hover:text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Scroll left"
+          >
+            <ArrowLeftIcon size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollMadeForYou("right")}
+            className="flex size-8 items-center justify-center rounded-full bg-card border border-border/40 text-muted-foreground transition-all hover:bg-card/80 hover:text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Scroll right"
+          >
+            <ArrowRightIcon size={16} />
+          </button>
+        </div>
       </div>
-      {/*
-        The picks ride the inside of a cylinder instead of sitting in a grid: the row recedes
-        toward the middle and grows at the edges, so a shelf of recommendations reads as
-        something you roll through rather than a wall you scan. Drag, wheel or arrow-key it.
 
-        `key` forces a fresh mount on the swap from skeleton to real cards, rather than handing
-        one live instance a whole new set of children — `CylinderCarousel` keys its slides on
-        position ("slides are positional and stable", see its own render) because it is built
-        for a fixed deck, not one that gets replaced under it; reusing the instance carried the
-        skeleton's scroll position and measurements into the real carousel. A fresh mount still
-        gets the same `ResizeObserver`-driven sizing, curve and taper — just measured for the
-        content that is actually there.
-      */}
-      <CylinderCarousel
-        key={isLoadingSuggestions ? "skeleton" : "content"}
-        itemSize={PICKS_ITEM_SIZE}
-        height={PICKS_STAGE_HEIGHT}
-        visibleItems={PICKS_VISIBLE_ITEMS}
-        itemAspect={PICKS_ASPECT}
-        arc={PICKS_ARC}
-        /*
-          Convex, not the default concave: a shelf of picks wants its hero in the middle
-          where the eye already is. Concave puts the *largest* cards at the container edge,
-          which is exactly where they get clipped — the biggest, loudest items end up half
-          cut off while the centre of attention holds the smallest one.
-        */
-        minScale={PICKS_MIN_SCALE}
-        variant="convex"
-        className="-mx-4 cursor-grab active:cursor-grabbing overflow-x-clip overflow-y-visible"
+      <div
+        ref={madeForYouScrollRef}
+        className="flex gap-4 overflow-x-auto pb-3 pt-1 scroll-smooth no-scrollbar"
+        style={{ scrollSnapType: "x mandatory" }}
       >
         {isLoadingSuggestions ? (
-          Array.from({ length: PICKS_SKELETON_COUNT }, (_, index) => (
-            <PickCardSkeleton key={index} />
+          Array.from({ length: 7 }, (_, index) => (
+            <div key={index} className="w-[170px] shrink-0" style={{ scrollSnapAlign: "start" }}>
+              <PickCardSkeleton />
+            </div>
           ))
         ) : (
-          /*
-           * A real array, not a `<>Fragment</>` — `CylinderCarousel` walks its children with
-           * `Children.toArray`, which flattens an array but does not reach inside a Fragment.
-           * A Fragment here counted as a single slide holding all twelve cards, which block-
-           * flowed vertically inside that one slot instead of taking one slide each.
-           */
-          [
-            <DiceCard
-              key="dice"
-              tracks={surpriseSuggestions}
-              isSpinning={isSurpriseSpinning}
-              onClick={playSurprise}
-            />,
-            ...topSuggestions.map((track) => (
-              <PickCard
-                key={track.id}
-                artworkUrl={track.artworkUrl}
-                title={track.title}
-                subtitle={track.artist}
-                onContextMenu={(event) => openTrackMenu(event, track)}
-                onSelect={() => playTrack(track, suggestions)}
+          <>
+            <div className="w-[170px] shrink-0" style={{ scrollSnapAlign: "start" }}>
+              <DiceCard
+                key="dice"
+                tracks={surpriseSuggestions}
+                isSpinning={isSurpriseSpinning}
+                onClick={playSurprise}
               />
-            )),
-          ]
+            </div>
+            {topSuggestions.map((track) => (
+              <div
+                key={track.id}
+                className="w-[170px] shrink-0"
+                style={{ scrollSnapAlign: "start" }}
+              >
+                <PickCard
+                  artworkUrl={track.artworkUrl}
+                  title={track.title}
+                  subtitle={track.artist}
+                  onContextMenu={(event) => openTrackMenu(event, track)}
+                  onSelect={() => playTrack(track, suggestions)}
+                />
+              </div>
+            ))}
+          </>
         )}
-      </CylinderCarousel>
+      </div>
       {isLoadingSuggestions && <span className="sr-only" role="status">Loading suggestions</span>}
-
     </section>
   );
 

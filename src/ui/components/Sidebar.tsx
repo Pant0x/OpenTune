@@ -18,7 +18,11 @@ import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import {
   AlbumIcon,
   CheckIcon,
+  ClockIcon,
   CloseIcon,
+  CompassIcon,
+  DownloadIcon,
+  MusicNoteIcon,
   PlaylistIcon,
   RefreshIcon,
   SearchIcon,
@@ -122,6 +126,10 @@ interface SidebarProps {
   onWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
+  onNavigateHistory?: () => void;
+  onNavigateLibrary?: () => void;
+  onNavigateBrowse?: () => void;
+  onNavigateDownloads?: () => void;
 }
 
 /**
@@ -509,6 +517,10 @@ export function Sidebar({
   onWidthChange,
   onNavigateAlbum,
   onNavigatePlaylist,
+  onNavigateHistory,
+  onNavigateLibrary,
+  onNavigateBrowse,
+  onNavigateDownloads,
 }: SidebarProps) {
   const libraryState = useLibraryState();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -1527,6 +1539,70 @@ export function Sidebar({
                 )}
               </div>
             )
+          )}
+        </div>
+
+        {/* Navigation Pages Bottom Separator & Buttons */}
+        <div className="mt-auto shrink-0 border-t border-border/40 pt-2 pb-1 flex flex-col gap-1 px-1">
+          {onNavigateLibrary && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Library" subtitle="Your music collection">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateLibrary}
+              >
+                <MusicNoteIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Library</span>}
+              </button>
+            </SidebarItemTooltip>
+          )}
+          {onNavigateBrowse && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Browse" subtitle="Explore new music">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateBrowse}
+              >
+                <CompassIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Browse</span>}
+              </button>
+            </SidebarItemTooltip>
+          )}
+          {onNavigateHistory && (
+            <SidebarItemTooltip enabled={shouldHideText} title="History" subtitle="Recently played">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateHistory}
+              >
+                <ClockIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">History</span>}
+              </button>
+            </SidebarItemTooltip>
+          )}
+          {onNavigateDownloads && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Downloads" subtitle="Offline tracks">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateDownloads}
+              >
+                <DownloadIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Downloads</span>}
+              </button>
+            </SidebarItemTooltip>
           )}
         </div>
       </div>

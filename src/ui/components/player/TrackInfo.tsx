@@ -7,13 +7,14 @@ import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
 import { usePlayerUIState } from "../../stores/playerUIStore";
 import { TrackArtwork } from "../TrackArtwork";
-import { ArtistLinks } from "../ArtistLinks";
+import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 
 export function TrackInfo() {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
+  const navigateAlbum = useAlbumNavigation();
   const { openTrackMenu, toggleTrackLike } = useTrackContextMenu();
   const currentTrack = state.currentTrack;
   const titleViewportRef = useRef<HTMLDivElement>(null);
@@ -86,8 +87,32 @@ export function TrackInfo() {
             </Marquee>
           )}
         </div>
-        <div className="truncate text-xs text-muted-foreground">
-          <ArtistLinks artists={currentTrack.artists} fallback={currentTrack.artist} />
+        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="truncate">
+            <ArtistLinks artists={currentTrack.artists} fallback={currentTrack.artist} />
+          </span>
+          {currentTrack.album && (
+            <>
+              <span className="shrink-0 opacity-40">•</span>
+              <button
+                type="button"
+                className="hover:underline hover:text-foreground transition-colors truncate focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-left"
+                onClick={() => {
+                  if (navigateAlbum) {
+                    navigateAlbum({
+                      id: currentTrack.albumId || currentTrack.album!,
+                      title: currentTrack.album!,
+                      artist: currentTrack.artist,
+                      artworkUrl: currentTrack.artworkUrl,
+                    });
+                  }
+                }}
+                title={currentTrack.album}
+              >
+                {currentTrack.album}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
