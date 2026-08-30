@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
+import { ArrowLeftIcon, ArrowRightIcon, PlayActiveIcon } from "@/ui/icons";
 import type { Album, Artist, BrowseLink, BrowseShelf, Playlist, Track } from "../../datasource/types";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import { AlbumCard } from "./AlbumCard";
@@ -8,24 +10,21 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 import { useTrackContextMenu } from "./TrackContextMenu";
 
-/** Horizontal, scrollable, and clipped at the edge so there is a hint of more. */
-const SHELF_ROW = "flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
-
 function ArtistTile({ artist, onOpen }: { artist: Artist; onOpen: () => void }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-32 shrink-0 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex w-36 shrink-0 flex-col items-center gap-2.5 rounded-2xl p-3 text-center transition-all hover:bg-card hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <TrackArtwork
-        className="size-24 rounded-full"
-        size={96}
+        className="size-28 rounded-full shadow-md transition-transform group-hover:scale-105"
+        size={112}
         artworkUrl={artist.artworkUrl}
-        iconSize={28}
+        iconSize={32}
         variant="artist"
       />
-      <span className="line-clamp-2 text-xs font-medium text-foreground">{artist.name}</span>
+      <span className="line-clamp-2 text-xs font-semibold text-foreground tracking-tight">{artist.name}</span>
     </button>
   );
 }
@@ -35,28 +34,206 @@ function PlaylistTile({ playlist, onOpen }: { playlist: Playlist; onOpen: () => 
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-36 shrink-0 flex-col gap-2 rounded-xl p-2 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex w-40 shrink-0 flex-col gap-2 rounded-2xl p-2.5 text-left transition-all hover:bg-card hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <TrackArtwork
-        className="size-32 rounded-lg"
-        size={128}
-        artworkUrl={playlist.artworkUrl}
-        iconSize={28}
-        variant="playlist"
-      />
-      <span className="line-clamp-2 text-xs font-medium text-foreground">{playlist.title}</span>
-      <span className="truncate text-[11px] text-muted-foreground">{playlist.owner}</span>
+      <div className="relative overflow-hidden rounded-xl shadow-md">
+        <TrackArtwork
+          className="size-36 rounded-xl object-cover transition-transform group-hover:scale-105"
+          size={144}
+          artworkUrl={playlist.artworkUrl}
+          iconSize={32}
+          variant="playlist"
+        />
+      </div>
+      <span className="line-clamp-2 text-xs font-semibold text-foreground tracking-tight">{playlist.title}</span>
+      {playlist.owner ? (
+        <span className="line-clamp-1 text-[11px] text-muted-foreground">{playlist.owner}</span>
+      ) : null}
     </button>
   );
 }
 
+function BrowseShelfSection({
+  shelf,
+  playerController,
+  currentTrackId,
+  isPlaying,
+  onOpenAlbum,
+  onOpenArtist,
+  onOpenPlaylist,
+  onFollowLink,
+}: {
+  shelf: BrowseShelf;
+  playerController: PlayerControllerActions;
+  currentTrackId: string | null;
+  isPlaying: boolean;
+  onOpenAlbum: (album: Album) => void;
+  onOpenArtist: (artist: Artist) => void;
+  onOpenPlaylist: (playlist: Playlist) => void;
+  onFollowLink?: (link: BrowseLink) => void;
+}) {
+  const { openTrackMenu, openPlaylistPicker } = useTrackContextMenu();
+  const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scroll = (direction: "left" | "right") => {
+    if (!scrollRef.current) return;
+    const distance = direction === "left" ? -480 : 480;
+    scrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
+  };
+
+  const playShelfTrack = (shelfTracks: Track[], track: Track) => {
+    void playerController.playTrackById(track.id, shelfTracks);
+  };
+
+  const hasMultipleItems =
+    shelf.tracks.length > 4 ||
+    shelf.albums.length > 4 ||
+    shelf.playlists.length > 4 ||
+    shelf.artists.length > 4;
+
+  return (
+    <section className="flex flex-col gap-3.5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-foreground tracking-tight">{shelf.title}</h2>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {shelf.tracks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => playShelfTrack(shelf.tracks, shelf.tracks[0])}
+              className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground transition-all hover:bg-muted hover:scale-105 active:scale-95 border border-border/40"
+            >
+              <PlayActiveIcon size={14} className="text-primary" />
+              <span>Play all</span>
+            </button>
+          )}
+
+          {hasMultipleItems && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Scroll left"
+                onClick={() => scroll("left")}
+                className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40"
+              >
+                <ArrowLeftIcon size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="Scroll right"
+                onClick={() => scroll("right")}
+                className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40"
+              >
+                <ArrowRightIcon size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {shelf.tracks.length > 0 && (
+        <div
+          ref={scrollRef}
+          className={cn(
+            shelf.tracks.length > 4
+              ? "grid grid-rows-4 grid-flow-col auto-cols-[minmax(280px,360px)] gap-x-4 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+              : "flex flex-col gap-0.5",
+          )}
+        >
+          {shelf.tracks.map((track, index) => (
+            <div key={`${track.id}:${index}`} className="snap-start">
+              <TrackRow
+                track={track}
+                index={index}
+                isCurrent={currentTrackId === track.id}
+                isPlaying={isPlaying && currentTrackId === track.id}
+                onSelect={() => playShelfTrack(shelf.tracks, track)}
+                onContextMenu={(event) => openTrackMenu(event, track)}
+                onQuickAdd={() => openPlaylistPicker(track)}
+                onQuickAddToQueue={() => playerController.addToQueue(track)}
+                showDownload
+                showRating
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {onFollowLink && shelf.links.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {shelf.links.map((link) => (
+            <button
+              key={link.browseId}
+              type="button"
+              onClick={() => onFollowLink(link)}
+              className="rounded-full bg-card px-3.5 py-1.5 text-xs font-medium text-foreground transition-all hover:bg-muted hover:scale-105 active:scale-95 border border-border/40"
+            >
+              {link.title}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {shelf.albums.length > 0 && (
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+        >
+          {shelf.albums.map((album) => (
+            <div
+              key={album.id}
+              className="w-40 shrink-0 snap-start"
+              onContextMenu={(event) => openAlbumMenu(event, album)}
+            >
+              <AlbumCard
+                artworkUrl={album.artworkUrl}
+                title={album.title}
+                subtitle={album.artist ? `Album • ${album.artist}` : undefined}
+                onClick={() => onOpenAlbum(album)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {shelf.playlists.length > 0 && (
+        <div
+          ref={scrollRef}
+          className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+        >
+          {shelf.playlists.map((playlist) => (
+            <div
+              key={playlist.id}
+              className="w-40 shrink-0 snap-start"
+              onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+            >
+              <PlaylistTile playlist={playlist} onOpen={() => onOpenPlaylist(playlist)} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {shelf.artists.length > 0 && (
+        <div
+          ref={scrollRef}
+          className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+        >
+          {shelf.artists.map((artist) => (
+            <div key={artist.id} className="snap-start">
+              <ArtistTile artist={artist} onOpen={() => onOpenArtist(artist)} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
- * Renders browse shelves: song rows, then chips, then artwork rails.
- *
- * Shared by the Browse surfaces and the Related page, which receive the same shelf shape from
- * different endpoints. The ordering inside a shelf is fixed rather than following the response,
- * because songs read as a list and everything else reads as artwork, and interleaving the two
- * produced a column that changed rhythm every few rows.
+ * Renders browse shelves with responsive Spotify/YT Music styling, Play all, and scroll arrows.
  */
 export function BrowseShelves({
   shelves,
@@ -77,104 +254,21 @@ export function BrowseShelves({
   className?: string;
 }) {
   const { currentTrackId, isPlaying } = useNowPlaying();
-  const { openTrackMenu, openPlaylistPicker } = useTrackContextMenu();
-  const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
-
-  const playShelfTrack = (shelfTracks: Track[], track: Track) => {
-    void playerController.playTrackById(track.id, shelfTracks);
-  };
 
   return (
-    <div className={cn("flex flex-col gap-8", className)}>
+    <div className={cn("flex flex-col gap-10", className)}>
       {shelves.map((shelf) => (
-        <section key={shelf.title} className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold text-foreground">{shelf.title}</h2>
-
-          {shelf.tracks.length > 0 && (
-            <div
-              className={cn(
-                shelf.tracks.length > 4
-                  ? "grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(18rem,1fr))]"
-                  : "flex flex-col gap-0.5",
-              )}
-            >
-              {shelf.tracks.map((track, index) => (
-                <TrackRow
-                  key={`${track.id}:${index}`}
-                  track={track}
-                  index={index}
-                  isCurrent={currentTrackId === track.id}
-                  isPlaying={isPlaying && currentTrackId === track.id}
-                  onSelect={() => playShelfTrack(shelf.tracks, track)}
-                  onContextMenu={(event) => openTrackMenu(event, track)}
-                  onQuickAdd={() => openPlaylistPicker(track)}
-                  onQuickAddToQueue={() => playerController.addToQueue(track)}
-                  showDownload
-                  showRating
-                />
-              ))}
-            </div>
-          )}
-
-          {onFollowLink && shelf.links.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {shelf.links.map((link) => (
-                <button
-                  key={link.browseId}
-                  type="button"
-                  onClick={() => onFollowLink(link)}
-                  className="rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {link.title}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {shelf.albums.length > 0 && (
-            <div className={SHELF_ROW}>
-              {shelf.albums.map((album) => (
-                <div
-                  key={album.id}
-                  className="w-36 shrink-0"
-                  onContextMenu={(event) => openAlbumMenu(event, album)}
-                >
-                  <AlbumCard
-                    artworkUrl={album.artworkUrl}
-                    title={album.title}
-                    subtitle={album.artist}
-                    onClick={() => onOpenAlbum(album)}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {shelf.playlists.length > 0 && (
-            <div className={SHELF_ROW}>
-              {shelf.playlists.map((playlist) => (
-                <div
-                  key={playlist.id}
-                  onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-                >
-                  <PlaylistTile playlist={playlist} onOpen={() => onOpenPlaylist(playlist)} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {shelf.artists.length > 0 && (
-            <div className={SHELF_ROW}>
-              {shelf.artists.map((artist) => (
-                <ArtistTile
-                  key={artist.id}
-                  artist={artist}
-                  onOpen={() => onOpenArtist(artist)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        <BrowseShelfSection
+          key={shelf.title}
+          shelf={shelf}
+          playerController={playerController}
+          currentTrackId={currentTrackId}
+          isPlaying={isPlaying}
+          onOpenAlbum={onOpenAlbum}
+          onOpenArtist={onOpenArtist}
+          onOpenPlaylist={onOpenPlaylist}
+          onFollowLink={onFollowLink}
+        />
       ))}
     </div>
   );

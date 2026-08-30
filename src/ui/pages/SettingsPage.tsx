@@ -142,10 +142,6 @@ import {
   useNativeWindowControls,
   useWindowsStyleWindowControls,
 } from "../settings/windowControls";
-import {
-  setMainWindowGeometryPersistenceEnabled,
-  useMainWindowGeometryPersistenceEnabled,
-} from "../settings/mainWindowGeometry";
 import { setMinimizeToTray, useMinimizeToTray } from "../settings/tray";
 import {
   setLinuxMediaSession,
@@ -812,7 +808,6 @@ export function SettingsPage({
     }
     if (!goingNative) setWindowsStyleWindowControls(style === "windows");
   };
-  const mainWindowGeometryPersistenceEnabled = useMainWindowGeometryPersistenceEnabled();
   const minimizeToTray = useMinimizeToTray();
   const linuxMediaSession = useLinuxMediaSession();
   const offlineState = useOfflineState();
@@ -1870,12 +1865,6 @@ export function SettingsPage({
             />
 
 
-            <SettingToggle
-              title="Remember window size and location"
-              description="Reopen the main window with its last size and screen position."
-              checked={mainWindowGeometryPersistenceEnabled}
-              onCheckedChange={setMainWindowGeometryPersistenceEnabled}
-            />
 
 
           </section>

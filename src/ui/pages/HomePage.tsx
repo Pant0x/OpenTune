@@ -95,6 +95,31 @@ function uniqueTracks(tracks: readonly Track[]): Track[] {
   return [...new Map(tracks.map((track) => [track.id, track])).values()];
 }
 
+let cachedGlobalHomeShelves: BrowseShelf[] | null = null;
+
+function organizeHomeShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
+  if (!rawShelves.length) return [];
+  // Find Quick picks or top tracks shelf
+  const quickPicksIndex = rawShelves.findIndex(
+    (s) =>
+      s.title.toLowerCase().includes("quick pick") ||
+      s.title.toLowerCase().includes("picks for you") ||
+      (s.tracks.length >= 4 &&
+        !s.title.toLowerCase().includes("trending") &&
+        !s.title.toLowerCase().includes("cover") &&
+        !s.title.toLowerCase().includes("short") &&
+        !s.title.toLowerCase().includes("long")),
+  );
+
+  if (quickPicksIndex > 0) {
+    const quickPicks = rawShelves[quickPicksIndex];
+    const rest = rawShelves.filter((_, i) => i !== quickPicksIndex);
+    return [quickPicks, ...rest];
+  }
+
+  return rawShelves;
+}
+
 export function HomePage({
   tabId,
   playerController,
@@ -109,19 +134,23 @@ export function HomePage({
 }: HomePageProps) {
   const { openTrackMenu } = useTrackContextMenu();
   const showMadeForYou = useMadeForYouVisible();
-  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>([]);
-  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(true);
+  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>(() => cachedGlobalHomeShelves ?? []);
+  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(() => !cachedGlobalHomeShelves);
 
   useEffect(() => {
     let active = true;
-    setIsLoadingHomeShelves(true);
+    if (!cachedGlobalHomeShelves) {
+      setIsLoadingHomeShelves(true);
+    }
     void libraryController
       .getBrowsePage("home")
       .then((page) => {
         if (!active) return;
-        setHomeShelves(page.shelves);
+        const organized = organizeHomeShelves(page.shelves);
+        cachedGlobalHomeShelves = organized;
+        setHomeShelves(organized);
         setIsLoadingHomeShelves(false);
-        const firstTrackShelf = page.shelves.find((s) => s.tracks.length > 0);
+        const firstTrackShelf = organized.find((s) => s.tracks.length > 0);
         if (firstTrackShelf && firstTrackShelf.tracks.length > 0) {
           setSuggestions(firstTrackShelf.tracks);
           setIsLoadingSuggestions(false);
@@ -368,22 +397,33 @@ export function HomePage({
         </section>
       )}
 
-      {showMadeForYou && madeForYouSection}
-
-      {/* Directly under the carousel: the picks are what you came for, these are where you
-          go when none of them appeal. */}
-      <HomeDestinations {...destinations} />
-
-      {homeShelves.length > 0 ? (
+      {/* Top Shelf: Quick picks / Personalized tracks */}
+      {homeShelves.length > 0 && (
         <BrowseShelves
-          shelves={homeShelves}
+          shelves={[homeShelves[0]]}
           playerController={playerController}
           onOpenAlbum={onOpenAlbum ?? (() => {})}
           onOpenArtist={onOpenArtist ?? (() => {})}
           onOpenPlaylist={onOpenPlaylist ?? (() => {})}
         />
-      ) : (
+      )}
+
+      {/* Navigation Shortcuts */}
+      <HomeDestinations {...destinations} />
+
+      {/* All remaining personalized shelves: Albums for you, Mixed for you, Trending, etc. */}
+      {homeShelves.length > 1 ? (
+        <BrowseShelves
+          shelves={homeShelves.slice(1)}
+          playerController={playerController}
+          onOpenAlbum={onOpenAlbum ?? (() => {})}
+          onOpenArtist={onOpenArtist ?? (() => {})}
+          onOpenPlaylist={onOpenPlaylist ?? (() => {})}
+        />
+      ) : homeShelves.length === 0 ? (
         <>
+          {showMadeForYou && madeForYouSection}
+
           {compactRecent.length === 0 && isWaitingForLibrary && (
             <section className="flex flex-col gap-3">
               <h2 className="text-xl font-semibold text-foreground">Recently played</h2>
@@ -489,7 +529,7 @@ export function HomePage({
             </div>
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }

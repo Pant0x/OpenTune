@@ -123,15 +123,10 @@ impl DiscordRpcManager {
 
         let assets = json!({
             "large_image": artwork_key,
-            "large_text": if data.album.is_empty() { data.title.clone() } else { format!("{} • {}", data.title, data.album) },
-            "small_image": AMBER_LOGO_ASSET_KEY,
-            "small_text": "Amber Music",
         });
 
         let mut activity = json!({
             "name": "Amber",
-            "type": 2, // LISTENING
-            "details": data.title,
             "state": state_str,
             "assets": assets,
         });
@@ -348,9 +343,6 @@ impl DiscordRpcManager {
 
                             let assets = json!({
                                 "large_image": artwork_key,
-                                "large_text": if data.album.is_empty() { data.title.clone() } else { format!("{} • {}", data.title, data.album) },
-                                "small_image": AMBER_LOGO_ASSET_KEY,
-                                "small_text": "Amber Music",
                             });
 
                             let activity = json!({
