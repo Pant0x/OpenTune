@@ -17,6 +17,7 @@ interface LayoutProps {
   onNavigateLibrary?: () => void;
   onNavigateBrowse?: () => void;
   onNavigateDownloads?: () => void;
+  onNavigateLocalFiles?: () => void;
   onSearch?: (query: string, openInNewTab?: boolean) => void;
   showSearchBar: boolean;
   onOpenSearch: () => void;
@@ -54,6 +55,7 @@ export function Layout({
   onNavigateLibrary,
   onNavigateBrowse,
   onNavigateDownloads,
+  onNavigateLocalFiles,
   onSearch,
   showSearchBar,
   onOpenSearch,
@@ -252,6 +254,7 @@ export function Layout({
             onNavigateLibrary={onNavigateLibrary}
             onNavigateBrowse={onNavigateBrowse}
             onNavigateDownloads={onNavigateDownloads}
+            onNavigateLocalFiles={onNavigateLocalFiles}
           />
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { ArrowDownIcon, ArrowUpIcon, CloseIcon, FolderAddIcon, SearchIcon } from "@/ui/icons";
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon, CloudIcon, FolderAddIcon, SearchIcon } from "@/ui/icons";
 import type { Playlist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
@@ -253,6 +253,9 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
   const [sort, setSort] = useState<PlaylistSort>("dateAdded");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState("");
+  const [showCloudSyncModal, setShowCloudSyncModal] = useState(false);
+  const [syncingCloud, setSyncingCloud] = useState(false);
+  const [cloudSynced, setCloudSynced] = useState(false);
   const [dropTargetIndex, setDropTargetIndex] = useState<{ localPath: string; insertAfter: boolean } | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const playlistSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -741,21 +744,34 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
           {...(isLocalPlaylistView
             ? {
               actions: (
-                <Tooltip content="Add a folder of music to this playlist">
-                  <button
-                    type="button"
-                    onClick={() => void handleAddLocalFolder()}
-                    disabled={isChoosingFolder}
-                    aria-label="Add a music folder"
-                    className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {isChoosingFolder ? (
-                      <SpinnerSteps size={18} color="currentColor" />
-                    ) : (
-                      <FolderAddIcon size={18} aria-hidden="true" />
-                    )}
-                  </button>
-                </Tooltip>
+                <div className="flex items-center gap-2">
+                  <Tooltip content="Add a folder of music to this playlist">
+                    <button
+                      type="button"
+                      onClick={() => void handleAddLocalFolder()}
+                      disabled={isChoosingFolder}
+                      aria-label="Add a music folder"
+                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {isChoosingFolder ? (
+                        <SpinnerSteps size={18} color="currentColor" />
+                      ) : (
+                        <FolderAddIcon size={18} aria-hidden="true" />
+                      )}
+                    </button>
+                  </Tooltip>
+
+                  <Tooltip content="Sync playlist to Amber Cloud">
+                    <button
+                      type="button"
+                      onClick={() => setShowCloudSyncModal(true)}
+                      aria-label="Sync playlist to cloud"
+                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <CloudIcon size={18} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </div>
               ),
             }
             : {})}
@@ -990,6 +1006,71 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
           selection.clear();
         }}
       />
+
+      {showCloudSyncModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="flex w-full max-w-md flex-col gap-4 rounded-2xl border border-border/60 bg-card p-6 shadow-xl">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+                <CloudIcon size={22} aria-hidden="true" />
+              </span>
+              <div className="flex flex-col">
+                <h3 className="text-base font-semibold text-foreground">Sync to Amber Cloud</h3>
+                <span className="text-xs text-muted-foreground">Backup & cross-device sync</span>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Do you want to sync <strong className="text-foreground">{playlist?.title}</strong> to your Amber Cloud account? 
+              This makes your playlist accessible and synced across all your devices.
+            </p>
+
+            {cloudSynced ? (
+              <div className="rounded-xl bg-primary/10 p-3 text-center text-sm font-medium text-primary">
+                Playlist synced successfully to Amber Cloud!
+              </div>
+            ) : null}
+
+            <div className="mt-2 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCloudSyncModal(false);
+                  setCloudSynced(false);
+                }}
+                className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {cloudSynced ? "Done" : "Cancel"}
+              </button>
+              {!cloudSynced && (
+                <button
+                  type="button"
+                  disabled={syncingCloud}
+                  onClick={async () => {
+                    setSyncingCloud(true);
+                    try {
+                      if (playlist) {
+                        const created = await libraryController.createPlaylist(playlist.title, { local: false });
+                        if (tracks.length > 0) {
+                          await libraryController.addTracksToPlaylist(tracks, created);
+                        }
+                        setCloudSynced(true);
+                      }
+                    } catch (e) {
+                      console.error("Cloud sync failed", e);
+                    } finally {
+                      setSyncingCloud(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                >
+                  {syncingCloud ? "Syncing..." : "Sync Playlist"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

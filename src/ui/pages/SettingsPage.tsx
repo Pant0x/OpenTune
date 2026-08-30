@@ -44,7 +44,6 @@ import {
   CloseIcon,
   DiscordIcon,
   DownloadIcon,
-  FolderAddIcon,
   FolderIcon,
   FolderOpenIcon,
   GoogleIcon,
@@ -185,15 +184,8 @@ import {
   useKeyboardShortcuts,
   type KeyboardShortcutAction,
 } from "../settings/keyboardShortcuts";
-import {
-  addLocalPlaylistPath,
-  createLocalPlaylist,
-  createPlaylistsFromFolder,
-  deleteLocalPlaylist,
-  getLocalPlaylists,
-  removeLocalPlaylistPath,
-  subscribeToLocalPlaylists,
-} from "../../player/localPlaylists";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useLocalMusicFolder, setLocalMusicFolder } from "../../player/localFilesManager";
 import { DiscordRpcService } from "../../player/DiscordRPC";
 import { useDiscordPresenceEnabled } from "../settings/discord";
 import { isLinux, isTilingWindowManager, subscribeTilingWindowManager } from "../platform";
@@ -723,12 +715,6 @@ export function SettingsPage({
   const [resetSettingsConfirming, setResetSettingsConfirming] = useState(false);
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
-  const [localPlaylistName, setLocalPlaylistName] = useState("");
-  const [localPlaylistPathInputs, setLocalPlaylistPathInputs] = useState<Record<string, string>>({});
-  const [localPlaylistError, setLocalPlaylistError] = useState<string | null>(null);
-  const [localPlaylistBrowsingId, setLocalPlaylistBrowsingId] = useState<string | null>(null);
-  const [createFromFolderBusy, setCreateFromFolderBusy] = useState(false);
-  const [createFromFolderError, setCreateFromFolderError] = useState<string | null>(null);
   const { profile, updateUsername, updateAvatarUrl, signOut: authSignOut } = useAuthProfile();
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -837,11 +823,7 @@ export function SettingsPage({
   );
   const [clearingDownloads, setClearingDownloads] = useState(false);
   const discordPresenceEnabled = useDiscordPresenceEnabled();
-  const localPlaylists = useSyncExternalStore(
-    subscribeToLocalPlaylists,
-    getLocalPlaylists,
-    getLocalPlaylists,
-  );
+  const localMusicFolder = useLocalMusicFolder();
   const account = libraryState.library?.account;
   // Confirmed by YouTube rather than inferred from cached data — see LibraryState.
   const isSignedIn = libraryState.status === "ready"
@@ -1003,70 +985,6 @@ export function SettingsPage({
       setResetSettingsError("Unable to delete all app data.");
       setResetSettingsBusy(false);
       setResetSettingsConfirming(false);
-    }
-  };
-
-  const handleCreateLocalPlaylist = () => {
-    setLocalPlaylistError(null);
-    try {
-      createLocalPlaylist(localPlaylistName);
-      setLocalPlaylistName("");
-    } catch (error) {
-      setLocalPlaylistError(error instanceof Error ? error.message : "Unable to create local playlist.");
-    }
-  };
-
-  const handleAddLocalPlaylistPath = (playlistId: string) => {
-    setLocalPlaylistError(null);
-    const path = localPlaylistPathInputs[playlistId]?.trim() ?? "";
-    if (!path) {
-      setLocalPlaylistError("Enter a folder path before adding it.");
-      return;
-    }
-    addLocalPlaylistPath(playlistId, path);
-    setLocalPlaylistPathInputs((current) => ({ ...current, [playlistId]: "" }));
-  };
-
-  const handleBrowseLocalPlaylistPath = async (playlistId: string) => {
-    setLocalPlaylistError(null);
-    setLocalPlaylistBrowsingId(playlistId);
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-        title: "Choose music folder",
-      });
-      if (typeof selected !== "string") return;
-      addLocalPlaylistPath(playlistId, selected);
-      setLocalPlaylistPathInputs((current) => ({
-        ...current,
-        [playlistId]: "",
-      }));
-    } catch {
-      setLocalPlaylistError("Unable to open the folder picker.");
-    } finally {
-      setLocalPlaylistBrowsingId(null);
-    }
-  };
-
-  const handleCreateFromFolder = async () => {
-    setCreateFromFolderError(null);
-    setCreateFromFolderBusy(true);
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-        title: "Choose music folder (albums will be split into separate playlists)",
-      });
-      if (typeof selected !== "string") return;
-      const created = await createPlaylistsFromFolder(selected);
-      if (created.length === 0) {
-        setCreateFromFolderError("No audio files found in the selected folder.");
-      }
-    } catch (error) {
-      setCreateFromFolderError(error instanceof Error ? error.message : "Failed to create playlists from folder.");
-    } finally {
-      setCreateFromFolderBusy(false);
     }
   };
 
@@ -1599,130 +1517,48 @@ export function SettingsPage({
               title="Local music"
               titleId="library-local-title"
               icon={<FolderIcon size={18} aria-hidden="true" />}
-              description="Folders on this computer, scanned into playlists."
+              description="Choose a music folder on your computer to play local audio files in Amber."
             />
 
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="flex flex-col gap-0.5">
-                  <strong className="text-sm font-medium text-foreground">Local playlists</strong>
-                  <span className="text-sm text-muted-foreground">Create playlists from folders on this computer.</span>
+                  <strong className="text-sm font-medium text-foreground">Local Music Folder</strong>
+                  <span className="text-sm text-muted-foreground break-all">
+                    {localMusicFolder ? localMusicFolder : "No folder currently selected. Choose a folder containing your audio tracks."}
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                  <input
-                    className={cn(SETTINGS_FIELD, "w-56")}
-                    type="text"
-                    value={localPlaylistName}
-                    placeholder="Playlist name"
-                    aria-label="Local playlist name"
-                    onChange={(event) => setLocalPlaylistName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") handleCreateLocalPlaylist();
+                  <button
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const selected = await open({ directory: true, multiple: false, title: "Select Local Music Folder" });
+                        if (selected && typeof selected === "string") {
+                          setLocalMusicFolder(selected);
+                        }
+                      } catch (e) {
+                        console.error(e);
+                      }
                     }}
-                  />
-                  <button
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    onClick={handleCreateLocalPlaylist}
-                  >
-                    <FolderAddIcon size={18} />
-                    Create
-                  </button>
-                  <button
-                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    onClick={handleCreateFromFolder}
-                    disabled={createFromFolderBusy}
                   >
                     <FolderOpenIcon size={18} />
-                    Create from folder (split by album)
+                    {localMusicFolder ? "Change Folder" : "Choose Folder"}
                   </button>
+                  {localMusicFolder && (
+                    <button
+                      className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      type="button"
+                      onClick={() => setLocalMusicFolder(null)}
+                    >
+                      <TrashIcon size={16} />
+                      Remove Folder
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {localPlaylistError && <p className="text-sm text-destructive">{localPlaylistError}</p>}
-              {createFromFolderError && <p className="text-sm text-destructive">{createFromFolderError}</p>}
-              {createFromFolderBusy && <p className="text-sm text-muted-foreground">Scanning folder and creating playlists...</p>}
-
-              {localPlaylists.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  {localPlaylists.map((playlist) => (
-                    <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4 text-sm" key={playlist.id}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="flex items-center gap-2 truncate font-medium text-foreground">
-                          <FolderIcon size={18} aria-hidden="true" />
-                          {playlist.name}
-                        </span>
-                        <button
-                          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                          type="button"
-                          onClick={() => deleteLocalPlaylist(playlist.id)}
-                        >
-                          <TrashIcon size={16} />
-                          Delete
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          className={cn(SETTINGS_FIELD, "min-w-[240px] flex-1")}
-                          type="text"
-                          value={localPlaylistPathInputs[playlist.id] ?? ""}
-                          placeholder="/Users/name/Music or C:\Music"
-                          aria-label={`Folder path for ${playlist.name}`}
-                          onChange={(event) => setLocalPlaylistPathInputs((current) => ({
-                            ...current,
-                            [playlist.id]: event.target.value,
-                          }))}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") handleAddLocalPlaylistPath(playlist.id);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                          disabled={localPlaylistBrowsingId === playlist.id}
-                          title="Browse for folder"
-                          aria-label={`Browse for a folder for ${playlist.name}`}
-                          onClick={() => void handleBrowseLocalPlaylistPath(playlist.id)}
-                        >
-                          <FolderOpenIcon size={16} aria-hidden="true" />
-                          Browse
-                        </button>
-                        <button
-                          className="flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                          type="button"
-                          onClick={() => handleAddLocalPlaylistPath(playlist.id)}
-                        >
-                          Add Path
-                        </button>
-                      </div>
-
-                      {playlist.paths.length > 0 ? (
-                        <div className="flex flex-col gap-1.5 pt-1">
-                          {playlist.paths.map((path) => (
-                            <div className="flex items-center justify-between gap-3 rounded-lg bg-card/60 px-3 py-2 text-xs" key={path}>
-                              <span className="truncate text-muted-foreground">{path}</span>
-                              <button
-                                type="button"
-                                className="text-muted-foreground hover:text-destructive transition-colors"
-                                aria-label={`Remove ${path}`}
-                                onClick={() => removeLocalPlaylistPath(playlist.id, path)}
-                              >
-                                <TrashIcon size={15} aria-hidden="true" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="px-1 py-1 text-xs text-muted-foreground">No paths added to this playlist yet.</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="library-storage-title">

@@ -32,6 +32,9 @@ const BrowsePage = lazy(() =>
 const HistoryPage = lazy(() =>
   import("./pages/HistoryPage").then((m) => ({ default: m.HistoryPage })),
 );
+const LocalFilesPage = lazy(() =>
+  import("./pages/LocalFilesPage").then((m) => ({ default: m.LocalFilesPage })),
+);
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
@@ -173,6 +176,8 @@ function getNavigationKey(state: TabViewState): string {
       return "browse";
     case "library":
       return "library";
+    case "local-files":
+      return "local-files";
   }
 }
 
@@ -1138,6 +1143,23 @@ useMediaSession(playerState, playerController);
     setNextTabId((currentId) => currentId + 1);
   };
 
+  const handleOpenLocalFiles = () => {
+    playerUIStore.setLyricsOpen(false);
+    const existing = tabs.find((tab) => tab.view === "local-files");
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newId = nextTabId.toString();
+    setTabs((prevTabs) => [
+      ...prevTabs,
+      { id: newId, view: "local-files", title: "Local Files" },
+    ]);
+    setActiveTabId(newId);
+    setNextTabId((currentId) => currentId + 1);
+  };
+
   const handleCloseTab = (tabId: string) => {
     playerUIStore.setLyricsOpen(false);
     if (tabs.length === 1) return;
@@ -1630,6 +1652,7 @@ const backOnboardingStep = () => {
           onNavigateLibrary={handleOpenLibrary}
           onNavigateBrowse={() => handleOpenBrowse()}
           onNavigateDownloads={() => handleOpenBrowse("downloads")}
+          onNavigateLocalFiles={handleOpenLocalFiles}
           onSearch={(q, openInNewTab = false) => handleSearch(q, openInNewTab)}
           showSearchBar={activeTab?.view !== "settings" && !playerUIState.isLyricsOpen}
           onOpenSearch={() => setIsSearchOpen(true)}
@@ -1757,6 +1780,12 @@ const backOnboardingStep = () => {
             )}
             {activeTab?.view === "history" && (
               <HistoryPage playerController={playerController} />
+            )}
+            {activeTab?.view === "local-files" && (
+              <LocalFilesPage
+                playerController={playerController}
+                onNavigatePlaylist={handleNavigatePlaylist}
+              />
             )}
             {activeTab?.view === "settings" && (
               <SettingsPage

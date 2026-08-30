@@ -87,7 +87,7 @@ function normalizePlaylist(value: unknown): LocalPlaylist | null {
   };
 }
 
-function readLocalPlaylists(): LocalPlaylist[] {
+export function readLocalPlaylists(): LocalPlaylist[] {
   if (typeof window === "undefined") return [];
   hydrateLocalPlaylistStorage();
   const raw = localStorage.getItem(STORAGE_KEY) ?? "[]";
@@ -107,7 +107,7 @@ function readLocalPlaylists(): LocalPlaylist[] {
   }
 }
 
-function writeLocalPlaylists(playlists: LocalPlaylist[]): void {
+export function writeLocalPlaylists(playlists: LocalPlaylist[]): void {
   queueMicrotask(syncLocalAudioWatcher);
   if (typeof window === "undefined") return;
   const raw = JSON.stringify(playlists);
@@ -144,7 +144,7 @@ function normalizeStoredTrack(value: unknown): Track | null {
   };
 }
 
-function readLocalPlaylistTracks(): Record<string, Track[]> {
+export function readLocalPlaylistTracks(): Record<string, Track[]> {
   if (typeof window === "undefined") return {};
   hydrateLocalPlaylistStorage();
   const raw = localStorage.getItem(LOCAL_PLAYLIST_TRACKS_STORAGE_KEY) ?? "{}";
@@ -171,7 +171,7 @@ function readLocalPlaylistTracks(): Record<string, Track[]> {
   }
 }
 
-function writeLocalPlaylistTracks(playlistTracks: Record<string, Track[]>): void {
+export function writeLocalPlaylistTracks(playlistTracks: Record<string, Track[]>): void {
   if (typeof window === "undefined") return;
   const raw = JSON.stringify(playlistTracks);
   writeLocalStorageJson(LOCAL_PLAYLIST_TRACKS_STORAGE_KEY, playlistTracks);

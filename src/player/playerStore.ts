@@ -43,7 +43,7 @@ export const tabManager = new TabManager(dataSource);
  * Read once, at module scope, before anything can toggle it. Restoring is all-or-nothing for a
  * given launch — half a session is worse than none.
  */
-const restoredSession = readSessionRestoreEnabled() ? loadAppSession() : null;
+export const restoredSession = readSessionRestoreEnabled() ? loadAppSession() : null;
 if (restoredSession) {
   tabManager.restoreSession(restoredSession.player);
 }
