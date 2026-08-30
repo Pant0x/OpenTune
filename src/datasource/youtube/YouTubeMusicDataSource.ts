@@ -1190,6 +1190,7 @@ export class YouTubeMusicDataSource extends DataSource {
       artist: (track.artist && track.artist !== "Unknown artist") ? track.artist : (fallbackArtist ?? track.artist),
       artists: track.artists?.length
         ? track.artists
+        : album.artists?.length
           ? album.artists
           : undefined,
     };

@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DISCORD_CLIENT_ID: &str = "1515682467154100344";
-const GITHUB_REPO: &str = "https://github.com/Pant0x/Amber-Music-Platform";
 /// Asset key for the Amber logo uploaded to Discord Developer Portal
 /// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "amber-logo"
 const AMBER_LOGO_ASSET_KEY: &str = "amber-logo";
@@ -115,12 +114,6 @@ impl DiscordRpcManager {
         let artwork_image = data.artwork_url.clone();
         let artwork_key = artwork_image.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
 
-        let large_text_str = if !data.album.trim().is_empty() {
-            data.album.clone()
-        } else {
-            "Amber".to_string()
-        };
-
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -128,45 +121,21 @@ impl DiscordRpcManager {
         let start_ts = now_secs - elapsed as i64;
         let end_ts = start_ts + duration as i64;
 
-        // Activity name: "Amber" so Discord shows "Listening to Amber"
-        let activity_name = "Amber".to_string();
+        let mut assets = json!({
+            "large_image": artwork_key,
+        });
+
+        if !data.album.trim().is_empty() {
+            assets["large_text"] = json!(data.album);
+        }
 
         let mut activity = json!({
-            "name": activity_name,
+            "name": "Amber",
             "type": 2, // LISTENING
             "details": data.title,
             "state": state_str,
-            "assets": {
-                "large_image": artwork_key,
-                "large_text": large_text_str,
-            },
-            "buttons": [
-                {
-                    "label": "Listen on Amber",
-                    "url": GITHUB_REPO,
-                }
-            ],
+            "assets": assets,
         });
-
-        // Track URL button - primary action
-        if let Some(song_url) = data.song_url {
-            if let Some(buttons) = activity["buttons"].as_array_mut() {
-                buttons[0] = json!({
-                    "label": "Listen on Amber",
-                    "url": song_url,
-                });
-            }
-        }
-
-        // Artist URL on state click
-        if let Some(artist_url) = data.artist_url {
-            activity["state_url"] = json!(artist_url);
-        }
-
-        // Album URL on artwork click
-        if let Some(album_url) = data.album_url {
-            activity["assets"]["large_url"] = json!(album_url);
-        }
 
         // Timestamps only while playing - Discord runs its own clock
         if duration > 0 && data.is_playing {
@@ -375,46 +344,27 @@ impl DiscordRpcManager {
                                 .as_secs() as i64;
                             let start_ts = now_secs - elapsed as i64;
                             let end_ts = start_ts + duration as i64;
-
                             let state_str = data.artist.clone();
                             let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
-                            let large_text_str = if !data.album.trim().is_empty() {
-                                format!("{} • {}", data.album, data.artist)
-                            } else {
-                                format!("{} • Amber", data.title)
-                            };
-                            let activity_name = "Amber".to_string();
 
-                            let mut activity = json!({
-                                "name": activity_name,
-                                "type": 2,
-                                "details": data.title,
-                                "state": state_str,
-                                "assets": {
-                                    "large_image": artwork_key,
-                                    "large_text": large_text_str,
-                                },
-                                "buttons": [
-                                    {
-                                        "label": "Listen on Amber",
-                                        "url": data.song_url.as_deref().unwrap_or(GITHUB_REPO),
-                                    }
-                                ],
+                            let mut assets = json!({
+                                "large_image": artwork_key,
                             });
 
-                            if let Some(artist_url) = data.artist_url {
-                                activity["state_url"] = json!(artist_url);
-                            }
-                            if let Some(album_url) = data.album_url {
-                                activity["assets"]["large_url"] = json!(album_url);
-                            }
-                            if let Some(song_url) = data.song_url {
-                                activity["details_url"] = json!(song_url);
+                            if !data.album.trim().is_empty() {
+                                assets["large_text"] = json!(data.album);
                             }
 
-                            activity["timestamps"] = json!({
-                                "start": start_ts,
-                                "end": end_ts,
+                            let activity = json!({
+                                "name": "Amber",
+                                "type": 2, // LISTENING
+                                "details": data.title,
+                                "state": state_str,
+                                "assets": assets,
+                                "timestamps": {
+                                    "start": start_ts,
+                                    "end": end_ts,
+                                },
                             });
 
                             let payload = json!({
