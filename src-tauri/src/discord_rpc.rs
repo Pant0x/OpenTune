@@ -121,14 +121,20 @@ impl DiscordRpcManager {
         let start_ts = now_secs - elapsed as i64;
         let end_ts = start_ts + duration as i64;
 
-        let assets = json!({
-            "large_image": artwork_key,
-        });
+        let mut assets_map = serde_json::Map::new();
+        assets_map.insert("large_image".to_string(), json!(artwork_key));
+        if !data.album.is_empty() {
+            assets_map.insert("large_text".to_string(), json!(data.album));
+        }
+        assets_map.insert("small_image".to_string(), json!(AMBER_LOGO_ASSET_KEY));
+        assets_map.insert("small_text".to_string(), json!("Amber"));
 
         let mut activity = json!({
             "name": "Amber",
+            "type": 2, // LISTENING
+            "details": data.title,
             "state": state_str,
-            "assets": assets,
+            "assets": assets_map,
         });
 
         // Timestamps only while playing - Discord runs its own clock
@@ -340,17 +346,20 @@ impl DiscordRpcManager {
                             let end_ts = start_ts + duration as i64;
                             let state_str = data.artist.clone();
                             let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
-
-                            let assets = json!({
-                                "large_image": artwork_key,
-                            });
+                            let mut assets_map = serde_json::Map::new();
+                            assets_map.insert("large_image".to_string(), json!(artwork_key));
+                            if !data.album.is_empty() {
+                                assets_map.insert("large_text".to_string(), json!(data.album));
+                            }
+                            assets_map.insert("small_image".to_string(), json!(AMBER_LOGO_ASSET_KEY));
+                            assets_map.insert("small_text".to_string(), json!("Amber"));
 
                             let activity = json!({
                                 "name": "Amber",
                                 "type": 2, // LISTENING
                                 "details": data.title,
                                 "state": state_str,
-                                "assets": assets,
+                                "assets": assets_map,
                                 "timestamps": {
                                     "start": start_ts,
                                     "end": end_ts,
