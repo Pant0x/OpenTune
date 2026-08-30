@@ -111,6 +111,7 @@ export async function exportPlaylist(
 export interface ImportedPlaylist {
   title: string;
   tracks: Track[];
+  artworkUrl?: string;
 }
 
 function parseAmberJson(contents: string): ImportedPlaylist | null {
@@ -206,6 +207,25 @@ export async function importPlaylistFile(): Promise<ImportedPlaylist | null> {
     return parsed;
   } catch {
     throw new Error("That file is not an Amber playlist export.");
+  }
+}
+
+/**
+ * Fetches an anonymous Spotify Web Player access token from open.spotify.com.
+ */
+async function getSpotifyAnonymousToken(): Promise<string | null> {
+  try {
+    const response = await fetch("https://open.spotify.com/get_access_token", {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.accessToken ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -329,6 +349,7 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
 
   logInternalInfo("playlistTransfer.importSpotify", { playlistId, trackCount: tracks.length, hasArtwork: Boolean(artworkUrl) });
 
+  return { title, tracks, artworkUrl };
 }
 
 /**
