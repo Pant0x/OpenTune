@@ -1156,9 +1156,14 @@ export class YouTubeMusicDataSource extends DataSource {
         .filter((item) => item.item_type === "song")
         .map((item) => this.trackIdentityKey(item)),
     );
-    return matches.filter(
+    const filtered = matches.filter(
       (item) => item.item_type !== "video" || !songKeys.has(this.trackIdentityKey(item)),
     );
+    return filtered.sort((a, b) => {
+      if (a.item_type === "song" && b.item_type !== "song") return -1;
+      if (a.item_type !== "song" && b.item_type === "song") return 1;
+      return 0;
+    });
   }
 
   /**

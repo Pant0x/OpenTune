@@ -348,7 +348,9 @@ impl DiscordRpcManager {
                             let activity = json!({
                                 "name": "Amber",
                                 "type": 2, // LISTENING
+                                "details": data.title,
                                 "state": state_str,
+                                "assets": assets,
                                 "timestamps": {
                                     "start": start_ts,
                                     "end": end_ts,
