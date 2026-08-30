@@ -27,13 +27,57 @@ interface HomeMoodChip {
 
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
-  { id: "relax", label: "Relax", query: "relax chill music" },
-  { id: "workout", label: "Workout", query: "workout pump up gym" },
-  { id: "energize", label: "Energize", query: "energy booster hype" },
-  { id: "commute", label: "Commute", query: "road trip drive music" },
-  { id: "focus", label: "Focus", query: "focus ambient study beats" },
-  { id: "podcasts", label: "Podcasts", query: "podcasts audio talks" },
+  { id: "sleep", label: "Sleep", query: "sleep relaxing calm music deep sleep" },
+  { id: "relax", label: "Relax", query: "relax chill lofi acoustic" },
+  { id: "sad", label: "Sad", query: "sad emotional songs acoustic" },
+  { id: "romance", label: "Romance", query: "romance love songs slow" },
+  { id: "energize", label: "Energize", query: "energy booster hype workout" },
+  { id: "party", label: "Party", query: "party dance club hits" },
+  { id: "commute", label: "Commute", query: "road trip drive commute music" },
+  { id: "feel-good", label: "Feel good", query: "feel good happy vibes positive" },
+  { id: "focus", label: "Focus", query: "focus ambient study beats deep focus" },
+  { id: "workout", label: "Workout", query: "workout gym motivation pump up" },
 ];
+
+const SECTION_ORDER = [
+  "quick picks",
+  "mixed for you",
+  "albums for you",
+  "new releases",
+  "featured playlists for you",
+  "featured playlists",
+  "trending songs for you",
+  "trending songs",
+  "trending",
+  "your daily discover",
+  "daily discover",
+  "from your library",
+  "listen again",
+  "your library",
+  "covers and remixes",
+  "covers & remixes",
+  "heard in shorts",
+  "shorts",
+  "long listens",
+  "fresh finds, old favorites",
+  "fresh finds",
+  "recaps",
+  "recap",
+  "take it easy",
+  "today's hits",
+  "todays hits",
+  "today's biggest hits",
+];
+
+function getShelfRank(title: string): number {
+  const lower = title.toLowerCase();
+  for (let i = 0; i < SECTION_ORDER.length; i++) {
+    if (lower.includes(SECTION_ORDER[i])) {
+      return i;
+    }
+  }
+  return 999;
+}
 
 const suggestionCache = new Map<string, Track[]>();
 const suggestionLoads = new Map<string, Promise<Track[]>>();
@@ -331,12 +375,14 @@ export function HomePage({
       links: [],
     };
 
-    const remaining = cleanRaw.filter(
-      (s) =>
-        s !== existingPicksShelf &&
-        !s.title.toLowerCase().includes("quick pick") &&
-        !s.title.toLowerCase().includes("picks for you"),
-    );
+    const remaining = cleanRaw
+      .filter(
+        (s) =>
+          s !== existingPicksShelf &&
+          !s.title.toLowerCase().includes("quick pick") &&
+          !s.title.toLowerCase().includes("picks for you"),
+      )
+      .sort((a, b) => getShelfRank(a.title) - getShelfRank(b.title));
 
     if (quickPicksShelf.tracks.length > 0) {
       return [quickPicksShelf, ...remaining];

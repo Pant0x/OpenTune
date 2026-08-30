@@ -9,7 +9,19 @@ import {
 import { cn } from "@/lib/utils";
 import { propsEqualIgnoringHandlers } from "../../internal/propsEqual";
 import { Tooltip } from "@/components/motion/tooltip";
-import { CheckActiveIcon, CheckIcon, DislikeActiveIcon, DislikeIcon, DownloadIcon, HeartActiveIcon, HeartIcon, ListIcon, PlaylistAddIcon, PlayActiveIcon } from "@/ui/icons";
+import {
+  CheckActiveIcon,
+  CheckIcon,
+  DislikeActiveIcon,
+  DislikeIcon,
+  DownloadIcon,
+  HeartActiveIcon,
+  HeartIcon,
+  ListIcon,
+  MenuDotsIcon,
+  PlaylistAddIcon,
+  PlayActiveIcon,
+} from "@/ui/icons";
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
 import {
   getOfflineStatus,
@@ -37,6 +49,8 @@ interface TrackRowProps extends PassthroughButtonProps {
   track: Track;
   /** Zero-based; rendered as the 1-based position. */
   index: number;
+  /** Whether to render the index column (defaults to true) */
+  showIndex?: boolean;
   /** This is the track the player is on, whether or not it is currently advancing. */
   isCurrent: boolean;
   /** Current *and* actually playing — drives the level meter over the static glyph. */
@@ -163,7 +177,7 @@ function QuickAction({
 }: {
   label: string;
   tooltip: string;
-  onActivate: () => void;
+  onActivate: (event: MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) => void;
   children: ReactNode;
 }) {
   return (
@@ -180,13 +194,13 @@ function QuickAction({
         )}
         onClick={(event) => {
           event.stopPropagation();
-          onActivate();
+          onActivate(event);
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           event.stopPropagation();
-          onActivate();
+          onActivate(event);
         }}
       >
         {children}
@@ -352,6 +366,7 @@ function SelectionCheckbox({
 export const TrackRow = memo(function TrackRow({
   track,
   index,
+  showIndex = true,
   isCurrent,
   isPlaying,
   onSelect,
@@ -424,22 +439,9 @@ export const TrackRow = memo(function TrackRow({
       onContextMenu={onContextMenu ? handleContextMenu : undefined}
       aria-current={isCurrent ? "true" : undefined}
       className={cn(
-        "group/row relative flex w-full items-center gap-3  px-2 py-1.5 text-left",
-        "transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2",
+        "group/row relative flex w-full items-center gap-3 px-2 py-1.5 text-left rounded-lg",
+        "transition-colors hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2",
         "focus-visible:ring-inset focus-visible:ring-ring",
-        /*
-         * Off-screen rows skip layout, paint and compositing.
-         *
-         * These lists are not windowed — a 500-track playlist really does build 500 rows of
-         * ~20 elements each — and windowing them properly fights both the drag-reorder and the
-         * shift-range selection, which need the full index space. This is the platform doing
-         * the same job for one line: the nodes stay, the rendering work does not.
-         *
-         * `auto 52px` is the row's height (40px artwork + `py-1.5`); the `auto` keyword means
-         * the browser prefers the size it last actually measured, so the guess only matters for
-         * rows that have never been on screen. Width is untouched by the containment because
-         * `w-full` states it outright rather than deriving it from content.
-         */
         "[content-visibility:auto] [contain-intrinsic-size:auto_52px]",
         isCurrent && "bg-primary/5",
         isSelected && "bg-primary/10",
@@ -448,87 +450,90 @@ export const TrackRow = memo(function TrackRow({
     >
       {children}
 
-      {/* While a selection is open the index column becomes a checkbox. It replaces the
-          number rather than sitting beside it so the row width never changes — a list that
-          reflows the moment you select something is unusable for range-selecting. */}
-      {isSelectionActive && canSelect ? (
-        <SelectionCheckbox
-          title={track.title}
-          isSelected={isSelected}
-          onToggle={handleToggleSelected}
-        />
-      ) : (
-      /* The position number is only useful until you have decided to act on the row, so it
-          gives way to a play glyph on hover — and to a level meter once this row is the one
-          playing. All three share the slot, so the row never reflows between states. */
-      <span className="relative w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        <span
-          className={cn(
-            "transition-opacity",
-            isCurrent ? "opacity-0" : "group-hover/row:opacity-0",
-          )}
-        >
-          {index + 1}
-        </span>
-
-        {/*
-          On a list that supports multi-select, hover offers the checkbox instead of the play
-          glyph. Selection was previously unreachable without already having a selection: the
-          box only appeared once `isSelectionActive`, and the only way in was a ctrl-click
-          nothing advertised. The row itself still plays on click, so nothing is lost.
-        */}
-        {!isCurrent && canSelect && (
-          <span className="absolute inset-0 grid place-items-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
-            <SelectionCheckbox
-              title={track.title}
-              isSelected={isSelected}
-              onToggle={handleToggleSelected}
-            />
-          </span>
-        )}
-
-        {!isCurrent && !canSelect && (
-          <PlayActiveIcon
-            size={14}
-            className="absolute inset-0 m-auto opacity-0 transition-opacity group-hover/row:opacity-100"
-            aria-hidden="true"
+      {/* While a selection is open the index column becomes a checkbox. */}
+      {showIndex && (
+        isSelectionActive && canSelect ? (
+          <SelectionCheckbox
+            title={track.title}
+            isSelected={isSelected}
+            onToggle={handleToggleSelected}
           />
-        )}
+        ) : (
+          <span className="relative w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+            <span
+              className={cn(
+                "transition-opacity",
+                isCurrent ? "opacity-0" : "group-hover/row:opacity-0",
+              )}
+            >
+              {index + 1}
+            </span>
 
-        {isCurrent && (
-          <span className="absolute inset-0 flex items-center justify-end" aria-hidden="true">
-            {isPlaying ? (
-              <MusicVisualizer
-                bars={4}
-                className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+            {!isCurrent && canSelect && (
+              <span className="absolute inset-0 grid place-items-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
+                <SelectionCheckbox
+                  title={track.title}
+                  isSelected={isSelected}
+                  onToggle={handleToggleSelected}
+                />
+              </span>
+            )}
+
+            {!isCurrent && !canSelect && (
+              <PlayActiveIcon
+                size={14}
+                className="absolute inset-0 m-auto opacity-0 transition-opacity group-hover/row:opacity-100"
+                aria-hidden="true"
               />
-            ) : (
-              <PlayActiveIcon size={14} className="text-primary" />
+            )}
+
+            {isCurrent && (
+              <span className="absolute inset-0 flex items-center justify-end" aria-hidden="true">
+                {isPlaying ? (
+                  <MusicVisualizer
+                    bars={4}
+                    className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+                  />
+                ) : (
+                  <PlayActiveIcon size={14} className="text-primary" />
+                )}
+              </span>
             )}
           </span>
-        )}
-      </span>
+        )
       )}
 
       {showArtwork ? (
-        <TrackArtwork
-          className="size-10 shrink-0 "
-          size={40}
-          artworkUrl={track.artworkUrl}
-          iconSize={18}
-        />
+        <div className="relative size-10 shrink-0 overflow-hidden rounded-md group/art">
+          <TrackArtwork
+            className="size-10 shrink-0 object-cover"
+            size={40}
+            artworkUrl={track.artworkUrl}
+            iconSize={18}
+          />
+          <div
+            className={cn(
+              "absolute inset-0 grid place-items-center bg-black/45 transition-opacity",
+              isCurrent ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
+            )}
+          >
+            {isCurrent && isPlaying ? (
+              <MusicVisualizer
+                bars={3}
+                className="[--music-gap:2px] [--music-height:12px] [--music-width:14px]"
+              />
+            ) : (
+              <PlayActiveIcon size={16} className="text-white drop-shadow" />
+            )}
+          </div>
+        </div>
       ) : null}
 
       <span className="flex min-w-0 flex-1 flex-col">
-        {/*
-          The badge sits beside the title rather than inside it: as a sibling it keeps its
-          own width while `truncate` eats the title, so a long name shortens instead of
-          pushing the stamp out of the row.
-        */}
         <span className="flex min-w-0 items-center gap-1.5">
           <span
             className={cn(
-              "truncate text-sm font-medium",
+              "truncate text-sm font-semibold",
               isCurrent ? "text-primary" : "text-foreground",
             )}
           >
@@ -544,21 +549,10 @@ export const TrackRow = memo(function TrackRow({
         />
       </span>
 
-      {/*
-        Album column. Hidden below `lg` rather than allowed to shrink: at narrow widths it
-        would win space from the title, which is the one thing every row needs to stay
-        readable. `basis-0` keeps it from claiming more than its share of a wide row.
-      */}
       {showAlbum && (
         <span className="hidden min-w-0 flex-1 basis-0 truncate text-xs text-muted-foreground lg:block">
           {track.album
             ? (openAlbumForTrack && track.source !== "local" ? (
-              /*
-                A span with role="link", not an anchor or a button: the row itself is a
-                <button>, and nesting interactive elements is invalid markup that the parser
-                flattens. Same treatment ArtistLinks gives artist names, and the pointerdown
-                has to stop too or the row's drag-reorder claims the gesture.
-              */
               <span
                 role="link"
                 tabIndex={0}
@@ -583,12 +577,11 @@ export const TrackRow = memo(function TrackRow({
         </span>
       )}
 
-      {/* Hover actions. The row itself is a <button>, so these cannot be buttons — see
-          QuickAction. They sit before `trailing` so durations stay hard against the edge. */}
+      {/* Hover actions */}
       {showRating && <RatingActions track={track} />}
       {showDownload && <DownloadAction track={track} />}
 
-      {(onQuickAddToQueue || onQuickAdd) && (
+      {(onQuickAddToQueue || onQuickAdd || onContextMenu) && (
         <span className="flex shrink-0 items-center">
           {onQuickAddToQueue && (
             <QuickAction
@@ -608,12 +601,20 @@ export const TrackRow = memo(function TrackRow({
               <PlaylistAddIcon size={17} aria-hidden="true" />
             </QuickAction>
           )}
+          {onContextMenu && (
+            <QuickAction
+              label={`More options for ${track.title}`}
+              tooltip="More options"
+              onActivate={(e) => handleContextMenu(e as any)}
+            >
+              <MenuDotsIcon size={16} aria-hidden="true" />
+            </QuickAction>
+          )}
         </span>
       )}
 
       {trailing}
 
-      {/* Announced to screen readers only; the meter above is decorative. */}
       {isCurrent ? (
         <span className="sr-only">{isPlaying ? "Now playing" : "Paused"}</span>
       ) : null}

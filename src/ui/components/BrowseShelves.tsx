@@ -155,6 +155,7 @@ function BrowseShelfSection({
               <TrackRow
                 track={track}
                 index={index}
+                showIndex={false}
                 isCurrent={currentTrackId === track.id}
                 isPlaying={isPlaying && currentTrackId === track.id}
                 onSelect={() => playShelfTrack(shelf.tracks, track)}

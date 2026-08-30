@@ -99,6 +99,16 @@ export { CopyIcon } from "@solar-icons/react/linear/copy";
 export { PenIcon as PencilIcon } from "@solar-icons/react/linear/pen";
 export { LinkIcon } from "@solar-icons/react/linear/link";
 
+export function MenuDotsIcon({ size = 18, ...props }: SVGProps<SVGSVGElement> & { size?: number | string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} fill="currentColor" {...props}>
+      <circle cx="12" cy="5" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="12" cy="19" r="1.75" />
+    </svg>
+  );
+}
+
 /* ── Arrows ────────────────────────────────────────────────────────── */
 export { ArrowUpIcon } from "@solar-icons/react/linear/arrow-up";
 export { ArrowDownIcon } from "@solar-icons/react/linear/arrow-down";
