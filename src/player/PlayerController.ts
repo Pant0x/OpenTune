@@ -94,7 +94,6 @@ export interface PlayerSession {
 }
 
 type Listener = () => void;
-const DISCORD_ASSET_URL_LIMIT = 256;
 /** How long the sleep timer spends fading out before it pauses. */
 const SLEEP_FADE_MS = 20_000;
 
@@ -145,19 +144,17 @@ function getYouTubeMusicAlbumUrl(track: Track): string | undefined {
 }
 
 function getDiscordArtworkUrl(track: Track): string | undefined {
-  // For YouTube tracks, always prefer the i.ytimg.com thumbnail URL since
-  // Google CDN URLs (lh3.googleusercontent.com, yt3.ggpht.com) are frequently
-  // blocked by Discord's image fetcher due to hotlink protection.
+  // Always use the official release/album artworkUrl if available
+  if (track.artworkUrl && track.artworkUrl.trim()) {
+    return track.artworkUrl;
+  }
+
+  // Fallback to video artwork only if track has no artworkUrl
   if (track.source === "youtube" && /^[A-Za-z0-9_-]{11}$/.test(track.id)) {
     return `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
   }
 
-  // For non-YouTube tracks, use the artwork URL directly if available and within limits
-  if (track.artworkUrl && track.artworkUrl.length <= DISCORD_ASSET_URL_LIMIT) {
-    return track.artworkUrl;
-  }
-
-  return track.artworkUrl;
+  return undefined;
 }
 
 /**
