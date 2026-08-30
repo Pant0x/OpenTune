@@ -126,7 +126,7 @@ impl DiscordRpcManager {
         });
 
         let mut activity = json!({
-            "name": "Amber",
+            "name": "Spotify",
             "type": 2, // LISTENING
             "details": data.title,
             "state": state_str,
@@ -348,7 +348,7 @@ impl DiscordRpcManager {
                             });
 
                             let activity = json!({
-                                "name": "Amber",
+                                "name": "Spotify",
                                 "type": 2, // LISTENING
                                 "details": data.title,
                                 "state": state_str,
