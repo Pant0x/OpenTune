@@ -22,7 +22,6 @@
         "minWidth": 960,
         "minHeight": 540,
         "center": true
-      }
     ],
     "security": {
       "csp": null

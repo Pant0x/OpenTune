@@ -182,7 +182,7 @@ export type BrowseTarget =
   | { browseId: string; title: string; params?: string };
 
 /** The browse destinations Amber knows how to open. */
-export type BrowseSurface = "explore" | "charts" | "moods" | "podcasts";
+export type BrowseSurface = "home" | "explore" | "charts" | "moods" | "podcasts";
 
 export interface SearchResults {
   artists: Artist[];

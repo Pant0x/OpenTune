@@ -91,7 +91,13 @@ export function BrowseShelves({
           <h2 className="text-lg font-semibold text-foreground">{shelf.title}</h2>
 
           {shelf.tracks.length > 0 && (
-            <div className="flex flex-col gap-0.5">
+            <div
+              className={cn(
+                shelf.tracks.length > 4
+                  ? "grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(18rem,1fr))]"
+                  : "flex flex-col gap-0.5",
+              )}
+            >
               {shelf.tracks.map((track, index) => (
                 <TrackRow
                   key={`${track.id}:${index}`}

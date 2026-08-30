@@ -1707,6 +1707,9 @@ const backOnboardingStep = () => {
                   onOpenHistory: handleOpenHistory,
                   onOpenDownloads: () => handleOpenBrowse("downloads"),
                 }}
+                onOpenAlbum={handleNavigateAlbum}
+                onOpenArtist={handleNavigateArtist}
+                onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
             {activeTab?.view === "album" && (

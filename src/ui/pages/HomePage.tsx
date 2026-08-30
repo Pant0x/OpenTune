@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PlayActiveIcon, ArrowLeftIcon, ArrowRightIcon } from "@/ui/icons";
-import type { Track } from "../../datasource/types";
+import type { Album, Artist, BrowseShelf, Playlist, Track } from "../../datasource/types";
 import type { LibraryController, LibraryState } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import type { SearchController } from "../../player/SearchController";
 import { AlbumCard } from "../components/AlbumCard";
+import { BrowseShelves } from "../components/BrowseShelves";
 import { DiceCard } from "../components/DiceCard";
 import { PickCard } from "../components/PickCard";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -76,6 +77,9 @@ interface HomePageProps {
   searchController: SearchController;
   onSignIn: () => Promise<void>;
   destinations: HomeDestinationHandlers;
+  onOpenAlbum?: (album: Album) => void;
+  onOpenArtist?: (artist: Artist) => void;
+  onOpenPlaylist?: (playlist: Playlist) => void;
 }
 
 function shuffle<T>(items: readonly T[]): T[] {
@@ -99,9 +103,39 @@ export function HomePage({
   searchController,
   onSignIn,
   destinations,
+  onOpenAlbum,
+  onOpenArtist,
+  onOpenPlaylist,
 }: HomePageProps) {
   const { openTrackMenu } = useTrackContextMenu();
   const showMadeForYou = useMadeForYouVisible();
+  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>([]);
+  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setIsLoadingHomeShelves(true);
+    void libraryController
+      .getBrowsePage("home")
+      .then((page) => {
+        if (!active) return;
+        setHomeShelves(page.shelves);
+        setIsLoadingHomeShelves(false);
+        const firstTrackShelf = page.shelves.find((s) => s.tracks.length > 0);
+        if (firstTrackShelf && firstTrackShelf.tracks.length > 0) {
+          setSuggestions(firstTrackShelf.tracks);
+          setIsLoadingSuggestions(false);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setIsLoadingHomeShelves(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [libraryController, libraryState.sessionConfirmedAt, libraryState.status]);
   const recentlyPlayed = useMemo(
     () => libraryState.library?.recentlyPlayed ?? EMPTY_TRACKS,
     [libraryState.library],
@@ -340,109 +374,121 @@ export function HomePage({
           go when none of them appeal. */}
       <HomeDestinations {...destinations} />
 
-      {compactRecent.length === 0 && isWaitingForLibrary && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">Recently played</h2>
-          <div
-            className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]"
-            role="status"
-            aria-label="Loading recently played"
-          >
-            {Array.from({ length: RECENT_COMPACT_COUNT }, (_, index) => (
-              <TrackRowSkeleton key={index} delayMs={index * 60} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {compactRecent.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">Recently played</h2>
-          <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]">
-            {compactRecent.map((track) => (
-              <button
-                key={track.id}
-                type="button"
-                className="group/row flex w-full items-center gap-3   px-2 py-1.5 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                onContextMenu={(event) => openTrackMenu(event, track)}
-                onClick={() => playTrack(track, recentPlays)}
+      {homeShelves.length > 0 ? (
+        <BrowseShelves
+          shelves={homeShelves}
+          playerController={playerController}
+          onOpenAlbum={onOpenAlbum ?? (() => {})}
+          onOpenArtist={onOpenArtist ?? (() => {})}
+          onOpenPlaylist={onOpenPlaylist ?? (() => {})}
+        />
+      ) : (
+        <>
+          {compactRecent.length === 0 && isWaitingForLibrary && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">Recently played</h2>
+              <div
+                className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]"
+                role="status"
+                aria-label="Loading recently played"
               >
-                <TrackArtwork
-                  className="size-11 shrink-0   object-cover"
-                  size={44}
-                  artworkUrl={track.artworkUrl}
-                  iconSize={24}
-                />
-                <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                  <strong>{track.title}</strong>
-                  <ArtistLinks artists={track.artists} fallback={track.artist} />
-                </span>
-                <PlayActiveIcon size={18} />
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {moreSuggestions.length === 0 && isLoadingSuggestions && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">More recommendations</h2>
-          <AlbumGridSkeleton count={MORE_SUGGESTIONS_COUNT} label="Loading more recommendations" />
-        </section>
-      )}
-
-      {moreSuggestions.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">More recommendations</h2>
-          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-            {moreSuggestions.map((track) => (
-              <AlbumCard
-                key={track.id}
-                artworkUrl={track.artworkUrl}
-                title={track.title}
-                subtitleContent={<ArtistLinks artists={track.artists} fallback={track.artist} />}
-                onContextMenu={(event) => openTrackMenu(event, track)}
-                onClick={() => playTrack(track, suggestions)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {largeRecent.length === 0 && isWaitingForLibrary && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">Listen again</h2>
-          <AlbumGridSkeleton count={RECENT_LARGE_COUNT} label="Loading listen again" />
-        </section>
-      )}
-
-      {largeRecent.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold text-foreground">Listen again</h2>
-          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-            {largeRecent.map((track) => (
-              <AlbumCard
-                key={track.id}
-                artworkUrl={track.artworkUrl}
-                title={track.title}
-                subtitleContent={<ArtistLinks artists={track.artists} fallback={track.artist} />}
-                onContextMenu={(event) => openTrackMenu(event, track)}
-                onClick={() => playTrack(track, recentPlays)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!isLoadingSuggestions && suggestions.length === 0 && (
-        <div className="px-2 py-10 text-center text-sm text-muted-foreground">
-          <p>Recommendations could not be loaded.</p>
-          {libraryState.status === "signed-out" && (
-            <button onClick={() => void onSignIn()}>
-              Sign in with YouTube Music
-            </button>
+                {Array.from({ length: RECENT_COMPACT_COUNT }, (_, index) => (
+                  <TrackRowSkeleton key={index} delayMs={index * 60} />
+                ))}
+              </div>
+            </section>
           )}
-        </div>
+
+          {compactRecent.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">Recently played</h2>
+              <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]">
+                {compactRecent.map((track) => (
+                  <button
+                    key={track.id}
+                    type="button"
+                    className="group/row flex w-full items-center gap-3 px-2 py-1.5 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    onContextMenu={(event) => openTrackMenu(event, track)}
+                    onClick={() => playTrack(track, recentPlays)}
+                  >
+                    <TrackArtwork
+                      className="size-11 shrink-0 object-cover"
+                      size={44}
+                      artworkUrl={track.artworkUrl}
+                      iconSize={24}
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
+                      <strong>{track.title}</strong>
+                      <ArtistLinks artists={track.artists} fallback={track.artist} />
+                    </span>
+                    <PlayActiveIcon size={18} />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {moreSuggestions.length === 0 && (isLoadingSuggestions || isLoadingHomeShelves) && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">More recommendations</h2>
+              <AlbumGridSkeleton count={MORE_SUGGESTIONS_COUNT} label="Loading more recommendations" />
+            </section>
+          )}
+
+          {moreSuggestions.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">More recommendations</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {moreSuggestions.map((track) => (
+                  <AlbumCard
+                    key={track.id}
+                    artworkUrl={track.artworkUrl}
+                    title={track.title}
+                    subtitleContent={<ArtistLinks artists={track.artists} fallback={track.artist} />}
+                    onContextMenu={(event) => openTrackMenu(event, track)}
+                    onClick={() => playTrack(track, suggestions)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {largeRecent.length === 0 && isWaitingForLibrary && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">Listen again</h2>
+              <AlbumGridSkeleton count={RECENT_LARGE_COUNT} label="Loading listen again" />
+            </section>
+          )}
+
+          {largeRecent.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-semibold text-foreground">Listen again</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {largeRecent.map((track) => (
+                  <AlbumCard
+                    key={track.id}
+                    artworkUrl={track.artworkUrl}
+                    title={track.title}
+                    subtitleContent={<ArtistLinks artists={track.artists} fallback={track.artist} />}
+                    onContextMenu={(event) => openTrackMenu(event, track)}
+                    onClick={() => playTrack(track, recentPlays)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!isLoadingSuggestions && !isLoadingHomeShelves && suggestions.length === 0 && (
+            <div className="px-2 py-10 text-center text-sm text-muted-foreground">
+              <p>Recommendations could not be loaded.</p>
+              {libraryState.status === "signed-out" && (
+                <button type="button" onClick={() => void onSignIn()}>
+                  Sign in with YouTube Music
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

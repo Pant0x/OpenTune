@@ -5884,6 +5884,7 @@ export class YouTubeMusicDataSource extends DataSource {
    * they are literals: there is no endpoint that enumerates them.
    */
   private static readonly BROWSE_IDS: Record<BrowseSurface, { ids: string[]; title: string }> = {
+    home: { ids: ["FEmusic_home"], title: "Home" },
     explore: { ids: ["FEmusic_explore"], title: "Explore" },
     charts: { ids: ["FEmusic_charts"], title: "Charts" },
     moods: { ids: ["FEmusic_moods_and_genres"], title: "Moods & genres" },
