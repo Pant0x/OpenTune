@@ -102,12 +102,12 @@ import {
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
 const restoredSession = loadAppSession();
-const LOADING_SCREEN_FADE_MS = 80;
-const LOADING_SCREEN_MAX_MS = 4000;
+const LOADING_SCREEN_FADE_MS = 50;
+const LOADING_SCREEN_MAX_MS = 800;
 const ONBOARDING_COMPLETE_KEY = "amber:onboarding-complete";
 const ONBOARDING_COMPLETE_SETTING_KEY = "onboardingComplete";
 const KEYCHAIN_NOTICE_COMPLETE_KEY = "amber:keychain-notice-complete";
-const LOADING_SCREEN_MIN_MS = 1000;
+const LOADING_SCREEN_MIN_MS = 0;
 const MOUSE_BACK_BUTTON = 3;
 const MOUSE_FORWARD_BUTTON = 4;
 /** How often the session is written purely to keep the restored playback position fresh. */

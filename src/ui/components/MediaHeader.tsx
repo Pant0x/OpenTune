@@ -181,23 +181,26 @@ export function MediaHeader({
   return (
     <header className="relative flex flex-wrap items-end gap-6 px-1 pb-6 pt-2">
       {artworkSlot ?? (
-        <TrackArtwork
+        <button
+          type="button"
+          onClick={() => {
+            if (artworkUrl) window.open(artworkUrl, "_blank");
+          }}
           className={cn(
-            "size-44 shrink-0 shadow-2xl ring-1 ring-white/10",
-            circularArtwork ? "rounded-full" : "rounded-none",
+            "group relative size-44 shrink-0 overflow-hidden shadow-2xl ring-1 ring-white/10 transition-transform duration-200 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            circularArtwork ? "rounded-full" : "rounded-xl",
           )}
-          artworkUrl={artworkUrl}
-          iconSize={72}
-          loading="eager"
-          /*
-           * `size-44` is 176 CSS px. Without this the component skips size bucketing and keeps
-           * the original URL — and the stored `artworkUrl` is deliberately the *largest*
-           * candidate the source offered (see `selectArtworkUrl`), so this slot was decoding a
-           * full-size cover into a 176px box, eagerly, on every album, playlist and artist page.
-           */
-          size={176}
-          variant={artworkVariant}
-        />
+          title="Click to view full cover"
+        >
+          <TrackArtwork
+            className="size-full object-cover"
+            artworkUrl={artworkUrl}
+            iconSize={72}
+            loading="eager"
+            size={544}
+            variant={artworkVariant}
+          />
+        </button>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">

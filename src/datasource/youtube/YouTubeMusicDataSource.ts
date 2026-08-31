@@ -4050,6 +4050,36 @@ export class YouTubeMusicDataSource extends DataSource {
           .filter((item): item is Track => Boolean(item)),
       );
     }
+    if (artistPage.getAlbums) {
+      try {
+        const fullAlbums = await artistPage.getAlbums();
+        if (fullAlbums?.contents) {
+          releases.push(
+            ...(fullAlbums.contents as MusicItem[])
+              .map((item) => this.toAlbum(item))
+              .filter((item): item is Album => Boolean(item))
+              .map((a) => ({ ...a, releaseType: "album" as const })),
+          );
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (artistPage.getSingles) {
+      try {
+        const fullSingles = await artistPage.getSingles();
+        if (fullSingles?.contents) {
+          releases.push(
+            ...(fullSingles.contents as MusicItem[])
+              .map((item) => this.toAlbum(item))
+              .filter((item): item is Album => Boolean(item))
+              .map((a) => ({ ...a, releaseType: "single" as const })),
+          );
+        }
+      } catch {
+        // ignore
+      }
+    }
     if (releases.length === 0) {
       releases.push(
         ...responseItems
@@ -4086,11 +4116,33 @@ export class YouTubeMusicDataSource extends DataSource {
       });
       allSongShelf = undefined;
     }
-    const allSongs = allSongShelf
+    let allSongs = allSongShelf
       ? (allSongShelf.contents as unknown as MusicItem[])
         .map((item) => this.toTrack(item))
         .filter((item): item is Track => Boolean(item))
       : popularSongs;
+
+    if (allSongs.length < 5 && artistId.startsWith("UC")) {
+      try {
+        const webClient = await this.getWebClient();
+        const channel = await webClient.getChannel(artistId);
+        const videosFeed = await channel.getVideos().catch(() => null);
+        const channelTracks: Track[] = ((videosFeed as any)?.videos ?? []).map((v: any) => ({
+          id: v.id,
+          source: "youtube" as const,
+          title: v.title?.toString() ?? "Video",
+          artist: artist.name,
+          artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
+          durationSec: v.duration?.seconds,
+        }));
+        if (channelTracks.length > 0) {
+          popularSongs.push(...channelTracks);
+          allSongs = this.uniqueById([...allSongs, ...channelTracks]);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     const enrichedPopularSongs = await Promise.all(
       this.uniqueById(popularSongs).slice(0, 6).map(async (track) => {

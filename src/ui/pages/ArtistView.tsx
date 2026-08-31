@@ -556,7 +556,7 @@ export function ArtistView({
                     <TrackArtwork
                       artworkUrl={similarArtist.artworkUrl}
                       variant="artist"
-                      size={120}
+                      size={240}
                       className="size-28 rounded-full shadow-md transition-transform duration-200 group-hover:scale-105"
                     />
                     <div className="flex flex-col items-center min-w-0 w-full">

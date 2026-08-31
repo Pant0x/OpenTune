@@ -4,6 +4,7 @@ import { Tooltip } from "@/components/motion/tooltip";
 import {
   CheckIcon,
   ClockIcon,
+  CloseIcon,
   DiceIcon,
   HeartActiveIcon,
   HeartIcon,
@@ -33,7 +34,7 @@ import { ArtistLinks, useAlbumNavigation, useArtistNavigation } from "../ArtistL
 import { TrackArtwork } from "../TrackArtwork";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
-import { SquareAltArrowLeftIcon, SquareAltArrowRightIcon } from "@solar-icons/react/linear";
+import { SquareAltArrowLeftIcon } from "@solar-icons/react/linear";
 
 import { usePlayHistory } from "../../../player/playHistory";
 
@@ -336,7 +337,7 @@ function ShowMoreQueueButton({
   );
 }
 
-export function QueuePanel({ onClose: _onClose }: QueuePanelProps) {
+export function QueuePanel({ onClose }: QueuePanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const draggedElementRef = useRef<HTMLElement | null>(null);
   const captureElementRef = useRef<HTMLElement | null>(null);
@@ -769,9 +770,14 @@ export function QueuePanel({ onClose: _onClose }: QueuePanelProps) {
         </div>
 
         <div className="flex items-center gap-0.5">
-          <Tooltip side="bottom" content="Collapse panel">
-            <button type="button" className={ICON_BUTTON} onClick={toggleQueuePanelCollapsed}>
-              <SquareAltArrowRightIcon size={18} aria-hidden="true" />
+          <Tooltip side="bottom" content="Close">
+            <button
+              type="button"
+              className={ICON_BUTTON}
+              onClick={onClose}
+              aria-label="Close sidebar"
+            >
+              <CloseIcon size={14} aria-hidden="true" />
             </button>
           </Tooltip>
         </div>

@@ -547,16 +547,6 @@ export class LibraryController {
     throw lastError ?? new Error("YouTube Music library did not finish syncing after sign-in.");
   }
 
-  async search(
-    query: string,
-    onUpdate?: (results: SearchResults) => void,
-  ): Promise<SearchResults> {
-    if (!this.dataSource.search) {
-      return { artists: [], albums: [], tracks: [], playlists: [] };
-    }
-    return this.dataSource.search(query, onUpdate);
-  }
-
   async getAlbumTracks(album: Album, onUpdate?: (tracks: Track[]) => void): Promise<Track[]> {
     if (!this.dataSource.getAlbumTracks) return [];
     return this.dataSource.getAlbumTracks(album, onUpdate);

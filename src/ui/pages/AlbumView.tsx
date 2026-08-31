@@ -8,7 +8,7 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import type { Album, Artist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
-import { useLibraryState } from "../../player/playerStore";
+import { searchController, useLibraryState } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { SelectionBar } from "../components/SelectionBar";
@@ -19,6 +19,7 @@ import { formatCollectionMeta, MediaHeader } from "../components/MediaHeader";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { AlbumCard } from "../components/AlbumCard";
+import { TrackArtwork } from "../components/TrackArtwork";
 
 const SEARCH_FIELD =
   "group/search flex min-h-8 items-center gap-1.5 overflow-hidden rounded-full bg-white/[0.04] px-2.5 " +
@@ -90,7 +91,7 @@ export function AlbumView({
       let targetId = resolvedArtistId;
       if (!targetId && resolvedArtistName) {
         try {
-          const searchResults = await libraryController.search(resolvedArtistName);
+          const searchResults = await searchController.search(resolvedArtistName);
           targetId = searchResults.artists[0]?.id;
         } catch {
           // ignore
@@ -402,6 +403,31 @@ export function AlbumView({
         <div className="text-xs text-muted-foreground pt-4 flex flex-col gap-0.5">
           <p>{album.year}</p>
           <p className="text-[11px] opacity-75">℗ {album.year} {album.artist}</p>
+        </div>
+      )}
+
+      {/* Artist Profile Card */}
+      {(resolvedArtistName || artistDetails) && (
+        <div
+          onClick={() => {
+            if (artistDetails) onOpenDiscography?.(artistDetails, moreReleases);
+            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: resolvedArtistName || "" }, moreReleases);
+          }}
+          className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
+        >
+          <TrackArtwork
+            artworkUrl={artistDetails?.artworkUrl}
+            variant="artist"
+            size={120}
+            className="size-16 rounded-full shadow-md object-cover transition-transform group-hover:scale-105"
+          />
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>
+            <span className="text-base font-bold text-foreground group-hover:underline truncate">{resolvedArtistName || artistDetails?.name}</span>
+            {artistDetails?.subscriberCount && (
+              <span className="text-xs text-muted-foreground">{artistDetails.subscriberCount}</span>
+            )}
+          </div>
         </div>
       )}
 
