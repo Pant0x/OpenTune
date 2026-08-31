@@ -12,6 +12,16 @@
  * face. Imported here rather than in the entry modules because main.tsx and mini.tsx both
  * pull in this stylesheet, so one import covers both windows.
  */
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 @font-face {
   font-family: 'Gotham';
   src: url('/fonts/GothamBook.ttf') format('truetype');

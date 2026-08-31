@@ -1607,7 +1607,7 @@ const backOnboardingStep = () => {
       webview there, so this edge would just be a stray line under the OS title bar.
     */}
     <div
-      className={`relative flex h-screen flex-col overflow-hidden ${
+      className={`relative flex h-full w-full flex-col overflow-hidden ${
         nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"

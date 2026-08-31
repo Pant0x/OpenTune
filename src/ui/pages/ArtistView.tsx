@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { CheckIcon, CopyIcon, UserPlusIcon } from "@/ui/icons";
@@ -30,7 +30,7 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 
-type ReleaseFilter = "all" | "album" | "single" | "ep";
+type ReleaseFilter = "all" | "album" | "singles_eps";
 
 export function compactViews(track: Track): string {
   let countStr = "";
@@ -112,6 +112,7 @@ export function ArtistView({
   );
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ReleaseFilter>("all");
+  const [showAllReleases, setShowAllReleases] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   /*
@@ -135,6 +136,7 @@ export function ArtistView({
     setError(null);
     setFilter("all");
     setShowAllSongs(false);
+    setShowAllReleases(false);
     void libraryController.getArtist(artist.id, (updated) => {
       if (!active) return;
       setPage(updated);
@@ -157,19 +159,29 @@ export function ArtistView({
     };
   }, [artist, libraryController]);
 
-  const releaseTypes = useMemo(
-    () => new Set(page?.releases.map((release) => release.releaseType) ?? []),
-    [page?.releases],
-  );
   const releaseFilters = useMemo(
-    () => (["all", "album", "single", "ep"] as const)
-      .filter((type) => type === "all" || releaseTypes.has(type)),
-    [releaseTypes],
+    () => [
+      { id: "all" as const, label: "Popular releases" },
+      { id: "album" as const, label: "Albums" },
+      { id: "singles_eps" as const, label: "Singles and EPs" },
+    ],
+    [],
   );
-  const activeFilterIndex = Math.max(0, releaseFilters.indexOf(filter));
-  const visibleReleases = page?.releases.filter(
-    (release) => filter === "all" || release.releaseType === filter,
-  ) ?? [];
+
+  const filteredReleases = useMemo(() => {
+    const all = page?.releases ?? [];
+    if (filter === "album") {
+      return all.filter((r) => r.releaseType === "album");
+    }
+    if (filter === "singles_eps") {
+      return all.filter((r) => r.releaseType === "single" || r.releaseType === "ep");
+    }
+    return all;
+  }, [page?.releases, filter]);
+
+  const visibleReleases = useMemo(() => {
+    return showAllReleases ? filteredReleases : filteredReleases.slice(0, 8);
+  }, [filteredReleases, showAllReleases]);
 
   const displayedArtist = page?.artist ?? artist;
   /*
@@ -468,50 +480,57 @@ export function ArtistView({
           {page.releases.length > 0 && (
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
-                <h2>Releases</h2>
-                <div
-                  className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring"
-                  role="group"
-                  aria-label="Release type"
-                  style={{
-                    "--active-filter-offset": `${activeFilterIndex * 100}%`,
-                    "--filter-count": releaseFilters.length,
-                  } as CSSProperties}
-                >
-                  {releaseFilters
-                    .map((type) => (
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2>Discography</h2>
+                  <div
+                    className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring"
+                    role="group"
+                    aria-label="Release type"
+                  >
+                    {releaseFilters.map((f) => (
                       <button
-                        key={type}
+                        key={f.id}
                         type="button"
-                        className={filter === type ? "bg-primary/15 text-foreground" : ""}
-                        aria-pressed={filter === type}
-                        onClick={() => setFilter(type)}
+                        className={filter === f.id ? "bg-white/[0.14] text-foreground font-semibold" : ""}
+                        aria-pressed={filter === f.id}
+                        onClick={() => setFilter(f.id)}
                       >
-                        {type === "all"
-                          ? "All"
-                          : type === "ep"
-                            ? "EPs"
-                            : `${type[0].toUpperCase()}${type.slice(1)}s`}
+                        {f.label}
                       </button>
                     ))}
+                  </div>
                 </div>
+                {filteredReleases.length > 8 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllReleases((prev) => !prev)}
+                    className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none"
+                  >
+                    {showAllReleases ? "Show less" : "Show all"}
+                  </button>
+                )}
               </div>
-              <div key={filter} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))] grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+              <div key={filter} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {visibleReleases.map((release) => {
                   const hasLinkedArtists = Boolean(release.artists?.length);
+                  const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
+                  const subtitleText = release.year ? `${release.year} • ${releaseTypeLabel}` : (release.releaseType ? releaseTypeLabel : release.artist);
                   return (
-                    <div key={release.id} className="">
+                    <div key={release.id}>
                       <AlbumCard
                         artworkUrl={release.artworkUrl}
                         title={release.title}
-                        subtitle={hasLinkedArtists ? undefined : release.artist}
+                        subtitle={hasLinkedArtists ? undefined : subtitleText}
                         subtitleContent={hasLinkedArtists
                           ? (
-                              <ArtistLinks
-                                artists={release.artists}
-                                fallback={release.artist}
-                                suppressArtistId={displayedArtist.id}
-                              />
+                              <span className="truncate">
+                                {release.year ? `${release.year} • ` : ""}
+                                <ArtistLinks
+                                  artists={release.artists}
+                                  fallback={release.artist}
+                                  suppressArtistId={displayedArtist.id}
+                                />
+                              </span>
                             )
                           : undefined}
                         onClick={() => onOpenAlbum(release)}
