@@ -453,7 +453,26 @@ export class PlayerController {
        * Only a track we know nothing about still has to wait.
        */
       let track: Track;
-      if (queuedTrack?.source === "local") {
+      if (videoId.startsWith("spotify:") && knownTrack) {
+        try {
+          const query = `${knownTrack.artist} ${knownTrack.title}`.trim();
+          const results = await this.dataSource.searchTracks?.(query) ?? [];
+          const bestMatch = results[0];
+          if (bestMatch) {
+            track = {
+              ...bestMatch,
+              title: knownTrack.title || bestMatch.title,
+              artist: knownTrack.artist || bestMatch.artist,
+              artworkUrl: knownTrack.artworkUrl || bestMatch.artworkUrl,
+              durationSec: knownTrack.durationSec || bestMatch.durationSec,
+            };
+          } else {
+            track = knownTrack;
+          }
+        } catch {
+          track = knownTrack;
+        }
+      } else if (queuedTrack?.source === "local") {
         track = queuedTrack;
       } else if (knownTrack) {
         track = mergeWithQueued(knownTrack);
@@ -983,7 +1002,12 @@ export class PlayerController {
           trackId: this.state.currentTrack.id,
         });
         this.prematureEndTrackId = null;
-        await this.playTrackById(this.state.currentTrack.id);
+        this.audioEngine.seekTo(0);
+        if (this.isTabActive) {
+          await this.audioEngine.play();
+        }
+        this.setState({ status: "playing", error: null });
+        this.beginPlayReport(this.state.currentTrack);
         return;
       }
 

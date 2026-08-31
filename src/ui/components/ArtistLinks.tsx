@@ -79,6 +79,18 @@ export interface ParsedArtistFeature {
   featuredArtists: ArtistReference[];
 }
 
+export function isValidArtistName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === "Unknown artist") return false;
+  // Filter out 4-digit years like 2019, 2024, 1999
+  if (/^(?:19|20)\d{2}$/.test(trimmed)) return false;
+  // Filter out view counts like "5M views", "1.2B views", "123K plays"
+  if (/^\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)$/i.test(trimmed)) return false;
+  // Filter out generic release labels
+  if (/^(?:album|single|ep|song|video|official video|audio|remix)$/i.test(trimmed)) return false;
+  return true;
+}
+
 export function parseTrackArtistsWithFeatures(
   title?: string,
   artistFallback = "",
@@ -90,20 +102,32 @@ export function parseTrackArtistsWithFeatures(
 
   const rawFeatNames: string[] = [];
   if (titleMatch && titleMatch[1]) {
-    rawFeatNames.push(...titleMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
-  }
-  if (artistMatch && artistMatch[1]) {
-    rawFeatNames.push(...artistMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
-  }
-
-  const existingArtists = artists && artists.length > 0
-    ? [...artists]
-    : artistFallback
-        .replace(featRegex, "")
+    rawFeatNames.push(
+      ...titleMatch[1]
         .split(/,\s*|\s*&\s*|\s+and\s+/i)
         .map((s) => s.trim())
-        .filter(Boolean)
-        .map((name) => ({ id: "", name }));
+        .filter(isValidArtistName),
+    );
+  }
+  if (artistMatch && artistMatch[1]) {
+    rawFeatNames.push(
+      ...artistMatch[1]
+        .split(/,\s*|\s*&\s*|\s+and\s+/i)
+        .map((s) => s.trim())
+        .filter(isValidArtistName),
+    );
+  }
+
+  const existingArtists = (
+    artists && artists.length > 0
+      ? [...artists]
+      : artistFallback
+          .replace(featRegex, "")
+          .split(/,\s*|\s*&\s*|\s+and\s+|•/i)
+          .map((s) => s.trim())
+          .filter(isValidArtistName)
+          .map((name) => ({ id: "", name }))
+  ).filter((a) => isValidArtistName(a.name));
 
   const mainArtists: ArtistReference[] = [];
   const featuredArtists: ArtistReference[] = [];

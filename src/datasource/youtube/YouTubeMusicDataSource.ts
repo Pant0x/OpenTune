@@ -754,8 +754,26 @@ export class YouTubeMusicDataSource extends DataSource {
       .replace(/[^a-z0-9]/g, "");
   }
 
+  private cleanArtistNameCandidate(name?: string): string {
+    if (!name) return "";
+    return name
+      .replace(/\s*[•·]\s*(?:(?:19|20)\d{2}|\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)|album|single|ep|song|video)\b.*$/i, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  private isValidArtistString(name?: string): boolean {
+    if (!name) return false;
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === "Unknown artist") return false;
+    if (/^(?:19|20)\d{2}$/.test(trimmed)) return false;
+    if (/^\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)$/i.test(trimmed)) return false;
+    if (/^(?:album|single|ep|song|video|audio)$/i.test(trimmed)) return false;
+    return true;
+  }
+
   private getArtistName(item: MusicItem): string {
-    return item.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
+    const raw = item.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
       || item.authors?.map((author) => author.name).filter(Boolean).join(", ")
       || item.author?.name
       || item.subtitle?.runs
@@ -763,8 +781,15 @@ export class YouTubeMusicDataSource extends DataSource {
         .map((run) => run.text)
         .filter(Boolean)
         .join(", ")
-      || item.subtitle?.toString()
-      || "Unknown artist";
+      || item.subtitle?.toString();
+
+    const cleaned = this.cleanArtistNameCandidate(raw);
+    const validParts = cleaned
+      .split(/,\s*|\s*&\s*|\s+and\s+|•/i)
+      .map((s) => s.trim())
+      .filter((s) => this.isValidArtistString(s));
+
+    return validParts.length > 0 ? validParts.join(", ") : (cleaned || "Unknown artist");
   }
 
   private getArtists(item: MusicItem): ArtistReference[] | undefined {
@@ -781,7 +806,7 @@ export class YouTubeMusicDataSource extends DataSource {
           ?? this.findBrowseId(candidate.endpoint)
           ?? this.findBrowseId(candidate.navigationEndpoint)
           ?? "",
-        name: candidate.name ?? candidate.text ?? "",
+        name: this.cleanArtistNameCandidate(candidate.name ?? candidate.text ?? ""),
       };
     };
     const candidates = item.artists?.length
@@ -793,20 +818,20 @@ export class YouTubeMusicDataSource extends DataSource {
           : [];
     const artists = candidates
       .map(toArtistReference)
-      .filter((artist) => artist.id.startsWith("UC") && artist.name);
+      .filter((artist) => artist.id.startsWith("UC") && this.isValidArtistString(artist.name));
 
     if (artists.length > 0) return artists;
 
     const unlinkedArtists = candidates
       .map(toArtistReference)
-      .filter((artist) => artist.name);
+      .filter((artist) => this.isValidArtistString(artist.name));
 
     if (unlinkedArtists.length > 0) return unlinkedArtists;
 
     const runs = item.subtitle?.runs ?? [];
     const fromRuns = runs
       .map(toArtistReference)
-      .filter((artist) => artist.id.startsWith("UC") && artist.name);
+      .filter((artist) => artist.id.startsWith("UC") && this.isValidArtistString(artist.name));
     return fromRuns.length > 0 ? fromRuns : undefined;
   }
 

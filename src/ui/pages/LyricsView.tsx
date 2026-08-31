@@ -404,9 +404,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     scrollToLine(nextIndex, !reduce);
   };
 
-  // sourceLabel hidden per user request - keep lyrics fetching but hide badge
+  // sourceLabel & timingLabel hidden per user request
   void lyrics?.sourceLabel;
-  const timingLabel = hasLines ? (isSynced ? "Synced" : "Unsynced") : null;
   const emptyMessage = !isOnline
     ? "You're offline. Lyrics need a connection."
     : failed
@@ -481,27 +480,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         </button>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col @4xl/lyrics:flex-row">
-        {/* Wide enough for two columns: the song gets a poster, the lyrics get the rest. */}
-        <aside className="hidden shrink-0 flex-col gap-6 px-8 py-8 @4xl/lyrics:flex @4xl/lyrics:w-[19rem] @6xl/lyrics:w-[22rem]">
-          <TrackArtwork
-            artworkUrl={track?.artworkUrl}
-            size={288}
-            className="aspect-square w-full   shadow-2xl shadow-black/50"
-            iconSize={40}
-            loading="eager"
-          />
-          <div className="min-w-0">
-            <h1 className="text-balance text-2xl font-bold leading-tight tracking-[-0.03em] text-foreground">
-              {track?.title ?? "Nothing playing"}
-            </h1>
-            {track && (
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                <ArtistLinks artists={track.artists} fallback={track.artist} />
-              </p>
-            )}
-          </div>
-        </aside>
+      <div className="relative flex min-h-0 flex-1 flex-col">
 
         {/* Narrow: the poster would eat the column, so the song identifies itself in a strip. */}
         <header className="flex shrink-0 items-center gap-3.5 px-6 pb-3 pr-16 pt-5 @4xl/lyrics:hidden">
@@ -628,18 +607,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           )}
         </div>
       </div>
-
-      <footer className="relative flex h-10 shrink-0 items-center justify-between gap-3 px-6 pb-2 text-xs text-muted-foreground">
-        <span className="flex min-w-0 items-center gap-2">
-          {timingLabel && (
-            <span className="flex shrink-0 items-center gap-1.5">
-              <LyricsIcon size={13} aria-hidden="true" />
-              {timingLabel}
-            </span>
-          )}
-        </span>
-        {isSynced && track && <LyricsOffsetControl trackId={track.id} offset={offset} />}
-      </footer>
     </section>
   );
 }
@@ -959,3 +926,7 @@ function LyricsMessage({ text, onRetry }: { text: string; onRetry?: () => void }
     </div>
   );
 }
+
+void LyricsOffsetControl;
+void formatOffset;
+void OffsetButton;

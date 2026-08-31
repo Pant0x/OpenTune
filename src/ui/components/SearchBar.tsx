@@ -1,11 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/motion/button";
 import { Tooltip } from "@/components/motion/tooltip";
-import { ArrowLeftIcon, ArrowRightIcon, CloseIcon, SearchIcon, ClockIcon } from "@/ui/icons";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CloseIcon,
+  SearchIcon,
+  ClockIcon,
+  PlayIcon,
+} from "@/ui/icons";
 import { isMacOS, primaryModifierLabel } from "../platform";
-import { searchController } from "../../player/playerStore";
+import { playerController, searchController } from "../../player/playerStore";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
+import type { Album, Artist, Playlist, SearchResults, Track } from "../../datasource/types";
+import { useArtistNavigation, useAlbumNavigation } from "./ArtistLinks";
+import { TrackArtwork } from "./TrackArtwork";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 6;
@@ -40,6 +50,7 @@ interface SearchBarProps {
   canGoForward: boolean;
   onBack: () => void;
   onForward: () => void;
+  onNavigatePlaylist?: (playlist: Playlist) => void;
 }
 
 export function SearchBar({
@@ -49,12 +60,18 @@ export function SearchBar({
   canGoForward,
   onBack,
   onForward,
+  onNavigatePlaylist,
 }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [previewResults, setPreviewResults] = useState<SearchResults | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState(loadRecentSearches);
+
+  const navigateArtist = useArtistNavigation();
+  const navigateAlbum = useAlbumNavigation();
+
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<number | null>(null);
@@ -87,20 +104,31 @@ export function SearchBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch search suggestions
-  const fetchSuggestions = useCallback((searchQuery: string) => {
+  // Fetch search suggestions and quick preview entities
+  const fetchSuggestionsAndPreview = useCallback((searchQuery: string) => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
       setSuggestions([]);
+      setPreviewResults(null);
       return;
     }
 
     try {
-      void searchController.getSearchSuggestions(trimmed, (updated: string[]) => {
-        setSuggestions(updated.slice(0, 6));
-      }).then((results: string[]) => {
-        if (results) setSuggestions(results.slice(0, 6));
-      });
+      void searchController
+        .getSearchSuggestions(trimmed, (updated: string[]) => {
+          setSuggestions(updated.slice(0, 4));
+        })
+        .then((results: string[]) => {
+          if (results) setSuggestions(results.slice(0, 4));
+        });
+
+      void searchController
+        .search(trimmed, (updated: SearchResults) => {
+          setPreviewResults(updated);
+        })
+        .then((results: SearchResults) => {
+          if (results) setPreviewResults(results);
+        });
     } catch {}
   }, []);
 
@@ -113,7 +141,7 @@ export function SearchBar({
       window.clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = window.setTimeout(() => {
-      fetchSuggestions(value);
+      fetchSuggestionsAndPreview(value);
     }, 150);
   };
 
@@ -129,6 +157,38 @@ export function SearchBar({
     } else {
       onOpen?.();
     }
+  };
+
+  const handleSelectArtist = (artist: Artist) => {
+    setIsOpen(false);
+    inputRef.current?.blur();
+    saveRecentSearch(artist.name);
+    setRecentSearches(loadRecentSearches());
+    navigateArtist?.(artist, false);
+  };
+
+  const handleSelectAlbum = (album: Album) => {
+    setIsOpen(false);
+    inputRef.current?.blur();
+    saveRecentSearch(album.title);
+    setRecentSearches(loadRecentSearches());
+    navigateAlbum?.(album, false);
+  };
+
+  const handleSelectPlaylist = (playlist: Playlist) => {
+    setIsOpen(false);
+    inputRef.current?.blur();
+    saveRecentSearch(playlist.title);
+    setRecentSearches(loadRecentSearches());
+    onNavigatePlaylist?.(playlist);
+  };
+
+  const handlePlayTrack = (track: Track) => {
+    setIsOpen(false);
+    inputRef.current?.blur();
+    saveRecentSearch(track.title);
+    setRecentSearches(loadRecentSearches());
+    void playerController.playTrackById(track.id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -163,11 +223,16 @@ export function SearchBar({
   const handleClear = () => {
     setQuery("");
     setSuggestions([]);
+    setPreviewResults(null);
     setSelectedIndex(-1);
     inputRef.current?.focus();
   };
 
-  const displayList = query.trim() ? suggestions : recentSearches;
+  const hasQuery = Boolean(query.trim());
+  const matchingArtist = previewResults?.artists?.[0];
+  const matchingAlbums = (previewResults?.albums ?? []).slice(0, 2);
+  const matchingPlaylists = (previewResults?.playlists ?? []).slice(0, 2);
+  const matchingTracks = (previewResults?.tracks ?? []).slice(0, 2);
 
   return (
     <div ref={containerRef} className="relative flex items-center gap-2 max-w-2xl mx-auto w-full z-40">
@@ -209,7 +274,7 @@ export function SearchBar({
             onChange={(e) => handleInputChange(e.target.value)}
             onFocus={() => {
               setIsOpen(true);
-              if (query.trim()) fetchSuggestions(query);
+              if (query.trim()) fetchSuggestionsAndPreview(query);
             }}
             onKeyDown={handleKeyDown}
             placeholder="What do you want to play?"
@@ -233,48 +298,198 @@ export function SearchBar({
           )}
         </div>
 
-        {/* Live Search Suggestions Dropdown */}
+        {/* Spotify-style Dropdown with query suggestions, closest artist card, albums and playlists */}
         <AnimatePresence>
-          {isOpen && displayList.length > 0 && (
+          {isOpen && (
             <motion.div
               initial={{ opacity: 0, y: 6, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.98 }}
               transition={{ duration: 0.12 }}
-              className="absolute left-0 right-0 top-full mt-2 overflow-hidden rounded-2xl bg-card border border-border/50 shadow-2xl backdrop-blur-xl p-1.5"
+              className="absolute left-0 right-0 top-full mt-2 max-h-[75vh] overflow-y-auto rounded-2xl bg-card border border-border/50 shadow-2xl backdrop-blur-xl p-2 flex flex-col gap-2"
             >
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                {query.trim() ? "Suggestions" : "Recent Searches"}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                {displayList.map((item, index) => {
-                  const isSelected = index === selectedIndex;
-                  return (
-                    <button
-                      key={`${item}-${index}`}
-                      type="button"
-                      onClick={() => {
-                        setQuery(item);
-                        handleExecuteSearch(item);
-                      }}
-                      onMouseEnter={() => setSelectedIndex(index)}
-                      className={cn(
-                        "flex items-center gap-3 w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                        isSelected
-                          ? "bg-primary/15 text-primary font-medium"
-                          : "text-foreground hover:bg-white/5",
-                      )}
-                    >
-                      {query.trim() ? (
-                        <SearchIcon size={15} className={cn("shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
-                      ) : (
-                        <ClockIcon size={15} className="shrink-0 text-muted-foreground" />
-                      )}
-                      <span className="truncate flex-1">{item}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {hasQuery ? (
+                <>
+                  {/* 1. Query Text Suggestions */}
+                  {suggestions.length > 0 && (
+                    <div className="flex flex-col gap-0.5 pb-1 border-b border-border/30">
+                      {suggestions.map((item, index) => {
+                        const isSelected = index === selectedIndex;
+                        return (
+                          <button
+                            key={`sugg-${item}-${index}`}
+                            type="button"
+                            onClick={() => {
+                              setQuery(item);
+                              handleExecuteSearch(item);
+                            }}
+                            onMouseEnter={() => setSelectedIndex(index)}
+                            className={cn(
+                              "flex items-center gap-3 w-full rounded-xl px-3 py-1.5 text-left text-sm transition-colors",
+                              isSelected
+                                ? "bg-primary/15 text-primary font-medium"
+                                : "text-foreground hover:bg-white/5",
+                            )}
+                          >
+                            <SearchIcon size={14} className={cn("shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
+                            <span className="truncate flex-1">{item}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 2. Closest Matching Artist (Spotify style) */}
+                  {matchingArtist && (
+                    <div className="pt-1">
+                      <div className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Top Artist
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectArtist(matchingArtist)}
+                        className="group flex items-center gap-3.5 w-full rounded-xl p-2.5 text-left transition-colors hover:bg-white/[0.07] focus-visible:outline-none"
+                      >
+                        <div className="size-12 shrink-0 overflow-hidden rounded-full bg-muted/40 ring-1 ring-border/20 shadow-md">
+                          <TrackArtwork
+                            artworkUrl={matchingArtist.artworkUrl}
+                            size={48}
+                            className="size-full object-cover"
+                            iconSize={22}
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-base font-bold text-foreground group-hover:text-primary transition-colors">
+                            {matchingArtist.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">Artist</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 3. Related Albums & Playlists */}
+                  {(matchingAlbums.length > 0 || matchingPlaylists.length > 0 || matchingTracks.length > 0) && (
+                    <div className="pt-1 border-t border-border/30 flex flex-col gap-1">
+                      <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Top Results & Releases
+                      </div>
+
+                      {matchingAlbums.map((album) => (
+                        <button
+                          key={`alb-${album.id}`}
+                          type="button"
+                          onClick={() => handleSelectAlbum(album)}
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                        >
+                          <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
+                            <TrackArtwork artworkUrl={album.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                              {album.title}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              Album {album.artist ? `• ${album.artist}` : ""}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+
+                      {matchingPlaylists.map((playlist) => (
+                        <button
+                          key={`pl-${playlist.id}`}
+                          type="button"
+                          onClick={() => handleSelectPlaylist(playlist)}
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                        >
+                          <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
+                            <TrackArtwork artworkUrl={playlist.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                              {playlist.title}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              Playlist {playlist.owner ? `• ${playlist.owner}` : ""}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+
+                      {matchingTracks.map((track) => (
+                        <button
+                          key={`trk-${track.id}`}
+                          type="button"
+                          onClick={() => handlePlayTrack(track)}
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                        >
+                          <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
+                            <TrackArtwork artworkUrl={track.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
+                            <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                              <PlayIcon size={16} className="text-white fill-white" />
+                            </span>
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                              {track.title}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              Song • {track.artist}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* See all results row */}
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteSearch(query)}
+                    className="flex items-center justify-center gap-2 w-full rounded-xl py-2 mt-1 bg-white/[0.04] text-xs font-semibold text-foreground transition-colors hover:bg-white/[0.09]"
+                  >
+                    <SearchIcon size={13} className="text-primary" />
+                    <span>See all results for &quot;{query}&quot;</span>
+                  </button>
+                </>
+              ) : (
+                /* Recent Searches */
+                <div>
+                  <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    Recent Searches
+                  </div>
+                  {recentSearches.length === 0 ? (
+                    <p className="px-3 py-4 text-center text-xs text-muted-foreground">No recent searches</p>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      {recentSearches.map((item, index) => {
+                        const isSelected = index === selectedIndex;
+                        return (
+                          <button
+                            key={`rec-${item}-${index}`}
+                            type="button"
+                            onClick={() => {
+                              setQuery(item);
+                              handleExecuteSearch(item);
+                            }}
+                            onMouseEnter={() => setSelectedIndex(index)}
+                            className={cn(
+                              "flex items-center gap-3 w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                              isSelected
+                                ? "bg-primary/15 text-primary font-medium"
+                                : "text-foreground hover:bg-white/5",
+                            )}
+                          >
+                            <ClockIcon size={15} className="shrink-0 text-muted-foreground" />
+                            <span className="truncate flex-1">{item}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

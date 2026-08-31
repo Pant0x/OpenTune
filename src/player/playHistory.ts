@@ -5,8 +5,9 @@ import { getAppSetting, setAppSetting } from "../internal/appSettings";
 
 const STORAGE_KEY = "amber.play-history.v1";
 
-/** Roughly a month of heavy listening. Trimmed oldest-first. */
-const MAX_ENTRIES = 500;
+/** 30 days in ms — history keeps all tracks played within a month and prunes older entries */
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_ENTRIES = 2000;
 
 /**
  * Replaying the same track within this window updates the existing entry instead of adding a
@@ -26,10 +27,12 @@ let cached: PlayHistoryEntry[] = [];
 
 function normalize(parsed: unknown): PlayHistoryEntry[] | null {
   if (!Array.isArray(parsed)) return null;
+  const cutoff = Date.now() - THIRTY_DAYS_MS;
   return parsed.filter((entry): entry is PlayHistoryEntry =>
     Boolean(entry)
     && typeof entry === "object"
     && typeof (entry as PlayHistoryEntry).playedAt === "number"
+    && (entry as PlayHistoryEntry).playedAt >= cutoff
     && Boolean((entry as PlayHistoryEntry).track?.id),
   );
 }
@@ -74,7 +77,10 @@ export async function hydratePlayHistory(): Promise<void> {
 
 function write(entries: PlayHistoryEntry[]): void {
   if (typeof window === "undefined") return;
-  const trimmed = entries.slice(0, MAX_ENTRIES);
+  const cutoff = Date.now() - THIRTY_DAYS_MS;
+  const trimmed = entries
+    .filter((entry) => entry.playedAt >= cutoff)
+    .slice(0, MAX_ENTRIES);
   cachedRaw = JSON.stringify(trimmed);
   cached = trimmed;
   try {

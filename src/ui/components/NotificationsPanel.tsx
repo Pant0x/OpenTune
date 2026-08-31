@@ -3,65 +3,92 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/motion/button";
 import { Tooltip } from "@/components/motion/tooltip";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { BookmarkIcon, BookmarkActiveIcon, RefreshIcon } from "@/ui/icons";
+import { CloseIcon, RefreshIcon, BookmarkIcon, BookmarkActiveIcon } from "@/ui/icons";
 import type { FeedNotification } from "../../datasource/types";
 import { libraryController, playerController } from "../../player/playerStore";
 import { logInternalError } from "../../internal/logging";
 import { FloatingPanel } from "./FloatingPanel";
 
-/**
- * How often the unseen count is refreshed while the app is open.
- *
- * New releases arrive on the order of days, so this only needs to be often enough that the
- * badge is not stale across a long session. Anything faster is a request per user per minute
- * to learn nothing.
- */
-const UNSEEN_POLL_MS = 10 * 60 * 1000;
+const DISMISSED_STORAGE_KEY = "amber-dismissed-notifications";
+const UNSEEN_POLL_MS = 60_000;
+
+function getDismissedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISMISSED_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveDismissedIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {}
+}
 
 function NotificationRow({
   notification,
   onOpen,
+  onDismiss,
 }: {
   notification: FeedNotification;
   onOpen: (notification: FeedNotification) => void;
+  onDismiss: (id: string) => void;
 }) {
   const canOpen = Boolean(notification.videoId);
 
   return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-        canOpen ? "hover:bg-white/[0.06]" : "cursor-default",
-        !notification.read && "bg-primary/[0.07]",
-      )}
-      disabled={!canOpen}
-      onClick={() => onOpen(notification)}
-    >
-      {notification.thumbnailUrl ? (
-        <img
-          className="size-10 shrink-0 rounded-lg object-cover"
-          src={notification.thumbnailUrl}
-          alt=""
-          loading="lazy"
-        />
-      ) : (
-        <span className="size-10 shrink-0 rounded-lg bg-muted" aria-hidden="true" />
-      )}
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="line-clamp-2 text-sm text-foreground">{notification.text}</span>
-        {notification.sentAtText ? (
-          <span className="text-xs text-muted-foreground">{notification.sentAtText}</span>
-        ) : null}
-      </span>
-      {!notification.read && (
-        <span
-          className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
-          aria-label="Unread"
-        />
-      )}
-    </button>
+    <div className="group relative flex w-full items-center">
+      <button
+        type="button"
+        className={cn(
+          "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 pr-9 text-left transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          canOpen ? "hover:bg-white/[0.06]" : "cursor-default",
+          !notification.read && "bg-primary/[0.07]",
+        )}
+        disabled={!canOpen}
+        onClick={() => onOpen(notification)}
+      >
+        {notification.thumbnailUrl ? (
+          <img
+            className="size-10 shrink-0 rounded-lg object-cover"
+            src={notification.thumbnailUrl}
+            alt=""
+            loading="lazy"
+          />
+        ) : (
+          <span className="size-10 shrink-0 rounded-lg bg-muted" aria-hidden="true" />
+        )}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="line-clamp-2 text-sm text-foreground">{notification.text}</span>
+          {notification.sentAtText ? (
+            <span className="text-xs text-muted-foreground">{notification.sentAtText}</span>
+          ) : null}
+        </span>
+        {!notification.read && (
+          <span
+            className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+            aria-label="Unread"
+          />
+        )}
+      </button>
+      <button
+        type="button"
+        className="absolute right-2 top-2 grid size-6 place-items-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-white/[0.1] hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+        aria-label="Remove notification"
+        title="Remove notification"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDismiss(notification.id);
+        }}
+      >
+        <CloseIcon size={13} aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 
@@ -75,6 +102,7 @@ function NotificationRow({
 export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<FeedNotification[] | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(getDismissedIds);
   const [isLoading, setIsLoading] = useState(false);
   const [unseen, setUnseen] = useState(0);
 
@@ -116,13 +144,33 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   useEffect(() => {
     if (!open) return;
     const cancel = load();
-    // Opening the list is what "seeing" them means, so the badge clears here rather than
-    // waiting for the next poll to report a number the user has already looked at.
     setUnseen(0);
     return cancel;
   }, [load, open]);
 
   if (!signedIn) return null;
+
+  const visibleNotifications = (notifications ?? []).filter(
+    (item) => !dismissedIds.has(item.id),
+  );
+
+  const handleDismiss = (id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      saveDismissedIds(next);
+      return next;
+    });
+  };
+
+  const handleClearAll = () => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      visibleNotifications.forEach((item) => next.add(item.id));
+      saveDismissedIds(next);
+      return next;
+    });
+  };
 
   const handleOpen = (notification: FeedNotification) => {
     if (!notification.videoId) return;
@@ -144,8 +192,6 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
             className="relative"
             aria-label={unseen > 0 ? `Notifications, ${unseen} unread` : "Notifications"}
             aria-expanded={open}
-            // FloatingPanel positions and dismisses the panel but leaves opening to the
-            // trigger, so without this the button is inert.
             onClick={() => setOpen((value) => !value)}
           >
             {unseen > 0 ? (
@@ -166,7 +212,18 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
       }
     >
       <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
-        <span className="text-sm font-semibold text-foreground">Notifications</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">Notifications</span>
+          {visibleNotifications.length > 0 && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              onClick={handleClearAll}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -182,17 +239,18 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
         <div className="grid place-items-center py-10" role="status" aria-label="Loading">
           <SpinnerSteps size={24} color="currentColor" />
         </div>
-      ) : !notifications?.length ? (
+      ) : visibleNotifications.length === 0 ? (
         <p className="px-3 py-8 text-center text-sm text-muted-foreground">
           Nothing new. Subscribe to artists to hear about their releases here.
         </p>
       ) : (
         <div className="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
-          {notifications.map((notification) => (
+          {visibleNotifications.map((notification) => (
             <NotificationRow
               key={notification.id}
               notification={notification}
               onOpen={handleOpen}
+              onDismiss={handleDismiss}
             />
           ))}
         </div>

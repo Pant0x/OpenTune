@@ -40,6 +40,7 @@ import {
 import {
   addLocalPlaylistPath,
   getLocalPlaylistItems,
+  setLocalPlaylistArtwork,
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
 import { getAppSetting, setAppSetting } from "../../internal/appSettings";
@@ -294,10 +295,11 @@ function CreatePlaylistButton({
         if (!imported) return;
 
         const created = await libraryController.createPlaylist(imported.title, {
-          local: false,
+          local: true,
         });
         if (imported.artworkUrl) {
           created.artworkUrl = imported.artworkUrl;
+          setLocalPlaylistArtwork(created.id, imported.artworkUrl);
         }
         await libraryController.addTracksToPlaylist(imported.tracks, created);
 
@@ -1202,7 +1204,7 @@ export function Sidebar({
         >
           {!shouldHideText ? (
             <div
-              className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
+              className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border overflow-hidden"
               role="group"
               aria-label="Library view"
             >
@@ -1213,9 +1215,9 @@ export function Sidebar({
                     key={view.value}
                     type="button"
                     className={cn(
-                      "relative flex items-center justify-center gap-1.5 rounded-full transition-colors flex-1 px-2.5 py-1.5 text-xs font-medium",
+                      "relative flex items-center justify-center gap-1 rounded-full transition-colors flex-1 min-w-0 px-2 py-1 text-[11px] font-medium",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                      isActive ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
                     )}
                     aria-pressed={isActive}
                     aria-label={view.label}
@@ -1228,8 +1230,8 @@ export function Sidebar({
                         className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
                       />
                     )}
-                    <view.icon size={16} aria-hidden="true" />
-                    <span>{view.label}</span>
+                    <view.icon size={14} className="shrink-0" aria-hidden="true" />
+                    <span className="truncate">{view.label}</span>
                   </button>
                 );
               })}

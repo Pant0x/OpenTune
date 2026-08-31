@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Album, Artist, Playlist, SearchResults, Track } from "../datasource/types";
 import { looksLikeYouTubeLink } from "../datasource/youtube/links";
 import { useDisableContextMenu } from "./hooks/useDisableContextMenu";
+import { useZoom } from "./hooks/useZoom";
 import { HomePage } from "./pages/HomePage";
 
 /*
@@ -239,6 +240,7 @@ async function hasStoredYoutubeSession(): Promise<boolean> {
 
 export default function App() {
   useDisableContextMenu();
+  useZoom();
   const libraryState = useLibraryState();
   /*
    * Only the three fields the root actually reads. Selecting the whole state here made the

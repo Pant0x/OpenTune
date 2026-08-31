@@ -312,6 +312,7 @@ export function Layout({
                 canGoForward={canGoForward}
                 onBack={onNavigateBack}
                 onForward={onNavigateForward}
+                onNavigatePlaylist={onNavigatePlaylist}
               />
             </div>
           )}

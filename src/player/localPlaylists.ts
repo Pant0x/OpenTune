@@ -121,25 +121,23 @@ export function writeLocalPlaylists(playlists: LocalPlaylist[]): void {
 function normalizeStoredTrack(value: unknown): Track | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<Track>;
-  if (candidate.source !== "local") return null;
   if (typeof candidate.id !== "string" || !candidate.id.trim()) return null;
   if (typeof candidate.title !== "string" || !candidate.title.trim()) return null;
-  if (typeof candidate.localPath !== "string" || !candidate.localPath.trim()) return null;
 
   return {
     id: candidate.id,
-    source: "local",
+    source: candidate.source ?? "youtube",
     title: candidate.title,
     artist: typeof candidate.artist === "string" && candidate.artist.trim()
       ? candidate.artist
-      : "Local files",
+      : "Unknown artist",
     artists: Array.isArray(candidate.artists) ? candidate.artists : undefined,
     album: typeof candidate.album === "string" ? candidate.album : undefined,
     durationSec: typeof candidate.durationSec === "number" ? candidate.durationSec : undefined,
     artworkUrl: typeof candidate.artworkUrl === "string" ? candidate.artworkUrl : undefined,
     playlistItemId: typeof candidate.playlistItemId === "string"
       ? candidate.playlistItemId
-      : candidate.localPath,
+      : candidate.localPath ?? candidate.id,
     localPath: candidate.localPath,
   };
 }
@@ -410,13 +408,10 @@ export function localPlaylistToPlaylist(playlist: LocalPlaylist): Playlist {
     kind: "local",
     isEditable: true,
     localPaths: playlist.paths,
-    /*
-     * A local playlist has no cover to fetch, so every surface used to fall back to its own
-     * glyph. The bundled placeholder gives them one identity instead of three, and a picked
-     * image replaces it through the same `TrackArtwork` path as embedded cover art.
-     */
     artworkUrl: playlist.artworkPath
-      ? `${LOCAL_IMAGE_PREFIX}${playlist.artworkPath}`
+      ? (playlist.artworkPath.startsWith("http")
+          ? playlist.artworkPath
+          : `${LOCAL_IMAGE_PREFIX}${playlist.artworkPath}`)
       : playlistPlaceholder,
   };
 }
@@ -532,19 +527,14 @@ export function addLocalTrackToPlaylist(
   track: Track,
   playlist: Playlist,
 ): "added" | "already-present" {
-  if (track.source !== "local" || !track.localPath) {
-    throw new Error("Only local songs can be stored locally in playlists.");
-  }
   const playlistTracks = readLocalPlaylistTracks();
   const tracks = playlistTracks[playlist.id] ?? [];
-  if (tracks.some((item) => item.localPath === track.localPath)) {
+  if (tracks.some((item) => (track.localPath ? item.localPath === track.localPath : item.id === track.id))) {
     return "already-present";
   }
 
   const localTrack: Track = {
     ...track,
-    source: "local",
-    artist: track.artist || "Local files",
     playlistItemId: getLocalPlaylistTrackItemId(playlist.id, track),
   };
   writeLocalPlaylistTracks({
@@ -595,6 +585,11 @@ export function reorderLocalPlaylistTracks(
 }
 
 export async function getLocalPlaylistTrackPage(playlist: Playlist): Promise<TrackPage> {
+  const explicitStoredTracks = readLocalPlaylistTracks()[playlist.id] ?? [];
+  if (explicitStoredTracks.length > 0) {
+    return { tracks: explicitStoredTracks, hasMore: false };
+  }
+
   const stored = getLocalPlaylist(playlist.id);
   const paths = playlist.localPaths ?? stored?.paths ?? [];
   if (!paths.length) return { tracks: [], hasMore: false };

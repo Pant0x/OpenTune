@@ -121,11 +121,6 @@ export function TitleBar({
   const startWindowDrag = async () => {
     try {
       window.dispatchEvent(new Event("main-window-drag-started"));
-
-      if (await appWindow.isMaximized()) {
-        await appWindow.unmaximize();
-      }
-
       await appWindow.startDragging();
     } catch (error) {
       logInternalError("TitleBar.startWindowDrag failed", error);

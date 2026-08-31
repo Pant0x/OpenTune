@@ -4,7 +4,6 @@ import { Tooltip } from "@/components/motion/tooltip";
 import {
   CheckIcon,
   ClockIcon,
-  CloseIcon,
   DiceIcon,
   HeartActiveIcon,
   HeartIcon,
@@ -35,6 +34,8 @@ import { TrackArtwork } from "../TrackArtwork";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { SquareAltArrowLeftIcon, SquareAltArrowRightIcon } from "@solar-icons/react/linear";
+
+import { usePlayHistory } from "../../../player/playHistory";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -335,7 +336,7 @@ function ShowMoreQueueButton({
   );
 }
 
-export function QueuePanel({ onClose }: QueuePanelProps) {
+export function QueuePanel({ onClose: _onClose }: QueuePanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const draggedElementRef = useRef<HTMLElement | null>(null);
   const captureElementRef = useRef<HTMLElement | null>(null);
@@ -368,9 +369,10 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const navigateArtist = useArtistNavigation();
   const navigateAlbum = useAlbumNavigation();
   const { toggleTrackLike } = useTrackContextMenu();
+  const playHistory = usePlayHistory();
   const recentlyPlayed = useMemo(
-    () => libraryState.library?.recentlyPlayed ?? [],
-    [libraryState.library?.recentlyPlayed],
+    () => playHistory.map((item) => item.track),
+    [playHistory],
   );
 
   const { queue, queueIndex, manualQueueLength, stopAfterQueueIndex, queueWindowStart } =
@@ -770,11 +772,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           <Tooltip side="bottom" content="Collapse panel">
             <button type="button" className={ICON_BUTTON} onClick={toggleQueuePanelCollapsed}>
               <SquareAltArrowRightIcon size={18} aria-hidden="true" />
-            </button>
-          </Tooltip>
-          <Tooltip side="bottom" content="Close panel">
-            <button type="button" className={ICON_BUTTON} onClick={onClose}>
-              <CloseIcon size={16} aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
