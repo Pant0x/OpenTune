@@ -18,6 +18,8 @@ import { HomePage } from "./pages/HomePage";
  */
 const AlbumView = lazy(() => import("./pages/AlbumView").then((m) => ({ default: m.AlbumView })));
 const ArtistView = lazy(() => import("./pages/ArtistView").then((m) => ({ default: m.ArtistView })));
+const DiscographyPage = lazy(() =>
+  import("./pages/DiscographyPage").then((m) => ({ default: m.DiscographyPage })));
 const PlaylistView = lazy(() =>
   import("./pages/PlaylistView").then((m) => ({ default: m.PlaylistView })));
 const RelatedPage = lazy(() =>
@@ -148,6 +150,7 @@ function getNavigationState(tab: Tab): TabViewState | null {
     view: tab.view,
     album: tab.album,
     artist: tab.artist,
+    releases: tab.releases,
     playlist: tab.playlist,
     relatedTrack: tab.relatedTrack,
     searchQuery: tab.searchQuery,
@@ -163,6 +166,8 @@ function getNavigationKey(state: TabViewState): string {
       return `album:${state.album?.id ?? ""}`;
     case "artist":
       return `artist:${state.artist?.id ?? state.artist?.name ?? ""}`;
+    case "discography":
+      return `discography:${state.artist?.id ?? state.artist?.name ?? ""}`;
     case "playlist":
       return `playlist:${state.playlist?.id ?? ""}`;
     case "related":
@@ -189,6 +194,7 @@ function applyNavigationState(tab: Tab, state: TabViewState): Tab {
     view: state.view,
     album: state.album,
     artist: state.artist,
+    releases: state.releases,
     playlist: state.playlist,
     relatedTrack: state.relatedTrack,
     searchQuery: state.searchQuery,
@@ -876,6 +882,16 @@ useMediaSession(playerState, playerController);
       view: "artist",
       artist,
       title: artist.name,
+    });
+  };
+
+  const handleNavigateDiscography = (artist: Artist, releases?: Album[]) => {
+    playerUIStore.setLyricsOpen(false);
+    navigateTab(activeTabId, {
+      title: `${artist.name} - Discography`,
+      view: "discography",
+      artist,
+      releases,
     });
   };
 
@@ -1731,6 +1747,14 @@ const backOnboardingStep = () => {
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenPlaylist={handleNavigatePlaylist}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
+                onOpenDiscography={handleNavigateDiscography}
+              />
+            )}
+            {activeTab?.view === "discography" && (
+              <DiscographyPage
+                artist={activeTab.artist}
+                releases={activeTab.releases}
+                onOpenAlbum={handleNavigateAlbum}
               />
             )}
             {activeTab?.view === "playlist" && (

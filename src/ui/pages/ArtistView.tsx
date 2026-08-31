@@ -81,6 +81,7 @@ export function ArtistView({
   onOpenAlbum,
   onOpenPlaylist,
   onOpenArtist,
+  onOpenDiscography,
 }: {
   artist?: Artist;
   playerController: PlayerControllerActions;
@@ -88,6 +89,7 @@ export function ArtistView({
   onOpenAlbum: (album: Album) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
   onOpenArtist?: (artist: Artist) => void;
+  onOpenDiscography?: (artist: Artist, releases: Album[]) => void;
 }) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -479,36 +481,34 @@ export function ArtistView({
 
           {page.releases.length > 0 && (
             <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2>Discography</h2>
-                  <div
-                    className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring"
-                    role="group"
-                    aria-label="Release type"
-                  >
-                    {releaseFilters.map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        className={filter === f.id ? "bg-white/[0.14] text-foreground font-semibold" : ""}
-                        aria-pressed={filter === f.id}
-                        onClick={() => setFilter(f.id)}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => onOpenDiscography?.(displayedArtist, page.releases)}
+                  className="group/discog flex items-center gap-1.5 text-left focus-visible:outline-none hover:underline cursor-pointer"
+                  title={`View full ${displayedArtist.name} discography`}
+                >
+                  <h2 className="group-hover/discog:text-foreground">Discography</h2>
+                  <span className="text-muted-foreground text-sm transition-transform group-hover/discog:translate-x-0.5">›</span>
+                </button>
+
+                <div
+                  className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring"
+                  role="group"
+                  aria-label="Release type"
+                >
+                  {releaseFilters.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={filter === f.id ? "bg-white/[0.14] text-foreground font-semibold" : ""}
+                      aria-pressed={filter === f.id}
+                      onClick={() => setFilter(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
-                {filteredReleases.length > 8 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllReleases((prev) => !prev)}
-                    className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none"
-                  >
-                    {showAllReleases ? "Show less" : "Show all"}
-                  </button>
-                )}
               </div>
               <div key={filter} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {visibleReleases.map((release) => {
