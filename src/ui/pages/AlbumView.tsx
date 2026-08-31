@@ -212,7 +212,7 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
   return (
     <div className="flex flex-col gap-8">
       <MediaHeader
-        eyebrow="Album"
+        eyebrow={album.year ? `Album • ${album.year}` : "Album"}
         title={album.title}
         subtitle={<ArtistLinks artists={album.artists} fallback={album.artist} />}
         meta={formatCollectionMeta(tracks)}

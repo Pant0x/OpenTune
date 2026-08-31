@@ -6,16 +6,27 @@ import { SpinnerSteps } from "@/components/motion/loader";
 import { TrackArtwork } from "./TrackArtwork";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
 
+function parseTrackDurationToSeconds(track: { durationSec?: number; duration?: string }): number {
+  if (typeof track.durationSec === "number" && track.durationSec > 0) {
+    return track.durationSec;
+  }
+  if (typeof track.duration === "string") {
+    const parts = track.duration.split(":").map((p) => parseInt(p, 10));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+  return 0;
+}
+
 /**
- * "24 songs · 1 hr 32 min".
- *
- * The duration is dropped unless every counted track reported one and the list is fully
- * loaded. YouTube omits `durationSec` on most playlist entries, so summing what happens to
- * be present produced badly wrong totals — a 98-track playlist read "98 songs · 3 min".
- * A missing total is honest; a wrong one is not.
+ * "19 songs • 1 hour, 2 minutes" or "12 songs • 45 minutes".
  */
 export function formatCollectionMeta(
-  tracks: readonly { durationSec?: number }[],
+  tracks: readonly { durationSec?: number; duration?: string }[],
   hasMore = false,
 ): string {
   const trackCount = tracks.length;
@@ -23,16 +34,27 @@ export function formatCollectionMeta(
   if (hasMore || trackCount === 0) return countLabel;
 
   let totalDurationSec = 0;
+  let countWithDuration = 0;
   for (const track of tracks) {
-    if (!track.durationSec) return countLabel;
-    totalDurationSec += track.durationSec;
+    const sec = parseTrackDurationToSeconds(track);
+    if (sec > 0) {
+      totalDurationSec += sec;
+      countWithDuration++;
+    }
+  }
+
+  if (totalDurationSec === 0 || countWithDuration < Math.min(tracks.length, 3)) {
+    return countLabel;
   }
 
   const totalMinutes = Math.round(totalDurationSec / 60);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  const durationLabel = hours > 0 ? `${hours} hr ${minutes} min` : `${minutes} min`;
-  return `${countLabel} · ${durationLabel}`;
+  const durationLabel =
+    hours > 0
+      ? `${hours} ${hours === 1 ? "hour" : "hours"}, ${minutes} ${minutes === 1 ? "minute" : "minutes"}`
+      : `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  return `${countLabel} • ${durationLabel}`;
 }
 
 interface MediaHeaderProps {

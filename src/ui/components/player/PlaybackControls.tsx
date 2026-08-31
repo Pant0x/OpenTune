@@ -115,7 +115,7 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
         type="button"
         className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-[transform,background-color] hover:bg-primary/80 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={handlePlayPause}
-        disabled={isBusy || !hasCurrentTrack}
+        disabled={!hasCurrentTrack}
         aria-label={isBusy ? "Loading song" : isPlaying ? "Pause" : "Play"}
       >
         <span className="relative grid size-5 place-items-center" aria-hidden="true">

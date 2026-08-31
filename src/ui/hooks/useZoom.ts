@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const ZOOM_STORAGE_KEY = "amber-ui-zoom";
 const MIN_ZOOM = 0.5;
@@ -20,6 +20,18 @@ function getStoredZoom(): number {
   return 1;
 }
 
+function applyDocumentZoom(zoomValue: number) {
+  const zoomStr = String(zoomValue);
+  document.documentElement.style.zoom = zoomStr;
+  if (document.body) {
+    document.body.style.zoom = zoomStr;
+  }
+  const root = document.getElementById("root");
+  if (root) {
+    root.style.zoom = zoomStr;
+  }
+}
+
 export function useZoom() {
   const [zoom, setZoomState] = useState<number>(getStoredZoom);
 
@@ -31,16 +43,16 @@ export function useZoom() {
     } catch {
       // Ignore storage failures
     }
-    document.documentElement.style.zoom = String(clamped);
+    applyDocumentZoom(clamped);
   };
 
   useEffect(() => {
     // Apply initial stored zoom
     const initial = getStoredZoom();
-    document.documentElement.style.zoom = String(initial);
+    applyDocumentZoom(initial);
 
     const handleWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey) return;
+      if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       event.stopPropagation();
       setZoomState((current) => {
@@ -49,7 +61,7 @@ export function useZoom() {
         try {
           localStorage.setItem(ZOOM_STORAGE_KEY, String(next));
         } catch {}
-        document.documentElement.style.zoom = String(next);
+        applyDocumentZoom(next);
         return next;
       });
     };
@@ -69,12 +81,12 @@ export function useZoom() {
       }
     };
 
-    window.addEventListener("wheel", handleWheel, { passive: false });
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
 
     return () => {
-      window.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("wheel", handleWheel, { capture: true } as any);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true } as any);
     };
   }, [zoom]);
 

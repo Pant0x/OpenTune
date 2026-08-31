@@ -32,16 +32,17 @@ import { useTrackContextMenu } from "../components/TrackContextMenu";
 
 type ReleaseFilter = "all" | "album" | "single" | "ep";
 
-function compactViews(track: Track): string {
+export function compactViews(track: Track): string {
+  let countStr = "";
   if (track.viewCount) {
-    return new Intl.NumberFormat("en", {
+    countStr = new Intl.NumberFormat("en", {
       notation: "compact",
       maximumFractionDigits: 1,
     }).format(track.viewCount);
+  } else if (track.viewCountText) {
+    countStr = track.viewCountText.replace(/\s*\b(?:views?|plays?)\b\.?/i, "").trim();
   }
-  return track.viewCountText
-    ? track.viewCountText.replace(/\s*\b(?:views?|plays?)\b\.?/i, "").trim()
-    : "";
+  return countStr ? `${countStr} plays` : "";
 }
 
 function getArtistUrl(artist: Artist): string {

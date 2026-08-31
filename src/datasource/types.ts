@@ -68,6 +68,7 @@ export interface Album {
   artists?: ArtistReference[];
   artworkUrl?: string;
   releaseType?: "album" | "single" | "ep";
+  year?: string;
 }
 
 export interface Playlist {

@@ -1215,7 +1215,7 @@ export function Sidebar({
                     key={view.value}
                     type="button"
                     className={cn(
-                      "relative flex items-center justify-center gap-1 rounded-full transition-colors flex-1 min-w-0 px-2 py-1 text-[11px] font-medium",
+                      "relative flex items-center justify-center rounded-full transition-colors flex-1 min-w-0 px-1.5 py-1 text-[11px] font-medium text-center",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
                     )}
@@ -1230,7 +1230,6 @@ export function Sidebar({
                         className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
                       />
                     )}
-                    <view.icon size={14} className="shrink-0" aria-hidden="true" />
                     <span className="truncate">{view.label}</span>
                   </button>
                 );

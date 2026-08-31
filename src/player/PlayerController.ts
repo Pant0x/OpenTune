@@ -527,7 +527,13 @@ export class PlayerController {
 
       if (this.isTabActive) {
         const playbackStarted = await this.playLoadedTrack();
-        if (!playbackStarted) return false;
+        if (!playbackStarted) {
+          this.setState({ status: "paused", error: null });
+          return false;
+        }
+      } else {
+        this.setState({ status: "paused", error: null });
+        return false;
       }
       if (requestId !== this.playTrackRequestId) return false;
 

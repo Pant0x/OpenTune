@@ -507,14 +507,14 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           <div
             ref={scrollerRef}
             /* `relative` makes this the offsetParent the scroll maths measures against. */
-            className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] @4xl/lyrics:pr-10 [&::-webkit-scrollbar]:hidden"
+            className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             onWheel={pauseFollow}
             onPointerDown={pauseFollow}
             onTouchMove={pauseFollow}
           >
             <div
               className={cn(
-                "mx-auto max-w-3xl @4xl/lyrics:mx-0",
+                "mx-auto max-w-3xl",
                 // Half a viewport of air top and bottom so the first and last line can still
                 // reach the centre, where the highlight lives.
                 isSynced ? "py-[44vh]" : "pb-20 pt-4",

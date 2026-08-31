@@ -1093,6 +1093,8 @@ export class YouTubeMusicDataSource extends DataSource {
     const title = this.getTitle(item);
     if (!id || !title) return null;
 
+    const yearMatch = this.findStringByKey(item, new Set(["year", "subtitle", "byline"]))?.match(/\b(19\d\d|20\d\d)\b/);
+
     return {
       id,
       playlistId: this.findAlbumPlaylistId(item),
@@ -1100,6 +1102,7 @@ export class YouTubeMusicDataSource extends DataSource {
       artist: this.getArtistName(item),
       artists: this.getArtists(item),
       artworkUrl: this.getArtwork(item),
+      year: yearMatch ? yearMatch[1] : undefined,
     };
   }
 
