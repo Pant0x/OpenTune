@@ -1648,6 +1648,7 @@ const backOnboardingStep = () => {
           onSidebarWidthChange={setSidebarWidth}
           onNavigateAlbum={handleNavigateAlbum}
           onNavigatePlaylist={handleNavigatePlaylist}
+          onNavigateArtist={handleNavigateArtist}
           onNavigateHistory={handleOpenHistory}
           onNavigateLibrary={handleOpenLibrary}
           onNavigateBrowse={() => handleOpenBrowse()}

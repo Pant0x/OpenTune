@@ -978,14 +978,18 @@ export class PlayerController {
     this.handlingTrackEnd = true;
 
     try {
-      // Before every other branch: a stream that died is not an end, so it must not trigger
-      // repeat-one, consume the stop-after marker, or advance the queue.
-      if (await this.recoverFromPrematureEnd()) return;
-
       if (this.playbackOrderMode === "repeat-one" && this.state.currentTrack) {
+        logInternalInfo("PlayerController.handleTrackEnded looping single track", {
+          trackId: this.state.currentTrack.id,
+        });
+        this.prematureEndTrackId = null;
         await this.playTrackById(this.state.currentTrack.id);
         return;
       }
+
+      // Before every other branch: a stream that died is not an end, so it must not trigger
+      // repeat-all, consume the stop-after marker, or advance the queue.
+      if (await this.recoverFromPrematureEnd()) return;
 
       // Checked before the queue advances, so `current` is still the track that just ended.
       // The marker is one-shot: stopping is what it was for, and leaving it armed would stop
@@ -1687,6 +1691,28 @@ export class PlayerController {
     this.updateDiscordPresence();
   }
 
+  private formatTrackArtistWithFeatures(track: Track): string {
+    const featRegex = /\s*(?:\(|\[|\b)(?:feat\.?|ft\.?|featuring|with)\s+([^()\[\]]+)(?:\)|\])?/i;
+    const titleMatch = track.title.match(featRegex);
+    const artistMatch = track.artist.match(featRegex);
+
+    const rawFeatNames: string[] = [];
+    if (titleMatch && titleMatch[1]) {
+      rawFeatNames.push(...titleMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
+    }
+    if (artistMatch && artistMatch[1]) {
+      rawFeatNames.push(...artistMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
+    }
+
+    const baseArtist = track.artist.replace(featRegex, "").trim() || track.artist;
+    if (rawFeatNames.length === 0) return track.artist;
+
+    const uniqueFeats = rawFeatNames.filter((f) => !baseArtist.toLowerCase().includes(f.toLowerCase()));
+    if (uniqueFeats.length === 0) return baseArtist;
+
+    return `${baseArtist} feat. ${uniqueFeats.join(", ")}`;
+  }
+
   private updateDiscordPresence() {
     const currentTrack = this.state.currentTrack;
     logInternalDebug("updateDiscordPresence", { status: this.state.status, hasTrack: !!currentTrack });
@@ -1704,15 +1730,17 @@ export class PlayerController {
         ? this.audioEngine.getCurrentTime() 
         : (this.pendingSeekTime ?? 0);
 
+      const displayArtist = this.formatTrackArtistWithFeatures(currentTrack);
+
       logInternalDebug("Discord.updatePresence", {
         title: currentTrack.title,
-        artist: currentTrack.artist,
+        artist: displayArtist,
         status: this.state.status,
       });
 
       void DiscordRpcService.updatePresence({
         title: currentTrack.title,
-        artist: currentTrack.artist,
+        artist: displayArtist,
         album: currentTrack.album ?? "",
         artworkUrl: getDiscordArtworkUrl(currentTrack),
         songUrl: getYouTubeMusicTrackUrl(currentTrack),

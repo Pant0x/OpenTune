@@ -46,13 +46,6 @@ export function useArtistNavigation() {
   return useContext(ArtistNavigationContext);
 }
 
-function getFallbackArtists(fallback: string): ArtistReference[] {
-  return fallback
-    .split(",")
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .map((name) => ({ id: "", name }));
-}
 
 export function ArtistNavigationProvider({
   children,
@@ -81,15 +74,76 @@ export function ArtistNavigationProvider({
   );
 }
 
+export interface ParsedArtistFeature {
+  mainArtists: ArtistReference[];
+  featuredArtists: ArtistReference[];
+}
+
+export function parseTrackArtistsWithFeatures(
+  title?: string,
+  artistFallback = "",
+  artists?: ArtistReference[],
+): ParsedArtistFeature {
+  const featRegex = /\s*(?:\(|\[|\b)(?:feat\.?|ft\.?|featuring|with)\s+([^()\[\]]+)(?:\)|\])?/i;
+  const titleMatch = title ? title.match(featRegex) : null;
+  const artistMatch = artistFallback.match(featRegex);
+
+  const rawFeatNames: string[] = [];
+  if (titleMatch && titleMatch[1]) {
+    rawFeatNames.push(...titleMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
+  }
+  if (artistMatch && artistMatch[1]) {
+    rawFeatNames.push(...artistMatch[1].split(/,\s*|\s*&\s*|\s+and\s+/i).map((s) => s.trim()).filter(Boolean));
+  }
+
+  const existingArtists = artists && artists.length > 0
+    ? [...artists]
+    : artistFallback
+        .replace(featRegex, "")
+        .split(/,\s*|\s*&\s*|\s+and\s+/i)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((name) => ({ id: "", name }));
+
+  const mainArtists: ArtistReference[] = [];
+  const featuredArtists: ArtistReference[] = [];
+  const featLowerSet = new Set(rawFeatNames.map((n) => n.toLowerCase()));
+
+  for (const a of existingArtists) {
+    if (featLowerSet.has(a.name.toLowerCase())) {
+      featuredArtists.push(a);
+    } else {
+      mainArtists.push(a);
+    }
+  }
+
+  for (const featName of rawFeatNames) {
+    if (
+      !featuredArtists.some((a) => a.name.toLowerCase() === featName.toLowerCase()) &&
+      !mainArtists.some((a) => a.name.toLowerCase() === featName.toLowerCase())
+    ) {
+      featuredArtists.push({ id: "", name: featName });
+    }
+  }
+
+  if (mainArtists.length === 0 && existingArtists.length > 0) {
+    mainArtists.push(existingArtists[0]);
+  }
+
+  return { mainArtists, featuredArtists };
+}
+
 export function ArtistLinks({
   artists,
   fallback,
+  trackTitle,
   className,
   interactive = true,
   suppressArtistId,
 }: {
   artists?: ArtistReference[];
   fallback: string;
+  trackTitle?: string;
   className?: string;
   interactive?: boolean;
   suppressArtistId?: string;
@@ -148,35 +202,27 @@ export function ArtistLinks({
     );
   };
 
-  const rendered = (() => {
-    if (!artists?.length) {
-      if (!fallback || fallback === "Unknown artist") {
-        return <span className={className}>{fallback}</span>;
-      }
-      const fallbackArtists = getFallbackArtists(fallback);
-      return (
-        <span className={className}>
-          {fallbackArtists.map((artist, index) => (
-            <span key={`${artist.id}:${artist.name}`}>
+  const { mainArtists, featuredArtists } = parseTrackArtistsWithFeatures(trackTitle, fallback, artists);
+
+  return (
+    <span className={className}>
+      {mainArtists.map((artist, index) => (
+        <span key={`main:${artist.id}:${artist.name}`}>
+          {index > 0 && ", "}
+          {renderArtist(artist)}
+        </span>
+      ))}
+      {featuredArtists.length > 0 && (
+        <span className="text-muted-foreground">
+          {" feat. "}
+          {featuredArtists.map((artist, index) => (
+            <span key={`feat:${artist.id}:${artist.name}`}>
               {index > 0 && ", "}
               {renderArtist(artist)}
             </span>
           ))}
         </span>
-      );
-    }
-
-    return (
-      <span className={className}>
-        {artists.map((artist, index) => (
-          <span key={`${artist.id}:${artist.name}`}>
-            {index > 0 && ", "}
-            {renderArtist(artist)}
-          </span>
-        ))}
-      </span>
-    );
-  })();
-
-  return <>{rendered}</>;
+      )}
+    </span>
+  );
 }

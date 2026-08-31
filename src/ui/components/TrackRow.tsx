@@ -545,6 +545,7 @@ export const TrackRow = memo(function TrackRow({
           className="truncate text-xs text-muted-foreground"
           artists={track.artists}
           fallback={track.artist}
+          trackTitle={track.title}
           suppressArtistId={suppressArtistId}
         />
       </span>

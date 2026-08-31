@@ -42,9 +42,13 @@ export { VolumeCrossIcon as VolumeMutedActiveIcon } from "@solar-icons/react/bol
 
 /* ── Library state (like / save / rate) ────────────────────────────── */
 export { HeartIcon } from "@solar-icons/react/linear/heart";
+export { HeartIcon as HeartActiveIcon } from "@solar-icons/react/bold/heart";
+export { LikeIcon as ThumbsUpIcon } from "@solar-icons/react/linear/like";
+export { LikeIcon as ThumbsUpActiveIcon } from "@solar-icons/react/bold/like";
+export { DislikeIcon as ThumbsDownIcon } from "@solar-icons/react/linear/dislike";
+export { DislikeIcon as ThumbsDownActiveIcon } from "@solar-icons/react/bold/dislike";
 export { DislikeIcon } from "@solar-icons/react/linear/dislike";
 export { DislikeIcon as DislikeActiveIcon } from "@solar-icons/react/bold/dislike";
-export { HeartIcon as HeartActiveIcon } from "@solar-icons/react/bold/heart";
 export { HeartCrackIcon as HeartBrokenIcon } from "@solar-icons/react/linear/heart-crack";
 export { BookmarkIcon } from "@solar-icons/react/linear/bookmark";
 export { BookmarkIcon as BookmarkActiveIcon } from "@solar-icons/react/bold/bookmark";

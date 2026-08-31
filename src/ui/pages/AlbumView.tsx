@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { CloseIcon, SearchIcon } from "@/ui/icons";
+import { CloseIcon, HeartActiveIcon, HeartIcon, SearchIcon } from "@/ui/icons";
+import { Tooltip } from "@/components/motion/tooltip";
 import { TrackRow } from "../components/TrackRow";
 import { TrackListSkeleton } from "../components/Skeleton";
 import { useNowPlaying } from "../hooks/useNowPlaying";
@@ -183,6 +184,21 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
     event.currentTarget.blur();
   };
 
+  const isSaved = album ? libraryController.isAlbumSaved(album.id) : false;
+  const [isSaving, setIsSaving] = useState(false);
+
+  const toggleSaveAlbum = async () => {
+    if (!album || isSaving) return;
+    setIsSaving(true);
+    try {
+      await libraryController.setAlbumSaved(album, !isSaved);
+    } catch {
+      // ignore
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <MediaHeader
@@ -193,6 +209,25 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
         artworkUrl={album.artworkUrl}
         artworkVariant="album"
         actionsDisabled={isLoading || Boolean(error) || tracks.length === 0}
+        actions={
+          <Tooltip content={isSaved ? "Remove from library" : "Save to library"}>
+            <button
+              type="button"
+              onClick={() => void toggleSaveAlbum()}
+              disabled={isSaving}
+              aria-label={isSaved ? "Remove album from library" : "Save album to library"}
+              className={cn(
+                "grid size-9 place-items-center rounded-full transition-all active:scale-95",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                isSaved
+                  ? "text-primary bg-primary/10 hover:bg-primary/20"
+                  : "text-muted-foreground hover:bg-card hover:text-foreground",
+              )}
+            >
+              {isSaved ? <HeartActiveIcon size={20} /> : <HeartIcon size={20} />}
+            </button>
+          </Tooltip>
+        }
         playback={{
           onToggle: togglePlayCollection,
           isPlaying: isCurrentCollection && isPlaying,

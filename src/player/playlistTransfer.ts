@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { Playlist, Track } from "../datasource/types";
-import { logInternalInfo } from "../internal/logging";
-import { supabase } from "@/lib/supabaseClient";
+import { logInternalInfo, logInternalWarn } from "../internal/logging";
+import { tauriFetch } from "../datasource/youtube/tauriFetch";
 
 /** Bumped only on a breaking shape change; import accepts anything it still understands. */
 const FORMAT_VERSION = 1;
@@ -211,143 +211,156 @@ export async function importPlaylistFile(): Promise<ImportedPlaylist | null> {
 }
 
 /**
- * Fetches an anonymous Spotify Web Player access token from open.spotify.com.
- */
-async function getSpotifyAnonymousToken(): Promise<string | null> {
-  try {
-    const response = await fetch("https://open.spotify.com/get_access_token", {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.accessToken ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Imports a Spotify playlist by URL.
- * Fetches the playlist data from Spotify's API using the user's OAuth access token or public token.
+ * Imports a Spotify playlist or album by public URL without requiring login.
+ * Parses the public embed widget metadata and tracks directly.
  */
 export async function importSpotifyPlaylist(spotifyUrl: string): Promise<ImportedPlaylist | null> {
-  // Extract playlist ID from URL
-  const playlistIdMatch =
-    spotifyUrl.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/) ||
-    spotifyUrl.match(/spotify:playlist:([a-zA-Z0-9]+)/);
+  const cleanUrl = spotifyUrl.trim();
+  const playlistMatch =
+    cleanUrl.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/) ||
+    cleanUrl.match(/spotify:playlist:([a-zA-Z0-9]+)/);
+  const albumMatch =
+    cleanUrl.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/) ||
+    cleanUrl.match(/spotify:album:([a-zA-Z0-9]+)/);
 
-  if (!playlistIdMatch) {
+  if (!playlistMatch && !albumMatch) {
     throw new Error(
-      "Invalid Spotify playlist URL. Expected format: https://open.spotify.com/playlist/... or spotify:playlist:...",
+      "Invalid Spotify URL. Expected format: https://open.spotify.com/playlist/... or https://open.spotify.com/album/...",
     );
   }
 
-  const playlistId = playlistIdMatch[1];
+  const type = playlistMatch ? "playlist" : "album";
+  const id = playlistMatch ? playlistMatch[1] : albumMatch![1];
+  const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
 
-  // Try Spotify OAuth provider token first (allows accessing user's private playlists)
-  let accessToken: string | null = null;
-  if (supabase) {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      accessToken = session?.provider_token ?? null;
-    } catch {
-      // ignore
-    }
-  }
-
-  // Fallback to anonymous Web Player token for public playlists
-  if (!accessToken) {
-    accessToken = await getSpotifyAnonymousToken();
-  }
-
-  if (!accessToken) {
-    throw new Error("Unable to connect to Spotify. Please check your internet connection or sign in with Spotify.");
-  }
-
-  // Fetch playlist metadata
-  let playlistResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
-
-  // If OAuth token expired, try anonymous token
-  if (!playlistResponse.ok && (playlistResponse.status === 401 || playlistResponse.status === 403)) {
-    const anonToken = await getSpotifyAnonymousToken();
-    if (anonToken && anonToken !== accessToken) {
-      accessToken = anonToken;
-      playlistResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-    }
-  }
-
-  if (!playlistResponse.ok) {
-    if (playlistResponse.status === 404) {
-      throw new Error("Playlist not found. Check the URL and make sure it is a valid playlist.");
-    }
-    throw new Error(`Failed to fetch Spotify playlist: ${playlistResponse.status}`);
-  }
-
-  const playlistData = await playlistResponse.json();
-  const title = playlistData.name || "Imported Spotify playlist";
-  const artworkUrl: string | undefined = playlistData.images?.[0]?.url;
-
-  // Fetch all tracks (handle pagination)
-  const tracks: Track[] = [];
-  let nextUrl: string | null = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
-
-  while (nextUrl) {
-    const tracksResponse = await fetch(nextUrl, {
+  let html: string;
+  try {
+    const response = await tauriFetch(embedUrl, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
       },
     });
-
-    if (!tracksResponse.ok) {
-      break;
+    if (!response.ok) {
+      throw new Error(`Spotify embed returned ${response.status}`);
     }
-
-    const tracksData = await tracksResponse.json();
-
-    for (const item of tracksData.items ?? []) {
-      if (!item?.track || item.track.is_local) continue;
-
-      const track = item.track;
-      const artists = Array.isArray(track.artists)
-        ? track.artists.map((a: { name: string }) => a.name).join(", ")
-        : "";
-      const durationSec = track.duration_ms ? Math.round(track.duration_ms / 1000) : undefined;
-      const trackArtwork = track.album?.images?.[0]?.url;
-
-      tracks.push({
-        id: `spotify:${track.id}`,
-        source: "spotify",
-        title: track.name,
-        artist: artists,
-        album: track.album?.name,
-        durationSec,
-        artworkUrl: trackArtwork,
-        artists: Array.isArray(track.artists)
-          ? track.artists.map((a: { name: string; id?: string }) => ({
-              name: a.name,
-              id: a.id,
-            }))
-          : [],
-      });
-    }
-
-    nextUrl = tracksData.next;
+    html = await response.text();
+  } catch (error) {
+    logInternalWarn("importSpotifyPlaylist fetch error", { error: String(error), embedUrl });
+    throw new Error("Unable to connect to Spotify. Please check the playlist URL or your connection.");
   }
 
-  logInternalInfo("playlistTransfer.importSpotify", { playlistId, trackCount: tracks.length, hasArtwork: Boolean(artworkUrl) });
+  let title = "Spotify Playlist";
+  let artworkUrl: string | undefined;
+  const tracks: Track[] = [];
+
+  // Try extracting from __NEXT_DATA__ if available
+  const nextDataMatch = html.match(/<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]*?)<\/script>/i);
+  if (nextDataMatch && nextDataMatch[1]) {
+    try {
+      const nextData = JSON.parse(nextDataMatch[1]);
+      const entity = nextData.props?.pageProps?.state?.data?.entity;
+      if (entity) {
+        title = entity.name || entity.title || title;
+        artworkUrl = entity.coverArt?.sources?.[0]?.url || entity.visualIdentity?.image?.[0]?.url || entity.images?.[0]?.url;
+        const trackList = entity.trackList || entity.tracks || [];
+        for (let i = 0; i < trackList.length; i++) {
+          const t = trackList[i];
+          const trackTitle = t.title || t.name;
+          if (!trackTitle) continue;
+          const trackArtists = (t.artists || []).map((a: any) => (typeof a === "string" ? a : a.name)).filter(Boolean).join(", ") || t.subtitle || "Unknown artist";
+          const durationSec = typeof t.duration === "number" ? Math.round(t.duration / 1000) : typeof t.durationMs === "number" ? Math.round(t.durationMs / 1000) : undefined;
+          tracks.push({
+            id: `spotify:${t.id || t.uri || i}`,
+            source: "spotify",
+            title: trackTitle,
+            artist: trackArtists,
+            album: title,
+            durationSec,
+            artworkUrl,
+            artists: (t.artists || []).map((a: any) => ({
+              id: typeof a === "object" ? a.id ?? "" : "",
+              name: typeof a === "string" ? a : a.name ?? "",
+            })),
+          });
+        }
+      }
+    } catch {
+      // Fallback to HTML DOM parsing
+    }
+  }
+
+  // Fallback / standard HTML parsing
+  if (tracks.length === 0) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+
+    // Extract title
+    const titleEl = doc.querySelector("[data-encore-id='text'].CondensedMetadata_title__FRgOV, .CondensedMetadata_condensedMetadataContainer__egWwQ, title");
+    if (titleEl && titleEl.textContent) {
+      const text = titleEl.textContent.trim().replace(/\s*·\s*Spotify\s*$/i, "").trim();
+      if (text) title = text;
+    }
+
+    // Extract cover image
+    const imgEl = doc.querySelector("img[alt*='cover'], img[data-encore-id='image']");
+    if (imgEl) {
+      const src = imgEl.getAttribute("src");
+      if (src && src.startsWith("http")) artworkUrl = src;
+    }
+
+    // Extract tracklist rows
+    const rows = doc.querySelectorAll("[data-testid^='tracklist-row-'], li.TracklistRow_trackListRow__vrAAd");
+    if (rows.length > 0) {
+      rows.forEach((row, index) => {
+        const rowTitleEl = row.querySelector("[data-encore-id='text'].TracklistRow_title__1RtS6, h3, [dir='auto']");
+        const rowArtistEl = row.querySelector("[data-encore-id='text'].TracklistRow_subtitle___DhJK, h4");
+        const rowDurationEl = row.querySelector("[data-testid='duration-cell'], .TracklistRow_durationCell__CUhMO");
+
+        const trackTitle = rowTitleEl?.textContent?.trim() || "";
+        const trackArtist = rowArtistEl?.textContent?.trim().replace(/^E\s*/, "") || "Unknown artist";
+        let durationSec: number | undefined;
+
+        if (rowDurationEl?.textContent) {
+          const parts = rowDurationEl.textContent.trim().split(":").map(Number);
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            durationSec = parts[0] * 60 + parts[1];
+          } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+            durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+          }
+        }
+
+        if (trackTitle) {
+          tracks.push({
+            id: `spotify:${id}_${index}`,
+            source: "spotify",
+            title: trackTitle,
+            artist: trackArtist,
+            album: title,
+            durationSec,
+            artworkUrl,
+            artists: trackArtist
+              .split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+/i)
+              .map((name) => name.trim())
+              .filter(Boolean)
+              .map((name) => ({ id: "", name })),
+          });
+        }
+      });
+    }
+  }
+
+  if (tracks.length === 0) {
+    throw new Error("No playable tracks found in this Spotify link. Please ensure the link is public.");
+  }
+
+  logInternalInfo("playlistTransfer.importSpotify success", {
+    id,
+    type,
+    title,
+    trackCount: tracks.length,
+    hasArtwork: Boolean(artworkUrl),
+  });
 
   return { title, tracks, artworkUrl };
 }

@@ -29,8 +29,9 @@ import {
   SearchIcon,
   SidebarToggleIcon,
   SortIcon,
+  UserIcon,
 } from "@/ui/icons";
-import type { Album, Playlist } from "../../datasource/types";
+import type { Album, Artist, Playlist } from "../../datasource/types";
 import { libraryController, useLibraryState } from "../../player/playerStore";
 import {
   getRecentPlaylistTimestamp,
@@ -127,6 +128,7 @@ interface SidebarProps {
   onWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
+  onNavigateArtist?: (artist: Artist) => void;
   onNavigateHistory?: () => void;
   onNavigateLibrary?: () => void;
   onNavigateBrowse?: () => void;
@@ -178,7 +180,7 @@ function SidebarItemTooltip({
 const COLLAPSED_WIDTH = 100;
 const TEXT_HIDE_THRESHOLD = 120;
 
-type LibraryView = "albums" | "playlists";
+type LibraryView = "playlists" | "albums" | "artists";
 const EMPTY_STATE =
   "flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground";
 const RETRY_BUTTON =
@@ -480,13 +482,14 @@ function CreatePlaylistButton({
 
 /** The list filter's options. One place to add a third without touching the markup. */
 const LIBRARY_VIEWS: Array<{
-  value: "playlists" | "albums";
+  value: LibraryView;
   label: string;
   hint: string;
-  icon: typeof PlaylistIcon;
+  icon: any;
 }> = [
   { value: "playlists", label: "Playlists", hint: "Your playlists", icon: PlaylistIcon },
   { value: "albums", label: "Albums", hint: "Saved albums", icon: AlbumIcon },
+  { value: "artists", label: "Artists", hint: "Subscribed artists", icon: UserIcon },
 ];
 
 const ARTWORK_TILE = "size-10 shrink-0 rounded object-cover";
@@ -531,6 +534,7 @@ export function Sidebar({
   onWidthChange,
   onNavigateAlbum,
   onNavigatePlaylist,
+  onNavigateArtist,
   onNavigateHistory,
   onNavigateLibrary,
   onNavigateBrowse,
@@ -751,18 +755,7 @@ export function Sidebar({
   );
 
   const albums = useMemo(() => {
-    const likedSongsPlaylist = libraryState.library?.likedSongsPlaylist;
-    const likedSongsAlbum: Album | null = likedSongsPlaylist
-      ? {
-          id: likedSongsPlaylist.id,
-          title: "Liked Songs",
-          artist: likedSongsPlaylist.owner,
-          artworkUrl: likedSongsPlaylist.artworkUrl,
-        }
-      : null;
-    const libraryAlbums = likedSongsAlbum
-      ? [likedSongsAlbum, ...(libraryState.library?.albums ?? [])]
-      : libraryState.library?.albums ?? [];
+    const libraryAlbums = libraryState.library?.albums ?? [];
     if (!libraryAlbums.length) return [];
 
     const albumById = new Map(libraryAlbums.map((album) => [album.id, album]));
@@ -773,20 +766,35 @@ export function Sidebar({
       const missingIds = libraryAlbums
         .map((album) => album.id)
         .filter((id) => !savedIds.includes(id));
-      const orderedIds = likedSongsAlbum && !savedIds.includes(likedSongsAlbum.id)
-        ? [likedSongsAlbum.id, ...savedIds, ...missingIds.filter((id) => id !== likedSongsAlbum.id)]
-        : [...savedIds, ...missingIds];
+      const orderedIds = [...savedIds, ...missingIds];
       return orderedIds
         .map((id) => albumById.get(id))
         .filter((album): album is Album => Boolean(album));
     }
 
     return libraryAlbums;
-  }, [
-    libraryState.library?.likedSongsPlaylist,
-    libraryState.library?.albums,
-    albumOrder,
-  ]);
+  }, [libraryState.library?.albums, albumOrder]);
+
+  const artists = useMemo(() => {
+    return libraryState.library?.artists ?? [];
+  }, [libraryState.library?.artists]);
+
+  const visibleArtists = useMemo(
+    () =>
+      sortLibraryEntries(
+        filterLibraryEntries(
+          artists.map((artist) => ({
+            ...artist,
+            id: artist.id || artist.name,
+            title: artist.name,
+            subtitle: artist.subscriberCount || "Artist",
+          })),
+          libraryFilter,
+        ),
+        librarySort,
+      ),
+    [artists, libraryFilter, librarySort],
+  );
 
   useEffect(
     () => subscribeToRecentPlaylists(
@@ -852,13 +860,9 @@ export function Sidebar({
 
   useEffect(() => {
     if (!libraryState.library) return;
-    const albumIds = [
-      libraryState.library.likedSongsPlaylist.id,
-      ...libraryState.library.albums.map((album) => album.id),
-    ];
+    const albumIds = libraryState.library.albums.map((album) => album.id);
     if (albumOrder.length > 0) {
       const normalized = [
-        ...(albumOrder.includes("LM") ? [] : ["LM"]),
         ...albumOrder.filter((id) => albumIds.includes(id)),
         ...albumIds.filter((id) => !albumOrder.includes(id)),
       ].filter((id, index, ids) => ids.indexOf(id) === index);
@@ -874,11 +878,7 @@ export function Sidebar({
         );
       }
     }
-  }, [
-    libraryState.library?.likedSongsPlaylist,
-    libraryState.library?.albums,
-    albumOrder,
-  ]);
+  }, [libraryState.library?.albums, albumOrder]);
 
   const visibleAlbums = useMemo(
     () =>
@@ -888,9 +888,8 @@ export function Sidebar({
           libraryFilter,
         ),
         librarySort,
-        { pinnedId: libraryState.library?.likedSongsPlaylist?.id },
       ),
-    [albums, libraryFilter, librarySort, libraryState.library?.likedSongsPlaylist?.id],
+    [albums, libraryFilter, librarySort],
   );
 
   useEffect(() => {
@@ -1089,7 +1088,12 @@ export function Sidebar({
     };
   }, []);
 
-  const totalLibraryCount = libraryView === "albums" ? albums.length : playlists.length;
+  const totalLibraryCount =
+    libraryView === "artists"
+      ? artists.length
+      : libraryView === "albums"
+        ? albums.length
+        : playlists.length;
   const activeSortLabel =
     LIBRARY_SORTS.find((option) => option.value === librarySort)?.label ?? "Custom";
   const canReorder = canReorderLibrary(librarySort, libraryFilter);
@@ -1145,7 +1149,7 @@ export function Sidebar({
   /** Row styling shared by album and playlist entries, including drop indicators. */
   const itemClasses = (
     id: string,
-    type: "albums" | "playlists",
+    type: "albums" | "playlists" | "artists",
   ) => cn(
     "group relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
     "hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1318,8 +1322,20 @@ export function Sidebar({
                   event.stopPropagation();
                   setLibraryFilter("");
                 }}
-                placeholder={libraryView === "albums" ? "Filter albums" : "Filter playlists"}
-                aria-label={libraryView === "albums" ? "Filter albums" : "Filter playlists"}
+                placeholder={
+                  libraryView === "artists"
+                    ? "Filter artists"
+                    : libraryView === "albums"
+                      ? "Filter albums"
+                      : "Filter playlists"
+                }
+                aria-label={
+                  libraryView === "artists"
+                    ? "Filter artists"
+                    : libraryView === "albums"
+                      ? "Filter albums"
+                      : "Filter playlists"
+                }
                 type="text"
               />
               {libraryFilter && (
@@ -1402,49 +1418,129 @@ export function Sidebar({
 
 
         <div ref={listRef} className={listClasses}>
-          {libraryView === "albums" ? (
-            visibleAlbums.map((album) => (
-              <SidebarItemTooltip
-                key={album.id}
-                enabled={shouldHideText}
-                title={album.title}
-                subtitle={album.artist}
-              >
-              <button
-                type="button"
-                data-sidebar-item-id={album.id}
-                data-sidebar-item-type="albums"
-                className={itemClasses(album.id, "albums")}
-                onPointerDown={(event) => handleSidebarItemPointerDown(event, album.id, "albums")}
-                onClick={() => handleSidebarItemClick(() => {
-                  if (album.id === "LM" && libraryState.library?.likedSongsPlaylist) {
-                    onNavigatePlaylist(libraryState.library.likedSongsPlaylist);
-                  } else {
-                    onNavigateAlbum(album);
-                  }
-                })}
-                onContextMenu={(event) => {
-                  if (album.id === "LM" && libraryState.library?.likedSongsPlaylist) {
-                    openPlaylistMenu(event, libraryState.library.likedSongsPlaylist);
-                    return;
-                  }
-                  openAlbumMenu(event, album);
-                }}
-              >
-                <SidebarAlbumArtwork album={album} />
-                {!shouldHideText && (
-                  <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm text-foreground">{album.title}</span>
-                    <ArtistLinks
-                      className="truncate text-xs text-muted-foreground"
-                      artists={album.artists}
-                      fallback={album.artist}
+          {libraryView === "artists" ? (
+            visibleArtists.length ? (
+              visibleArtists.map((artist) => (
+                <SidebarItemTooltip
+                  key={artist.id}
+                  enabled={shouldHideText}
+                  title={artist.name}
+                  subtitle={artist.subscriberCount || "Artist"}
+                >
+                  <button
+                    type="button"
+                    data-sidebar-item-id={artist.id}
+                    data-sidebar-item-type="artists"
+                    className={itemClasses(artist.id, "artists")}
+                    onClick={() => handleSidebarItemClick(() => onNavigateArtist?.(artist))}
+                  >
+                    <TrackArtwork
+                      className="size-10 shrink-0 rounded-full object-cover"
+                      size={40}
+                      artworkUrl={artist.artworkUrl}
+                      iconSize={20}
+                      variant="artist"
                     />
-                  </div>
+                    {!shouldHideText && (
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm text-foreground">{artist.name}</span>
+                        <span className="truncate text-xs text-muted-foreground">{artist.subscriberCount || "Artist"}</span>
+                      </div>
+                    )}
+                  </button>
+                </SidebarItemTooltip>
+              ))
+            ) : libraryFilter.trim() ? (
+              <div className={EMPTY_STATE}>
+                <SearchIcon size={26} aria-hidden="true" />
+                {!shouldHideText && <span>Nothing matches “{libraryFilter.trim()}”.</span>}
+                <button
+                  type="button"
+                  className={RETRY_BUTTON}
+                  onClick={() => {
+                    setLibraryFilter("");
+                    filterInputRef.current?.focus();
+                  }}
+                >
+                  <CloseIcon size={15} aria-hidden="true" />
+                  {!shouldHideText && <span>Clear filter</span>}
+                </button>
+              </div>
+            ) : (
+              <div className={EMPTY_STATE}>
+                <UserIcon size={28} aria-hidden="true" />
+                {!shouldHideText && (
+                  <span>
+                    {libraryState.status === "signed-out"
+                      ? "Sign in to see your subscribed artists."
+                      : "No subscribed artists found."}
+                  </span>
                 )}
-              </button>
-              </SidebarItemTooltip>
-            ))
+                {libraryState.status === "signed-out" && (
+                  <GoogleSignInButton
+                    size="sm"
+                    iconOnly={shouldHideText}
+                    onClick={() => void libraryController.signIn()}
+                  />
+                )}
+              </div>
+            )
+          ) : libraryView === "albums" ? (
+            visibleAlbums.length ? (
+              visibleAlbums.map((album) => (
+                <SidebarItemTooltip
+                  key={album.id}
+                  enabled={shouldHideText}
+                  title={album.title}
+                  subtitle={album.artist}
+                >
+                <button
+                  type="button"
+                  data-sidebar-item-id={album.id}
+                  data-sidebar-item-type="albums"
+                  className={itemClasses(album.id, "albums")}
+                  onPointerDown={(event) => handleSidebarItemPointerDown(event, album.id, "albums")}
+                  onClick={() => handleSidebarItemClick(() => onNavigateAlbum(album))}
+                  onContextMenu={(event) => openAlbumMenu(event, album)}
+                >
+                  <SidebarAlbumArtwork album={album} />
+                  {!shouldHideText && (
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm text-foreground">{album.title}</span>
+                      <ArtistLinks
+                        className="truncate text-xs text-muted-foreground"
+                        artists={album.artists}
+                        fallback={album.artist}
+                      />
+                    </div>
+                  )}
+                </button>
+                </SidebarItemTooltip>
+              ))
+            ) : libraryFilter.trim() ? (
+              <div className={EMPTY_STATE}>
+                <SearchIcon size={26} aria-hidden="true" />
+                {!shouldHideText && <span>Nothing matches “{libraryFilter.trim()}”.</span>}
+                <button
+                  type="button"
+                  className={RETRY_BUTTON}
+                  onClick={() => {
+                    setLibraryFilter("");
+                    filterInputRef.current?.focus();
+                  }}
+                >
+                  <CloseIcon size={15} aria-hidden="true" />
+                  {!shouldHideText && <span>Clear filter</span>}
+                </button>
+              </div>
+            ) : (
+              <div className={EMPTY_STATE}>
+                <AlbumIcon size={28} aria-hidden="true" />
+                {!shouldHideText && (
+                  <span>No saved albums yet. Like an album to save it here.</span>
+                )}
+              </div>
+            )
           ) : (
             visiblePlaylists.length ? (
               <>

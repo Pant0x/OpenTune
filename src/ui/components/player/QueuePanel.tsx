@@ -187,6 +187,7 @@ const QueueRow = memo(function QueueRow({
               className="truncate text-xs text-muted-foreground"
               artists={track.artists}
               fallback={track.artist}
+              trackTitle={track.title}
             />
           </span>
         )}
@@ -804,6 +805,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     <ArtistLinks
                       artists={currentTrack.artists}
                       fallback={currentTrack.artist}
+                      trackTitle={currentTrack.title}
                       className="hover:underline hover:text-foreground transition-colors"
                     />
                   </div>
@@ -1043,6 +1045,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   className="truncate text-xs text-muted-foreground"
                   artists={currentTrack.artists}
                   fallback={currentTrack.artist}
+                  trackTitle={currentTrack.title}
                 />
               </div>
             </div>

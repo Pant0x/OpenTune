@@ -5,7 +5,7 @@ import { SearchBar } from "./SearchBar";
 import { TrackArtwork } from "./TrackArtwork";
 import { useAmbientArtwork } from "../stores/ambientArtworkStore";
 import { Sidebar } from "./Sidebar";
-import type { Album, Playlist } from "../../datasource/types";
+import type { Album, Artist, Playlist } from "../../datasource/types";
 
 interface LayoutProps {
   children: ReactNode;
@@ -13,6 +13,7 @@ interface LayoutProps {
   onSidebarWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
+  onNavigateArtist?: (artist: Artist) => void;
   onNavigateHistory?: () => void;
   onNavigateLibrary?: () => void;
   onNavigateBrowse?: () => void;
@@ -51,6 +52,7 @@ export function Layout({
   onSidebarWidthChange,
   onNavigateAlbum,
   onNavigatePlaylist,
+  onNavigateArtist,
   onNavigateHistory,
   onNavigateLibrary,
   onNavigateBrowse,
@@ -250,6 +252,7 @@ export function Layout({
             onWidthChange={onSidebarWidthChange}
             onNavigateAlbum={onNavigateAlbum}
             onNavigatePlaylist={onNavigatePlaylist}
+            onNavigateArtist={onNavigateArtist}
             onNavigateHistory={onNavigateHistory}
             onNavigateLibrary={onNavigateLibrary}
             onNavigateBrowse={onNavigateBrowse}

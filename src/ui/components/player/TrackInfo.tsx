@@ -101,7 +101,11 @@ export function TrackInfo() {
         </div>
         <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <span className="truncate">
-            <ArtistLinks artists={currentTrack.artists} fallback={currentTrack.artist} />
+            <ArtistLinks
+              artists={currentTrack.artists}
+              fallback={currentTrack.artist}
+              trackTitle={currentTrack.title}
+            />
           </span>
           {currentTrack.album && (
             <>
