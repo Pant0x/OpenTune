@@ -228,10 +228,14 @@ export function TitleBar({
       />
 
       <div
-        className="min-w-6 flex-1"
+        className="min-w-6 flex-1 cursor-default select-none"
         aria-label="Drag window"
         onPointerDown={(event) => {
           if (event.button !== 0) return;
+          if (event.detail === 2) {
+            void handleToggleMaximize();
+            return;
+          }
           void startWindowDrag();
         }}
         onDoubleClick={() => void handleToggleMaximize()}

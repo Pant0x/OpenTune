@@ -3877,7 +3877,48 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchArtistFresh(artistId: string): Promise<ArtistPage> {
     const client = await this.getMusicClient();
-    const artistPage = await client.music.getArtist(artistId);
+    let artistPage: any;
+    try {
+      artistPage = await client.music.getArtist(artistId);
+    } catch (musicErr) {
+      if (artistId.startsWith("UC")) {
+        try {
+          const webClient = await this.getWebClient();
+          const channel = await webClient.getChannel(artistId);
+          const channelTitle = (channel.metadata as any)?.title ?? "Artist";
+          const avatar = selectArtworkUrl(collectArtworkCandidates((channel.metadata as any)?.avatar));
+          const subCount = (channel.metadata as any)?.subscriber_count?.toString();
+          const artist: Artist = {
+            id: artistId,
+            name: channelTitle,
+            artworkUrl: avatar,
+            subscriberCount: subCount,
+          };
+          const videosFeed = await channel.getVideos().catch(() => null);
+          const tracks: Track[] = ((videosFeed as any)?.videos ?? []).map((v: any) => ({
+            id: v.id,
+            source: "youtube" as const,
+            title: v.title?.toString() ?? "Video",
+            artist: channelTitle,
+            artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
+            durationSec: v.duration?.seconds,
+          }));
+          return {
+            artist,
+            popularSongs: tracks.slice(0, 10),
+            allSongs: tracks,
+            releases: [],
+            playlists: [],
+            appearsOn: [],
+            fansAlsoLike: [],
+            discoveredOn: [],
+          };
+        } catch {
+          // fall through
+        }
+      }
+      throw musicErr;
+    }
     const header = artistPage.header as unknown as {
       title?: { toString(): string };
       subtitle?: { toString(): string };

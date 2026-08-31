@@ -29,6 +29,7 @@ interface MainWindowGeometry {
   y?: number;
   width: number;
   height: number;
+  isMaximized?: boolean;
 }
 
 function isMainWindowGeometry(value: unknown): value is MainWindowGeometry {
@@ -99,7 +100,7 @@ async function saveCurrentMainWindowGeometry(): Promise<void> {
     win.isFullscreen(),
   ]);
 
-  if (isMaximized || isFullscreen) return;
+  if (isFullscreen) return;
 
   if (!readMainWindowGeometryPersistenceEnabled()) return;
 
@@ -108,6 +109,7 @@ async function saveCurrentMainWindowGeometry(): Promise<void> {
     y: position.y,
     width: Math.max(MIN_WIDTH, size.width),
     height: Math.max(MIN_HEIGHT, size.height),
+    isMaximized,
   });
 }
 
@@ -126,13 +128,13 @@ export async function hydrateMainWindowGeometry(): Promise<void> {
     hydrateLocalJsonSetting(STORAGE_KEY, isMainWindowGeometry),
     hydrateLocalBooleanSetting(
       GEOMETRY_ENABLED_STORAGE_KEY,
-      false,
+      true,
       GEOMETRY_ENABLED_CHANGE_EVENT,
     ),
   ]);
 
   if (
-    !readLocalBooleanSetting(GEOMETRY_ENABLED_STORAGE_KEY, false)
+    !readLocalBooleanSetting(GEOMETRY_ENABLED_STORAGE_KEY, true)
     && readLocalBooleanSetting(LEGACY_LOCATION_ENABLED_STORAGE_KEY, false)
   ) {
     setMainWindowGeometryPersistenceEnabled(true);
@@ -143,11 +145,18 @@ export async function restoreMainWindowGeometry(): Promise<void> {
   if (!readMainWindowGeometryPersistenceEnabled()) return;
 
   const geometry = readLocalJsonSetting(STORAGE_KEY, isMainWindowGeometry);
-  if (!geometry || !hasSavedPosition(geometry) || !await isGeometryOnAnyMonitor(geometry)) return;
+  if (!geometry) return;
 
   const win = getCurrentWindow();
-  await win.setSize(new PhysicalSize(geometry.width, geometry.height));
-  await win.setPosition(new PhysicalPosition(geometry.x, geometry.y));
+  if (geometry.isMaximized) {
+    await win.maximize();
+    return;
+  }
+
+  if (hasSavedPosition(geometry) && await isGeometryOnAnyMonitor(geometry)) {
+    await win.setSize(new PhysicalSize(geometry.width, geometry.height));
+    await win.setPosition(new PhysicalPosition(geometry.x, geometry.y));
+  }
 }
 
 export async function persistMainWindowGeometry(): Promise<() => void> {

@@ -164,7 +164,6 @@ export function MediaHeader({
   /* Destructured once, so the body below reads the same as it did when these were flat props
      rather than threading `playback?.` through every branch. */
   const isPlaying = playback?.isPlaying ?? false;
-  const isLoading = playback?.isLoading ?? false;
   const downloadBusy = download?.isBusy ?? false;
   const downloadCounts = download?.counts;
   const loopMode = loop?.mode ?? "in-order";
@@ -230,9 +229,7 @@ export function MediaHeader({
                    drops the `min-w` that existed to stop Play/Pause/Loading jumping. */
                 className="flex size-13 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-[1.03] active:scale-95 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                {isLoading ? (
-                  <SpinnerSteps size={22} color="currentColor" />
-                ) : isPlaying ? (
+                {isPlaying ? (
                   <PauseActiveIcon size={22} aria-hidden="true" />
                 ) : (
                   <PlayActiveIcon size={22} aria-hidden="true" />

@@ -5,7 +5,7 @@ import { Tooltip } from "@/components/motion/tooltip";
 import { TrackRow } from "../components/TrackRow";
 import { TrackListSkeleton } from "../components/Skeleton";
 import { useNowPlaying } from "../hooks/useNowPlaying";
-import type { Album, Track } from "../../datasource/types";
+import type { Album, Artist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import { useLibraryState } from "../../player/playerStore";
@@ -18,13 +18,8 @@ import { ArtistLinks } from "../components/ArtistLinks";
 import { formatCollectionMeta, MediaHeader } from "../components/MediaHeader";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
-import { compactViews } from "./ArtistView";
 import { AlbumCard } from "../components/AlbumCard";
 
-/*
- * Collapsed search affordance that widens on hover/focus or while it holds a query —
- * the behaviour the original .playlistSearch width transition provided.
- */
 const SEARCH_FIELD =
   "group/search flex min-h-8 items-center gap-1.5 overflow-hidden rounded-full bg-white/[0.04] px-2.5 " +
   "text-muted-foreground transition-[width,background-color] duration-200 cursor-text " +
@@ -38,13 +33,20 @@ interface AlbumViewProps {
   playerController: PlayerControllerActions;
   libraryController: LibraryController;
   onOpenAlbum?: (album: Album) => void;
+  onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }
 
 function getTrackRenderKey(track: Track, index: number): string {
   return track.playlistItemId ?? `${track.id}:${index}`;
 }
 
-export function AlbumView({ album, playerController, libraryController, onOpenAlbum }: AlbumViewProps) {
+export function AlbumView({
+  album,
+  playerController,
+  libraryController,
+  onOpenAlbum,
+  onOpenDiscography,
+}: AlbumViewProps) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const keyboardShortcuts = useKeyboardShortcuts();
   const {
@@ -232,10 +234,16 @@ export function AlbumView({ album, playerController, libraryController, onOpenAl
     }
   };
 
+  const releaseTypeLabel = album.releaseType === "single" || tracks.length === 1
+    ? "Single"
+    : album.releaseType === "ep" || (tracks.length > 1 && tracks.length <= 6)
+      ? "EP"
+      : "Album";
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 pb-16">
       <MediaHeader
-        eyebrow={album.year ? `Album • ${album.year}` : "Album"}
+        eyebrow={album.year ? `${releaseTypeLabel} • ${album.year}` : releaseTypeLabel}
         title={album.title}
         subtitle={<ArtistLinks artists={album.artists} fallback={album.artist} />}
         meta={formatCollectionMeta(tracks)}
@@ -332,6 +340,7 @@ export function AlbumView({ album, playerController, libraryController, onOpenAl
                  * shuffled or reordered independently of how this album is displayed.
                  */
                 const isCurrent = currentTrackId !== null && track.id === currentTrackId;
+                const viewFormatted = track.viewCount ? Number(track.viewCount).toLocaleString() : undefined;
                 return (
                   <TrackRow
                     key={getTrackRenderKey(track, index)}
@@ -342,9 +351,9 @@ export function AlbumView({ album, playerController, libraryController, onOpenAl
                     isSelected={selection.isSelected(track.id)}
                     isSelectionActive={selection.isActive}
                     trailing={
-                      compactViews(track) ? (
+                      viewFormatted ? (
                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {compactViews(track)}
+                          {viewFormatted}
                         </span>
                       ) : undefined
                     }
@@ -354,7 +363,6 @@ export function AlbumView({ album, playerController, libraryController, onOpenAl
                       void playerController.playTrackById(track.id, visibleTracks);
                     }}
                     showDownload
-
                     showRating
                     onQuickAddToQueue={() => playerController.addToQueue(track)}
                     onQuickAdd={() => openPlaylistPicker(track)}
@@ -367,19 +375,41 @@ export function AlbumView({ album, playerController, libraryController, onOpenAl
         </>
       )}
 
+      {album?.year && (
+        <div className="text-xs text-muted-foreground pt-4 flex flex-col gap-0.5">
+          <p>{album.year}</p>
+          <p className="text-[11px] opacity-75">℗ {album.year} {album.artist}</p>
+        </div>
+      )}
+
       {moreReleases.length > 0 && (
         <section className="flex flex-col gap-3 pt-6 border-t border-border/40">
-          <h2>More by {album?.artist || "this artist"}</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2>More by {album?.artist || "this artist"}</h2>
+            {onOpenDiscography && (
+              <button
+                type="button"
+                onClick={() => onOpenDiscography({ id: artistId || "", name: album.artist }, moreReleases)}
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none"
+              >
+                See discography
+              </button>
+            )}
+          </div>
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-            {moreReleases.map((release) => (
-              <AlbumCard
-                key={release.id}
-                artworkUrl={release.artworkUrl}
-                title={release.title}
-                subtitle={release.releaseType ? `${release.year ? `${release.year} • ` : ""}${release.releaseType.toUpperCase()}` : release.year}
-                onClick={() => onOpenAlbum?.(release)}
-              />
-            ))}
+            {moreReleases.map((release) => {
+              const rLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
+              const sub = release.year ? `${release.year} • ${rLabel}` : rLabel;
+              return (
+                <AlbumCard
+                  key={release.id}
+                  artworkUrl={release.artworkUrl}
+                  title={release.title}
+                  subtitle={sub}
+                  onClick={() => onOpenAlbum?.(release)}
+                />
+              );
+            })}
           </div>
         </section>
       )}

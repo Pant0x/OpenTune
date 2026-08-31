@@ -89,7 +89,7 @@ export function ArtistView({
   onOpenAlbum: (album: Album) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
   onOpenArtist?: (artist: Artist) => void;
-  onOpenDiscography?: (artist: Artist, releases: Album[]) => void;
+  onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -543,19 +543,31 @@ export function ArtistView({
             </section>
           )}
 
-          {page.playlists.length > 0 && (
+          {page.fansAlsoLike && page.fansAlsoLike.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2>Playlists</h2>
+              <h2>Fans also like</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.playlists.map((playlist) => (
-                  <AlbumCard
-                    key={playlist.id}
-                    artworkUrl={playlist.artworkUrl}
-                    title={playlist.title}
-                    subtitle={playlist.owner}
-                    onClick={() => onOpenPlaylist(playlist)}
-                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-                  />
+                {page.fansAlsoLike.map((similarArtist) => (
+                  <div
+                    key={similarArtist.id}
+                    className="group flex flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-colors hover:bg-card cursor-pointer"
+                    onClick={() => onOpenArtist?.(similarArtist)}
+                  >
+                    <TrackArtwork
+                      artworkUrl={similarArtist.artworkUrl}
+                      variant="artist"
+                      size={120}
+                      className="size-28 rounded-full shadow-md transition-transform duration-200 group-hover:scale-105"
+                    />
+                    <div className="flex flex-col items-center min-w-0 w-full">
+                      <span className="truncate w-full text-sm font-medium text-foreground group-hover:underline">
+                        {similarArtist.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate w-full">
+                        {similarArtist.subscriberCount || "Artist"}
+                      </span>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
@@ -597,31 +609,19 @@ export function ArtistView({
             </section>
           )}
 
-          {page.fansAlsoLike && page.fansAlsoLike.length > 0 && (
+          {page.playlists.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2>Fans also like</h2>
+              <h2>Playlists</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.fansAlsoLike.map((similarArtist) => (
-                  <div
-                    key={similarArtist.id}
-                    className="group flex flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-colors hover:bg-card cursor-pointer"
-                    onClick={() => onOpenArtist?.(similarArtist)}
-                  >
-                    <TrackArtwork
-                      artworkUrl={similarArtist.artworkUrl}
-                      variant="artist"
-                      size={120}
-                      className="size-28 rounded-full shadow-md transition-transform duration-200 group-hover:scale-105"
-                    />
-                    <div className="flex flex-col items-center min-w-0 w-full">
-                      <span className="truncate w-full text-sm font-medium text-foreground group-hover:underline">
-                        {similarArtist.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground truncate w-full">
-                        {similarArtist.subscriberCount || "Artist"}
-                      </span>
-                    </div>
-                  </div>
+                {page.playlists.map((playlist) => (
+                  <AlbumCard
+                    key={playlist.id}
+                    artworkUrl={playlist.artworkUrl}
+                    title={playlist.title}
+                    subtitle={playlist.owner}
+                    onClick={() => onOpenPlaylist(playlist)}
+                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+                  />
                 ))}
               </div>
             </section>

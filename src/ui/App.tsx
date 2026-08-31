@@ -1737,6 +1737,7 @@ const backOnboardingStep = () => {
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
+                onOpenDiscography={handleNavigateDiscography}
               />
             )}
             {activeTab?.view === "artist" && (
