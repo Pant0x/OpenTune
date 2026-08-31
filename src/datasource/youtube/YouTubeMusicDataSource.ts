@@ -4043,6 +4043,78 @@ export class YouTubeMusicDataSource extends DataSource {
       }
     }
 
+    const releaseEndpoints: Array<{ endpoint: any; sectionTitle: string }> = [];
+    for (const section of artistPage.sections as any[]) {
+      const sectionTitle = (
+        section.title?.toString()
+        || section.header?.title?.toString()
+        || ""
+      ).toLocaleLowerCase();
+      const endpoint = section.endpoint || section.header?.endpoint || section.header?.title?.endpoint || section.bottom_endpoint;
+      if (
+        endpoint
+        && (
+          sectionTitle.includes("album")
+          || sectionTitle.includes("single")
+          || sectionTitle.includes("ep")
+          || sectionTitle.includes("release")
+        )
+      ) {
+        releaseEndpoints.push({ endpoint, sectionTitle });
+      }
+    }
+
+    if (releaseEndpoints.length > 0) {
+      await Promise.all(
+        releaseEndpoints.map(async ({ endpoint, sectionTitle }) => {
+          try {
+            const page = await endpoint.call((client as any).actions, { client: "YTMUSIC", parse: true });
+            const pageItems = this.collectMusicItems(page.page ?? page, new Set(["album", "single", "ep"]));
+            for (const item of pageItems) {
+              const album = this.toAlbum(item);
+              if (album) {
+                const itemMetadata = (item.subtitle?.toString() ?? "").toLocaleLowerCase();
+                const releaseType: Album["releaseType"] = itemMetadata.includes("ep")
+                  ? "ep"
+                  : itemMetadata.includes("single")
+                    ? "single"
+                    : sectionTitle.includes("single")
+                      ? "single"
+                      : "album";
+                releases.push({ ...album, releaseType });
+              }
+            }
+          } catch (error) {
+            logInternalWarn("YouTubeMusicDataSource.fetchArtistFresh release endpoint failed", {
+              artistId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }),
+      );
+    }
+
+    try {
+      const searchAlbumResults = await client.music.search(artist.name, { type: "album" }).catch(() => null);
+      if (searchAlbumResults) {
+        const searchAlbums = this.collectMusicItems(searchAlbumResults.page, new Set(["album"]));
+        for (const item of searchAlbums) {
+          const album = this.toAlbum(item);
+          if (album && (album.artists?.some((a) => a.id === artistId) || album.artist?.toLowerCase() === artist.name.toLowerCase())) {
+            const itemMetadata = (item.subtitle?.toString() ?? "").toLocaleLowerCase();
+            const releaseType: Album["releaseType"] = itemMetadata.includes("ep")
+              ? "ep"
+              : itemMetadata.includes("single")
+                ? "single"
+                : "album";
+            releases.push({ ...album, releaseType });
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     if (popularSongs.length === 0) {
       popularSongs.push(
         ...this.songOrVideoItems(responseItems)
