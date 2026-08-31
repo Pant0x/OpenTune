@@ -74,26 +74,49 @@ export function AlbumView({
   const [error, setError] = useState<string | null>(null);
   const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const [moreReleases, setMoreReleases] = useState<Album[]>([]);
+  const [artistDetails, setArtistDetails] = useState<Artist | null>(null);
   const albumSearchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const artistId = album?.artists?.[0]?.id;
+  const resolvedArtistId = album?.artists?.[0]?.id || tracks[0]?.artists?.[0]?.id;
+  const resolvedArtistName = album?.artists?.[0]?.name || album?.artist || tracks[0]?.artist;
+
   useEffect(() => {
-    if (!artistId) {
+    if (!resolvedArtistName && !resolvedArtistId) {
       setMoreReleases([]);
       return;
     }
     let active = true;
-    void libraryController.getArtist(artistId)
-      .then((artistPage) => {
+    const fetchArtistData = async () => {
+      let targetId = resolvedArtistId;
+      if (!targetId && resolvedArtistName) {
+        try {
+          const searchResults = await libraryController.search(resolvedArtistName);
+          targetId = searchResults.artists[0]?.id;
+        } catch {
+          // ignore
+        }
+      }
+      if (!targetId && !resolvedArtistName) return;
+
+      try {
+        const artistPage = targetId
+          ? await libraryController.getArtist(targetId)
+          : null;
         if (!active) return;
-        const otherReleases = (artistPage.releases ?? []).filter((r) => r.id !== album?.id);
-        setMoreReleases(otherReleases.slice(0, 10));
-      })
-      .catch(() => {});
+        if (artistPage) {
+          setArtistDetails(artistPage.artist);
+          const otherReleases = (artistPage.releases ?? []).filter((r) => r.id !== album?.id);
+          setMoreReleases(otherReleases.slice(0, 10));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void fetchArtistData();
     return () => {
       active = false;
     };
-  }, [artistId, album?.id, libraryController]);
+  }, [resolvedArtistId, resolvedArtistName, album?.id, tracks.length > 0 ? tracks[0]?.artist : "", libraryController]);
 
   useEffect(() => {
     if (!album) return;
@@ -385,11 +408,11 @@ export function AlbumView({
       {moreReleases.length > 0 && (
         <section className="flex flex-col gap-3 pt-6 border-t border-border/40">
           <div className="flex items-center justify-between gap-3">
-            <h2>More by {album?.artist || "this artist"}</h2>
+            <h2>More by {resolvedArtistName || album?.artist || "this artist"}</h2>
             {onOpenDiscography && (
               <button
                 type="button"
-                onClick={() => onOpenDiscography({ id: artistId || "", name: album.artist }, moreReleases)}
+                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: resolvedArtistName || album.artist }, moreReleases)}
                 className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none"
               >
                 See discography

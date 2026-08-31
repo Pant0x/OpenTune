@@ -1071,7 +1071,7 @@ export class PlayerController {
       }
 
       const seed = this.state.currentTrack;
-      if (seed) {
+      if (this.autoplayEnabled && seed) {
         const queueEndTrack = await this.loadQueueEndRecommendations(seed);
         if (queueEndTrack) {
           await this.playTrackById(queueEndTrack.id);
@@ -1112,7 +1112,7 @@ export class PlayerController {
   }
 
   private async loadQueueEndRecommendations(seed: Track): Promise<Track | null> {
-    if (!this.isPlaylistMode || !this.dataSource.getRecommendations) return null;
+    if (!this.autoplayEnabled || !this.isPlaylistMode || !this.dataSource.getRecommendations) return null;
 
     let recommendations: Track[];
     try {
