@@ -1720,6 +1720,7 @@ const backOnboardingStep = () => {
                 album={activeTab?.album}
                 playerController={playerController}
                 libraryController={libraryController}
+                onOpenAlbum={handleNavigateAlbum}
               />
             )}
             {activeTab?.view === "artist" && (
@@ -1729,6 +1730,7 @@ const backOnboardingStep = () => {
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenPlaylist={handleNavigatePlaylist}
+                onOpenArtist={(artist) => handleNavigateArtist(artist)}
               />
             )}
             {activeTab?.view === "playlist" && (

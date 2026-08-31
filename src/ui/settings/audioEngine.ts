@@ -71,8 +71,16 @@ let cachedMode: AudioEngineMode | null = null;
 
 function readMode(): AudioEngineMode {
   if (cachedMode === null) {
-    const stored = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode) ?? DEFAULT_MODE;
-    cachedMode = isAudioEngineMode(stored) ? stored : DEFAULT_MODE;
+    const stored = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode);
+    // If setting is unset or was previously locked to "iframe", migrate to "rust"
+    if (!stored || stored === "iframe") {
+      cachedMode = "rust";
+      try {
+        writeLocalJsonSetting(STORAGE_KEY, "rust");
+      } catch {}
+    } else {
+      cachedMode = stored;
+    }
   }
   return cachedMode;
 }

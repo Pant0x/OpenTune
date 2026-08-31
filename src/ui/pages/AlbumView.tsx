@@ -18,6 +18,8 @@ import { ArtistLinks } from "../components/ArtistLinks";
 import { formatCollectionMeta, MediaHeader } from "../components/MediaHeader";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
+import { compactViews } from "./ArtistView";
+import { AlbumCard } from "../components/AlbumCard";
 
 /*
  * Collapsed search affordance that widens on hover/focus or while it holds a query —
@@ -35,13 +37,14 @@ interface AlbumViewProps {
   album?: Album;
   playerController: PlayerControllerActions;
   libraryController: LibraryController;
+  onOpenAlbum?: (album: Album) => void;
 }
 
 function getTrackRenderKey(track: Track, index: number): string {
   return track.playlistItemId ?? `${track.id}:${index}`;
 }
 
-export function AlbumView({ album, playerController, libraryController }: AlbumViewProps) {
+export function AlbumView({ album, playerController, libraryController, onOpenAlbum }: AlbumViewProps) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const keyboardShortcuts = useKeyboardShortcuts();
   const {
@@ -68,7 +71,27 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [albumSearchQuery, setAlbumSearchQuery] = useState("");
+  const [moreReleases, setMoreReleases] = useState<Album[]>([]);
   const albumSearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  const artistId = album?.artists?.[0]?.id;
+  useEffect(() => {
+    if (!artistId) {
+      setMoreReleases([]);
+      return;
+    }
+    let active = true;
+    void libraryController.getArtist(artistId)
+      .then((artistPage) => {
+        if (!active) return;
+        const otherReleases = (artistPage.releases ?? []).filter((r) => r.id !== album?.id);
+        setMoreReleases(otherReleases.slice(0, 10));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [artistId, album?.id, libraryController]);
 
   useEffect(() => {
     if (!album) return;
@@ -318,6 +341,13 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
                     isPlaying={isCurrent && isPlaying}
                     isSelected={selection.isSelected(track.id)}
                     isSelectionActive={selection.isActive}
+                    trailing={
+                      compactViews(track) ? (
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {compactViews(track)}
+                        </span>
+                      ) : undefined
+                    }
                     onToggleSelected={() => selection.toggle(track.id, index)}
                     onSelect={(event) => {
                       if (selection.handleRowClick(event, index)) return;
@@ -336,6 +366,24 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
           )}
         </>
       )}
+
+      {moreReleases.length > 0 && (
+        <section className="flex flex-col gap-3 pt-6 border-t border-border/40">
+          <h2>More by {album?.artist || "this artist"}</h2>
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+            {moreReleases.map((release) => (
+              <AlbumCard
+                key={release.id}
+                artworkUrl={release.artworkUrl}
+                title={release.title}
+                subtitle={release.releaseType ? `${release.year ? `${release.year} • ` : ""}${release.releaseType.toUpperCase()}` : release.year}
+                onClick={() => onOpenAlbum?.(release)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <SelectionBar
         selection={selection}
         onAddToQueue={(selected) => {

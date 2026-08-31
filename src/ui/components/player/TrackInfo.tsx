@@ -52,6 +52,26 @@ export function TrackInfo() {
     (track) => track.id === currentTrack.id,
   ) ?? false);
 
+  const handleTitleClick = () => {
+    if (navigateAlbum && (currentTrack.albumId || currentTrack.album)) {
+      navigateAlbum({
+        id: currentTrack.albumId || currentTrack.album!,
+        title: currentTrack.album || currentTrack.title,
+        artist: currentTrack.artist,
+        artworkUrl: currentTrack.artworkUrl,
+      });
+    } else if (navigateAlbum) {
+      navigateAlbum({
+        id: currentTrack.id,
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        artworkUrl: currentTrack.artworkUrl,
+      });
+    } else {
+      playerUIStore.openNowPlaying();
+    }
+  };
+
   return (
     <div
       className="flex min-w-0 items-center gap-3"
@@ -76,8 +96,8 @@ export function TrackInfo() {
         <div
           ref={titleViewportRef}
           className="relative min-w-0 overflow-hidden cursor-pointer"
-          onClick={() => playerUIStore.openNowPlaying()}
-          title="Open Now Playing view"
+          onClick={handleTitleClick}
+          title={currentTrack.album ? `Go to ${currentTrack.album}` : `Go to ${currentTrack.title}`}
         >
           {/* Hidden measuring copy — Marquee duplicates its children, so width
               must be read from a single stable node. */}

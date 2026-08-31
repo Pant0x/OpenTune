@@ -1,5 +1,4 @@
 import { AnimatePresence, motion } from "motion/react";
-import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
 import {
   PauseActiveIcon,
@@ -22,7 +21,7 @@ interface PlaybackControlsProps {
 const CONTROL_BUTTON =
   "flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-/** Crossfade+scale used by the play/pause/loading glyph swap. */
+/** Crossfade+scale used by the play/pause glyph swap. */
 const GLYPH_MOTION = {
   initial: { opacity: 0, scale: 0.6 },
   animate: { opacity: 1, scale: 1 },
@@ -40,7 +39,6 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
     }),
     shallowEqual,
   );
-  const isBusy = state.status === "loading";
   const isPlaying = state.status === "playing";
   const hasCurrentTrack = Boolean(state.currentTrack);
 
@@ -116,15 +114,11 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
         className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-[transform,background-color] hover:bg-primary/80 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={handlePlayPause}
         disabled={!hasCurrentTrack}
-        aria-label={isBusy ? "Loading song" : isPlaying ? "Pause" : "Play"}
+        aria-label={isPlaying ? "Pause" : "Play"}
       >
         <span className="relative grid size-5 place-items-center" aria-hidden="true">
           <AnimatePresence initial={false} mode="popLayout">
-            {isBusy ? (
-              <motion.span key="loading" {...GLYPH_MOTION} className="absolute">
-                <SpinnerSteps  size={20} />
-              </motion.span>
-            ) : isPlaying ? (
+            {isPlaying ? (
               <motion.span key="pause" {...GLYPH_MOTION} className="absolute">
                 <PauseActiveIcon size={20} />
               </motion.span>

@@ -22,6 +22,7 @@ export interface Track {
    */
   albumId?: string;
   durationSec?: number;
+  duration?: string;
   artworkUrl?: string;
   playlistItemId?: string;
   viewCount?: number;
@@ -105,6 +106,9 @@ export interface ArtistPage {
   allSongs: Track[];
   releases: Album[];
   playlists: Playlist[];
+  appearsOn?: Album[];
+  fansAlsoLike?: Artist[];
+  discoveredOn?: Playlist[];
 }
 
 /**

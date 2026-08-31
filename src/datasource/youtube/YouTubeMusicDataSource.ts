@@ -1121,6 +1121,62 @@ export class YouTubeMusicDataSource extends DataSource {
     };
   }
 
+  private parseDurationSeconds(durationStr: string): number | undefined {
+    const parts = durationStr.split(":").map((p) => parseInt(p, 10));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return undefined;
+  }
+
+  private getTrackDuration(item: MusicItem): { duration?: string; durationSec?: number } {
+    const raw = item as Record<string, unknown>;
+    if (raw.duration) {
+      if (typeof raw.duration === "object") {
+        const d = raw.duration as Record<string, unknown>;
+        const seconds = typeof d.seconds === "number" ? d.seconds : typeof d.value === "number" ? d.value : undefined;
+        const text = typeof d.text === "string" ? d.text : typeof d.toString === "function" ? d.toString() : undefined;
+        if (seconds !== undefined || text !== undefined) {
+          return { duration: text, durationSec: seconds ?? (text ? this.parseDurationSeconds(text) : undefined) };
+        }
+      } else if (typeof raw.duration === "string") {
+        return { duration: raw.duration, durationSec: this.parseDurationSeconds(raw.duration) };
+      } else if (typeof raw.duration === "number") {
+        return { durationSec: raw.duration };
+      }
+    }
+
+    if (raw.length) {
+      const l = raw.length as Record<string, unknown>;
+      if (typeof l.seconds === "number") return { durationSec: l.seconds, duration: typeof l.text === "string" ? l.text : undefined };
+      if (typeof l === "string") return { duration: l, durationSec: this.parseDurationSeconds(l) };
+    }
+
+    // Search columns and subtitle for "mm:ss" or "hh:mm:ss"
+    const texts = [
+      ...(item.fixed_columns ?? []).flatMap((column) => [
+        column.title?.toString(),
+        ...(column.title?.runs?.map((run) => run.text) ?? []),
+      ]),
+      ...(item.flex_columns ?? []).flatMap((column) => [
+        column.title?.toString(),
+        ...(column.title?.runs?.map((run) => run.text) ?? []),
+      ]),
+      item.subtitle?.toString(),
+      ...(item.subtitle?.runs?.map((run) => run.text) ?? []),
+    ].filter((value): value is string => Boolean(value));
+
+    const durationText = texts.find((v) => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(v.trim()));
+    if (durationText) {
+      return { duration: durationText.trim(), durationSec: this.parseDurationSeconds(durationText.trim()) };
+    }
+
+    return {};
+  }
+
   private toTrack(item: MusicItem): Track | null {
     /*
      * The endpoint wins over `item.id`.
@@ -1142,6 +1198,7 @@ export class YouTubeMusicDataSource extends DataSource {
     if (!isVideoId(id) || !title) return null;
     const viewCountText = this.getViewCountText(item);
     const album = this.getTrackAlbum(item);
+    const { duration, durationSec } = this.getTrackDuration(item);
 
     return {
       id,
@@ -1156,6 +1213,8 @@ export class YouTubeMusicDataSource extends DataSource {
       viewCount: this.parseViewCount(viewCountText),
       viewCountText,
       isExplicit: this.isExplicitItem(item),
+      duration,
+      durationSec,
     };
   }
 
@@ -1226,6 +1285,8 @@ export class YouTubeMusicDataSource extends DataSource {
         : album.artists?.length
           ? album.artists
           : undefined,
+      duration: track.duration,
+      durationSec: track.durationSec,
     };
   }
 
@@ -3867,6 +3928,9 @@ export class YouTubeMusicDataSource extends DataSource {
     const popularSongs: Track[] = [];
     const releases: Album[] = [];
     const playlists: Playlist[] = [];
+    const appearsOn: Album[] = [];
+    const fansAlsoLike: Artist[] = [];
+    const discoveredOn: Playlist[] = [];
     for (const section of artistPage.sections as unknown as Array<{
       title?: { toString(): string };
       header?: { title?: { toString(): string } };
@@ -3885,7 +3949,13 @@ export class YouTubeMusicDataSource extends DataSource {
             .filter((item): item is Track => Boolean(item)),
         );
       }
-      if (
+      if (sectionTitle.includes("appears on") || sectionTitle.includes("featured in") || sectionTitle.includes("featuring")) {
+        appearsOn.push(
+          ...contents
+            .map((item) => this.toAlbum(item))
+            .filter((item): item is Album => Boolean(item)),
+        );
+      } else if (
         sectionTitle.includes("album")
         || sectionTitle.includes("single")
         || sectionTitle.includes("ep")
@@ -3911,7 +3981,19 @@ export class YouTubeMusicDataSource extends DataSource {
             }),
         );
       }
-      if (sectionTitle.includes("playlist")) {
+      if (sectionTitle.includes("fan") || sectionTitle.includes("similar") || sectionTitle.includes("like")) {
+        fansAlsoLike.push(
+          ...contents
+            .map((item) => this.toArtist(item))
+            .filter((item): item is Artist => Boolean(item)),
+        );
+      } else if (sectionTitle.includes("discovered") || sectionTitle.includes("station") || sectionTitle.includes("radio")) {
+        discoveredOn.push(
+          ...contents
+            .map((item) => this.toPlaylist(item))
+            .filter((item): item is Playlist => Boolean(item)),
+        );
+      } else if (sectionTitle.includes("playlist")) {
         playlists.push(
           ...contents
             .map((item) => this.toPlaylist(item))
@@ -3942,6 +4024,14 @@ export class YouTubeMusicDataSource extends DataSource {
           .filter((item) => item.item_type === "playlist")
           .map((item) => this.toPlaylist(item))
           .filter((item): item is Playlist => Boolean(item)),
+      );
+    }
+    if (fansAlsoLike.length === 0) {
+      fansAlsoLike.push(
+        ...responseItems
+          .filter((item) => item.item_type === "artist")
+          .map((item) => this.toArtist(item))
+          .filter((item): item is Artist => Boolean(item && item.id !== artistId)),
       );
     }
 
@@ -3999,6 +4089,9 @@ export class YouTubeMusicDataSource extends DataSource {
       allSongs: this.uniqueById(allSongs),
       releases: this.uniqueById(releases),
       playlists: this.uniqueById(playlists),
+      appearsOn: this.uniqueById(appearsOn),
+      fansAlsoLike: this.uniqueById(fansAlsoLike),
+      discoveredOn: this.uniqueById(discoveredOn),
     };
   }
 

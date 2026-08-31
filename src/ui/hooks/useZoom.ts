@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
 const ZOOM_STORAGE_KEY = "amber-ui-zoom";
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.0;
+const MIN_ZOOM = 0.7;
+const MAX_ZOOM = 1.4;
 const STEP = 0.05;
 
 function getStoredZoom(): number {
@@ -24,11 +24,11 @@ function applyDocumentZoom(zoomValue: number) {
   const zoomStr = String(zoomValue);
   document.documentElement.style.zoom = zoomStr;
   if (document.body) {
-    document.body.style.zoom = zoomStr;
+    document.body.style.zoom = "";
   }
   const root = document.getElementById("root");
   if (root) {
-    root.style.zoom = zoomStr;
+    root.style.zoom = "";
   }
 }
 

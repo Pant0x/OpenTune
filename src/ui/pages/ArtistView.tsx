@@ -80,12 +80,14 @@ export function ArtistView({
   libraryController,
   onOpenAlbum,
   onOpenPlaylist,
+  onOpenArtist,
 }: {
   artist?: Artist;
   playerController: PlayerControllerActions;
   libraryController: LibraryController;
   onOpenAlbum: (album: Album) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
+  onOpenArtist?: (artist: Artist) => void;
 }) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -535,6 +537,72 @@ export function ArtistView({
                     onClick={() => onOpenPlaylist(playlist)}
                     onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                   />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {page.appearsOn && page.appearsOn.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2>Appears on</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {page.appearsOn.map((album) => (
+                  <AlbumCard
+                    key={album.id}
+                    artworkUrl={album.artworkUrl}
+                    title={album.title}
+                    subtitle={album.artist}
+                    onClick={() => onOpenAlbum(album)}
+                    onContextMenu={(event) => openAlbumMenu(event, album)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {page.discoveredOn && page.discoveredOn.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2>Discovered on</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {page.discoveredOn.map((playlist) => (
+                  <AlbumCard
+                    key={playlist.id}
+                    artworkUrl={playlist.artworkUrl}
+                    title={playlist.title}
+                    subtitle={playlist.owner}
+                    onClick={() => onOpenPlaylist(playlist)}
+                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {page.fansAlsoLike && page.fansAlsoLike.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2>Fans also like</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {page.fansAlsoLike.map((similarArtist) => (
+                  <div
+                    key={similarArtist.id}
+                    className="group flex flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-colors hover:bg-card cursor-pointer"
+                    onClick={() => onOpenArtist?.(similarArtist)}
+                  >
+                    <TrackArtwork
+                      artworkUrl={similarArtist.artworkUrl}
+                      variant="artist"
+                      size={120}
+                      className="size-28 rounded-full shadow-md transition-transform duration-200 group-hover:scale-105"
+                    />
+                    <div className="flex flex-col items-center min-w-0 w-full">
+                      <span className="truncate w-full text-sm font-medium text-foreground group-hover:underline">
+                        {similarArtist.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate w-full">
+                        {similarArtist.subscriberCount || "Artist"}
+                      </span>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
