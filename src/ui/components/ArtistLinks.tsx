@@ -159,14 +159,14 @@ export function parseTrackArtistsWithFeatures(
 
 export function ArtistLinks({
   artists,
-  fallback,
+  fallback = "",
   trackTitle,
   className,
   interactive = true,
   suppressArtistId,
 }: {
   artists?: ArtistReference[];
-  fallback: string;
+  fallback?: string;
   trackTitle?: string;
   className?: string;
   interactive?: boolean;

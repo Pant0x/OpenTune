@@ -8,6 +8,7 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import type { Album, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
+import { useLibraryState } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { SelectionBar } from "../components/SelectionBar";
@@ -184,7 +185,16 @@ export function AlbumView({ album, playerController, libraryController }: AlbumV
     event.currentTarget.blur();
   };
 
-  const isSaved = album ? libraryController.isAlbumSaved(album.id) : false;
+  const libraryState = useLibraryState();
+  const isSaved = useMemo(() => {
+    if (!album || !libraryState.library) return false;
+    const sameAlbum = (item: Album) =>
+      item.id === album.id
+      || Boolean(album.playlistId && item.playlistId === album.playlistId)
+      || Boolean(album.playlistId && item.id === album.playlistId)
+      || Boolean(item.playlistId && item.playlistId === album.id);
+    return libraryState.library.albums.some(sameAlbum);
+  }, [album, libraryState.library]);
   const [isSaving, setIsSaving] = useState(false);
 
   const toggleSaveAlbum = async () => {

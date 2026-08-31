@@ -43,7 +43,6 @@ const suggestionCache = new Map<string, Track[]>();
 const suggestionLoads = new Map<string, Promise<Track[]>>();
 const cachedMoodShelves = new Map<string, BrowseShelf[]>();
 const EMPTY_TRACKS: Track[] = [];
-let cachedGlobalHomeShelves: BrowseShelf[] | null = null;
 
 const MAX_SUGGESTION_ENTRIES = 20;
 
@@ -182,8 +181,8 @@ export function HomePage({
   const [activeMood, setActiveMood] = useState<string>("all");
   const [moodShelves, setMoodShelves] = useState<BrowseShelf[] | null>(null);
   const [isLoadingMood, setIsLoadingMood] = useState(false);
-  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>(() => cachedGlobalHomeShelves ?? []);
-  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(() => !cachedGlobalHomeShelves);
+  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>([]);
+  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(true);
 
   const recentlyPlayed = useMemo(
     () => libraryState.library?.recentlyPlayed ?? EMPTY_TRACKS,
@@ -257,9 +256,7 @@ export function HomePage({
     let active = true;
 
     async function loadAllStaticHomeSections() {
-      if (!cachedGlobalHomeShelves) {
-        setIsLoadingHomeShelves(true);
-      }
+      setIsLoadingHomeShelves(true);
 
       try {
         const homePage = await libraryController.getBrowsePage("home").catch(() => null);
@@ -379,7 +376,6 @@ export function HomePage({
         }
 
         if (!active) return;
-        cachedGlobalHomeShelves = mappedShelves;
         setHomeShelves(mappedShelves);
       } catch {
         // Fallback
@@ -393,7 +389,14 @@ export function HomePage({
     return () => {
       active = false;
     };
-  }, [libraryController, searchController, suggestions, recentPlays]);
+  }, [
+    libraryController,
+    searchController,
+    suggestions,
+    recentPlays,
+    libraryState.status,
+    libraryState.library?.account?.name,
+  ]);
 
   const handleSelectMood = async (chip: HomeMoodChip) => {
     setActiveMood(chip.id);

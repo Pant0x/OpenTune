@@ -3321,7 +3321,7 @@ export class YouTubeMusicDataSource extends DataSource {
       }
     }
 
-    const [albumItems, playlistItems, artistItems, songItems, recentItems] = await Promise.all([
+    const [albumItems, playlistItems, artistItems, subscribedArtistItems, songItems, recentItems] = await Promise.all([
       this.loadLibrarySection(client, "FEmusic_liked_albums", libraryLanding, "Albums", ["album"]),
       this.loadLibrarySection(client, "FEmusic_liked_playlists", libraryLanding, "Playlists", ["playlist"]),
       /*
@@ -3330,6 +3330,7 @@ export class YouTubeMusicDataSource extends DataSource {
        * Rows here are typed `library_artist`, not `artist`: same artist, different page type.
        */
       this.loadLibrarySection(client, "FEmusic_library_corpus_track_artists", libraryLanding, "Artists", ["artist", "library_artist"]),
+      this.loadLibrarySection(client, "FEmusic_subscriptions", libraryLanding, "Subscriptions", ["artist", "library_artist"]).catch(() => []),
       // The library's own Songs section. It overlaps Liked Songs but is not the same list —
       // anything saved from an album lives here and in no playlist.
       this.loadLibrarySection(client, "FEmusic_liked_videos", libraryLanding, "Songs", ["song", "video"]),
@@ -3340,7 +3341,9 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const parsedAlbums = this.uniqueById(albumItems.map((item) => this.toAlbum(item)).filter((item): item is Album => Boolean(item)));
     const sectionArtists = this.uniqueById(
-      artistItems.map((item) => this.toArtist(item)).filter((item): item is Artist => Boolean(item)),
+      [...artistItems, ...subscribedArtistItems]
+        .map((item) => this.toArtist(item))
+        .filter((item): item is Artist => Boolean(item)),
     );
     const [albums, playlists, likedSongsResult] = await Promise.all([
       this.enrichMissingAlbumArtwork(client, parsedAlbums),

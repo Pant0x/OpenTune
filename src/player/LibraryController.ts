@@ -572,7 +572,20 @@ export class LibraryController {
     if (!artist.id.startsWith("UC")) {
       throw new Error("This artist does not have a subscribable channel.");
     }
-    return this.dataSource.setArtistSubscribed(artist.id, subscribed);
+    await this.dataSource.setArtistSubscribed(artist.id, subscribed);
+
+    if (this.state.library) {
+      const currentArtists = this.state.library.artists ?? [];
+      const nextArtists = subscribed
+        ? [artist, ...currentArtists.filter((a) => a.id !== artist.id)]
+        : currentArtists.filter((a) => a.id !== artist.id);
+      this.setState({
+        library: {
+          ...this.state.library,
+          artists: nextArtists,
+        },
+      });
+    }
   }
 
   /**
