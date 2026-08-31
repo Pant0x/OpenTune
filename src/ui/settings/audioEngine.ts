@@ -35,7 +35,7 @@ const STORAGE_KEY = "audio-engine-mode";
 /** Exported so `AudioEngine` can free its decks the moment the mode stops being `iframe`. */
 export const AUDIO_ENGINE_MODE_CHANGE_EVENT = "audio-engine-mode-change";
 const CHANGE_EVENT = AUDIO_ENGINE_MODE_CHANGE_EVENT;
-const DEFAULT_MODE: AudioEngineMode = "iframe";
+const DEFAULT_MODE: AudioEngineMode = "rust";
 
 export const AUDIO_ENGINE_MODES: ReadonlyArray<{
   value: AudioEngineMode;
@@ -43,9 +43,19 @@ export const AUDIO_ENGINE_MODES: ReadonlyArray<{
   hint: string;
 }> = [
   {
+    value: "rust",
+    label: "Rust (Recommended)",
+    hint: "Decodes audio natively in Rust. Best quality, gapless playback, and lowest memory usage.",
+  },
+  {
+    value: "native",
+    label: "Native audio",
+    hint: "Resolves the audio URL and plays through an HTML audio element.",
+  },
+  {
     value: "iframe",
     label: "YouTube player",
-    hint: "A hidden YouTube frame plays each track. Required for gapless and crossfade.",
+    hint: "A hidden YouTube frame plays each track. Falls back automatically if Rust fails.",
   },
 ];
 
@@ -62,8 +72,7 @@ let cachedMode: AudioEngineMode | null = null;
 function readMode(): AudioEngineMode {
   if (cachedMode === null) {
     const stored = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode) ?? DEFAULT_MODE;
-    // Migrate old Rust/Native installs to iframe (only engine kept)
-    cachedMode = stored === "iframe" ? stored : "iframe";
+    cachedMode = isAudioEngineMode(stored) ? stored : DEFAULT_MODE;
   }
   return cachedMode;
 }
@@ -95,17 +104,15 @@ export function getAudioEngineMode(): AudioEngineMode {
   return readMode();
 }
 
-/**
- * True when playback does *not* go through the YouTube IFrame.
- * Kept for compatibility - now always false since only iframe remains.
- */
+/** True when playback does *not* go through the YouTube IFrame (native or rust engine). */
 export function usesNativeAudioEngine(): boolean {
-  return false;
+  const mode = readMode();
+  return mode === "native" || mode === "rust";
 }
 
 /** True when Rust decodes and plays the audio itself, with no `<audio>` element involved. */
 export function usesRustAudioEngine(): boolean {
-  return false;
+  return readMode() === "rust";
 }
 
 export function setAudioEngineMode(mode: AudioEngineMode) {
