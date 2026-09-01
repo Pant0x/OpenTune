@@ -5262,6 +5262,8 @@ export class YouTubeMusicDataSource extends DataSource {
         const match = await response.json() as LrcLibTrack;
         const result = this.toLrcLibLyrics(track, match, "LRCLIB");
         if (result) return result;
+        const plainResult = this.toLrcLibPlainLyrics(track, match, "LRCLIB (unsynced)");
+        if (plainResult) return plainResult;
       } catch (error) {
         logInternalWarn("YouTubeMusicDataSource.getLyrics LRCLIB exact unavailable", {
           trackId: track.id,
@@ -5310,7 +5312,7 @@ export class YouTubeMusicDataSource extends DataSource {
         // Fallback: accept unsynced lyrics if no synced found
         const unsyncedCandidates = withDelta.filter(({ match }) => Boolean(match.plainLyrics) && !match.syncedLyrics);
         for (const candidate of unsyncedCandidates) {
-          const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search (unsynced)");
+          const result = this.toLrcLibPlainLyrics(track, candidate.match, "LRCLIB search (unsynced)");
           if (result) return result;
         }
       } catch (error) {
@@ -5342,21 +5344,32 @@ export class YouTubeMusicDataSource extends DataSource {
         });
         if (!response.ok) continue;
 
-        const body = await response.json() as BetterLyricsResponse;
-        if (!body.ttml) continue;
-
-        const lines = this.parseTtmlLyrics(body.ttml);
-        if (lines.length === 0) continue;
-
-        logInternalInfo("YouTubeMusicDataSource.getLyrics BetterLyrics success", {
-          trackId: track.id,
-          lineCount: lines.length,
-        });
-        return {
-          lines,
-          timing: "synced",
-          sourceLabel: "BetterLyrics",
-        };
+        const body = await response.json() as BetterLyricsResponse & { lyrics?: string; lrc?: string };
+        if (body.ttml) {
+          const lines = this.parseTtmlLyrics(body.ttml);
+          if (lines.length > 0) {
+            logInternalInfo("YouTubeMusicDataSource.getLyrics BetterLyrics success", {
+              trackId: track.id,
+              lineCount: lines.length,
+            });
+            return {
+              lines,
+              timing: "synced",
+              sourceLabel: "BetterLyrics",
+            };
+          }
+        }
+        if (body.lrc || body.lyrics) {
+          const rawLrc = body.lrc || body.lyrics || "";
+          const lines = this.parseSyncedLyrics(rawLrc);
+          if (lines.length > 0) {
+            return {
+              lines,
+              timing: "synced",
+              sourceLabel: "BetterLyrics",
+            };
+          }
+        }
       } catch (error) {
         logInternalWarn("YouTubeMusicDataSource.getLyrics BetterLyrics unavailable", {
           trackId: track.id,
@@ -5389,6 +5402,36 @@ export class YouTubeMusicDataSource extends DataSource {
     return {
       lines,
       timing: "synced",
+      sourceLabel,
+    };
+  }
+
+  private toLrcLibPlainLyrics(
+    track: Track,
+    match: LrcLibTrack,
+    sourceLabel: string,
+  ): LyricsProviderResult | null {
+    if (!match.plainLyrics?.trim()) return null;
+    const durationDelta = this.getLyricsDurationDelta(track, match.duration);
+    if (durationDelta > 4) return null;
+
+    const lines = match.plainLyrics
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((text) => ({ text }));
+
+    if (lines.length === 0) return null;
+
+    logInternalInfo("YouTubeMusicDataSource.getLyrics LRCLIB plain success", {
+      trackId: track.id,
+      lineCount: lines.length,
+      durationDelta,
+      sourceLabel,
+    });
+    return {
+      lines,
+      timing: "none",
       sourceLabel,
     };
   }
@@ -5628,7 +5671,7 @@ export class YouTubeMusicDataSource extends DataSource {
       }
     }
 
-    const artwork = selectArtworkUrl(trackBasic?.thumbnail);
+    const artwork = selectArtworkUrl(collectArtworkCandidates(trackBasic?.thumbnail));
     const track: Track = {
       id: trackIdToUse,
       source: "youtube",
@@ -6031,36 +6074,76 @@ export class YouTubeMusicDataSource extends DataSource {
     });
 
     try {
-      const client = await this.getMusicClient();
-      const panel = await client.music.getUpNext(seed.id, true);
       const recommendationTracks: Track[] = [];
-      for (const entry of panel.contents) {
-        const item = entry as unknown as UpNextItem;
-        const video = item.primary ?? item;
-        const id = video.video_id;
-        const title = video.title?.toString();
-        if (!id || !title || id === seed.id) continue;
 
-        recommendationTracks.push({
-          id,
-          source: "youtube",
-          title,
-          artist: video.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
-            || video.author
-            || "Unknown artist",
-          artists: video.artists
-            ?.map((artist) => ({
-              id: artist.channel_id
-                ?? this.findBrowseId(artist.endpoint)
-                ?? this.findBrowseId(artist.navigationEndpoint)
-                ?? "",
-              name: artist.name ?? "",
-            }))
-            .filter((artist) => artist.name),
-          durationSec: video.duration?.seconds,
-          artworkUrl: selectArtworkUrl(video.thumbnail) ?? getVideoArtworkFallback(id),
+      try {
+        const client = await this.getMusicClient();
+        const panel = await client.music.getUpNext(seed.id, true);
+        for (const entry of panel.contents) {
+          const item = entry as unknown as UpNextItem;
+          const video = item.primary ?? item;
+          const id = video.video_id;
+          const title = video.title?.toString();
+          if (!id || !title || id === seed.id) continue;
+
+          recommendationTracks.push({
+            id,
+            source: "youtube",
+            title,
+            artist: video.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
+              || video.author
+              || "Unknown artist",
+            artists: video.artists
+              ?.map((artist) => ({
+                id: artist.channel_id
+                  ?? this.findBrowseId(artist.endpoint)
+                  ?? this.findBrowseId(artist.navigationEndpoint)
+                  ?? "",
+                name: artist.name ?? "",
+              }))
+              .filter((artist) => artist.name),
+            durationSec: video.duration?.seconds,
+            artworkUrl: selectArtworkUrl(collectArtworkCandidates(video.thumbnail)) ?? getVideoArtworkFallback(id),
+          });
+        }
+      } catch (upNextError) {
+        logInternalWarn("YouTubeMusicDataSource.getRecommendations getUpNext failed, falling back", {
+          seedTrackId: seed.id,
+          error: upNextError instanceof Error ? upNextError.message : String(upNextError),
         });
       }
+
+      // Fallback 1: Related tab shelves
+      if (recommendationTracks.length === 0) {
+        try {
+          const relatedShelves = await this.getRelated(seed);
+          for (const shelf of relatedShelves) {
+            for (const relTrack of shelf.tracks) {
+              if (relTrack.id !== seed.id) recommendationTracks.push(relTrack);
+            }
+          }
+        } catch {
+          // ignore related failure
+        }
+      }
+
+      // Fallback 2: Artist top tracks search
+      if (recommendationTracks.length === 0 && seed.artist && seed.artist !== "Unknown artist") {
+        try {
+          const yt = await this.getClient("music");
+          const searchResults = await yt.music.search(`${seed.artist} songs`, { type: "song" });
+          const items = this.collectMusicItems(searchResults, new Set(["song"]));
+          for (const item of items) {
+            const track = this.toTrack(item);
+            if (track && track.id !== seed.id) {
+              recommendationTracks.push(track);
+            }
+          }
+        } catch {
+          // ignore search failure
+        }
+      }
+
       const tracks = this.uniqueById(recommendationTracks);
 
       logInternalInfo("YouTubeMusicDataSource.getRecommendations success", {

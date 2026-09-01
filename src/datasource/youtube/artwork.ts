@@ -45,13 +45,31 @@ export function collectArtworkCandidates(...sources: unknown[]): ArtworkCandidat
 }
 
 export function selectArtworkUrl(
-  ...candidateGroups: Array<readonly ArtworkCandidate[] | null | undefined>
+  ...candidateGroups: Array<unknown>
 ): string | undefined {
-  const candidates = candidateGroups
-    .flatMap((group) => group ?? [])
-    .filter((candidate): candidate is ArtworkCandidate & { url: string } => Boolean(candidate.url?.trim()));
+  const candidates: ArtworkCandidate[] = [];
+  for (const group of candidateGroups) {
+    if (!group) continue;
+    if (Array.isArray(group)) {
+      for (const item of group) {
+        if (isArtworkCandidate(item) && item.url?.trim()) {
+          candidates.push(item);
+        } else if (item && typeof item === "object") {
+          candidates.push(...collectArtworkCandidates(item));
+        }
+      }
+    } else if (isArtworkCandidate(group) && group.url?.trim()) {
+      candidates.push(group);
+    } else if (typeof group === "object") {
+      candidates.push(...collectArtworkCandidates(group));
+    }
+  }
 
-  const bestCandidate = candidates.reduce<(ArtworkCandidate & { url: string }) | undefined>(
+  const validCandidates = candidates.filter(
+    (candidate): candidate is ArtworkCandidate & { url: string } => Boolean(candidate.url?.trim()),
+  );
+
+  const bestCandidate = validCandidates.reduce<(ArtworkCandidate & { url: string }) | undefined>(
     (best, candidate) => {
       if (!best) return candidate;
 
@@ -123,14 +141,17 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
     candidates.push(withYoutubeSize(normalized, size));
   }
 
-  // If it's a YouTube video thumbnail (e.g. hqdefault, sddefault, mqdefault), try maxres and high-res
-  if (/i\.ytimg\.com\/vi\/([^/]+)\/(?:hqdefault|sddefault|mqdefault|default)\.jpg/i.test(normalized)) {
-    const videoId = normalized.match(/i\.ytimg\.com\/vi\/([^/]+)\//)?.[1];
-    if (videoId) {
-      candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
-      candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
-      candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-    }
+  // If it's a YouTube video thumbnail (matches i.ytimg.com or img.youtube.com video IDs), generate ladder
+  const ytVideoMatch = normalized.match(/(?:i\d?\.ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})/i);
+  if (ytVideoMatch?.[1]) {
+    const videoId = ytVideoMatch[1];
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/default.jpg`);
+    candidates.push(`https://i.ytimg.com/vi_webp/${videoId}/hqdefault.webp`);
+    candidates.push(`https://i.ytimg.com/vi_webp/${videoId}/maxresdefault.webp`);
   }
 
   // Original URL
@@ -152,7 +173,7 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
 
 export function getVideoArtworkFallback(videoId: string): string | undefined {
   return /^[A-Za-z0-9_-]{11}$/.test(videoId)
-    ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
     : undefined;
 }
 

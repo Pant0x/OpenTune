@@ -7,7 +7,6 @@ import {
   EQUALIZER_BANDS_HZ,
   EQUALIZER_MAX_DB,
   EQUALIZER_PRESETS,
-  isEqualizerFlat,
   setEqualizer,
   setEqualizerEnabled,
   useEqualizer,
@@ -139,7 +138,6 @@ export function MiniEqualizer() {
   const equalizer = useEqualizer();
   const enabled = useEqualizerEnabled();
   const available = true;
-  const flat = isEqualizerFlat(equalizer);
   const activePreset = activeEqualizerPreset(equalizer);
   const labelId = useId();
 
@@ -157,7 +155,7 @@ export function MiniEqualizer() {
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">
-            {enabled ? (flat ? "Flat" : "On") : "Off"}
+            {enabled ? (activePreset ? activePreset.name : "Custom") : "Off"}
           </span>
           <Switch
             checked={enabled}

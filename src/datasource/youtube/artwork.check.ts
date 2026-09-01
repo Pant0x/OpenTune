@@ -99,4 +99,11 @@ check(
   "a 2x slot needing more than 800 still keeps the original",
 );
 
+// YouTube video thumbnail ladder
+const ytThumb = "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg";
+const ytVariants = getArtworkUrlCandidates(ytThumb);
+check(ytVariants.includes("https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg"), "youtube video thumbnail falls back to sddefault");
+check(ytVariants.includes("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"), "youtube video thumbnail falls back to hqdefault");
+check(ytVariants.includes("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"), "youtube video thumbnail falls back to mqdefault");
+
 console.log("artwork.check.ts OK");
