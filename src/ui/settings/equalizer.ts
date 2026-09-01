@@ -129,7 +129,7 @@ export function isEqualizerAvailable(): boolean {
 /** The bypass switch — independent of the curve. See `ENABLED_STORAGE_KEY`. */
 export function isEqualizerEnabled(): boolean {
   if (enabledCached === null) {
-    enabledCached = readLocalBooleanSetting(ENABLED_STORAGE_KEY, true);
+    enabledCached = readLocalBooleanSetting(ENABLED_STORAGE_KEY, false);
   }
   return enabledCached;
 }
