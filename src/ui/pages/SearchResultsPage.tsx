@@ -168,13 +168,6 @@ export function SearchResultsPage({
     };
   }, [deepResults, results, scope]);
 
-  const availableScopes = useMemo(
-    () => SCOPES.filter(
-      (item) => item.value === "all" || results[item.field].length > 0,
-    ),
-    [results],
-  );
-
   const hasResults = scopedResults.artists.length
     + scopedResults.tracks.length
     + scopedResults.albums.length
@@ -316,11 +309,9 @@ export function SearchResultsPage({
           <h1>{query}</h1>
         </div>
 
-        {/* Only offered when there is something to narrow to: a row of filters where every
-            one but "All" is empty is just noise. */}
-        {!isLoading && availableScopes.length > 2 && (
+        {!isLoading && (
           <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter results">
-            {availableScopes.map((item) => (
+            {SCOPES.map((item) => (
               <button
                 key={item.value}
                 type="button"
@@ -328,15 +319,15 @@ export function SearchResultsPage({
                 aria-selected={scope === item.value}
                 onClick={() => setScope(item.value)}
                 className={cn(
-                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                  "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   scope === item.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-card text-muted-foreground hover:text-foreground",
+                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                    : "bg-card text-muted-foreground hover:text-foreground hover:bg-muted/60",
                 )}
               >
                 {item.label}
-                {item.value !== "all" && (
+                {item.value !== "all" && results[item.field].length > 0 && (
                   <span className="ml-1.5 tabular-nums opacity-60">
                     {results[item.field].length}
                   </span>

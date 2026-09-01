@@ -11,7 +11,9 @@ export function isSyncedLyrics(lyrics: Lyrics | null): boolean {
   const lines = lyrics?.lines;
   if (!lines?.length) return false;
   if (lyrics?.timing === "none") return false;
-  return lines.every((line) => typeof line.startTimeSec === "number");
+  const textLines = lines.filter((line) => line.text.trim().length > 0);
+  if (textLines.length === 0) return false;
+  return textLines.every((line) => typeof line.startTimeSec === "number");
 }
 
 /**
@@ -55,8 +57,10 @@ export function findActiveLineIndex(lines: LyricLine[], timeSec: number): number
   let active = -1;
   for (let index = 0; index < lines.length; index += 1) {
     const start = lines[index]?.startTimeSec;
-    if (start === undefined || timeSec < start) break;
+    if (start === undefined) continue;
+    if (timeSec < start) break;
     active = index;
   }
   return active;
 }
+

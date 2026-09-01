@@ -39,8 +39,8 @@ equal(findActiveLineIndex([], 5), -1, "no lines means no active line");
 // guessing would slide the highlight onto the wrong words.
 equal(
   findActiveLineIndex([{ text: "a", startTimeSec: 1 }, { text: "b" }, { text: "c", startTimeSec: 3 }], 5),
-  0,
-  "the scan stops at the first untimed line",
+  2,
+  "the scan continues past untimed lines",
 );
 
 check(isSyncedLyrics({ lines: LINES, timing: "synced" }), "fully timed lines are synced");
@@ -55,8 +55,8 @@ check(
   "plain text lyrics are not synced",
 );
 check(
-  !isSyncedLyrics({ lines: [{ text: "a", startTimeSec: 1 }, { text: "b" }], timing: "synced" }),
-  "one untimed line disqualifies the whole set, whatever the provider claims",
+  isSyncedLyrics({ lines: [{ text: "a", startTimeSec: 1 }, { text: "" }], timing: "synced" }),
+  "blank lines do not disqualify synced lyrics",
 );
 
 equal(getLineProgress(LINES, 0, 10), 0, "a line starts empty");

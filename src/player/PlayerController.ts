@@ -1356,18 +1356,9 @@ export class PlayerController {
        * is Google's own embed resolving its own URLs — which is exactly why it was the only
        * engine between v1.2.65 and PO tokens landing.
        *
-       * Only for streaming. Local files returned above and have no IFrame equivalent anyway,
-       * and falling back for a *download* would stream the online copy of a track the user
-       * saved on purpose.
+       * Only for streaming. Local files returned above and have no IFrame equivalent anyway.
        */
-      const canFallBackToIframe = this.audioEngine.usesRustAudio() && !isDownloaded;
-      /*
-       * The mirror case: the embed is refused not because Google won't resolve the track but
-       * because its owner disallows embedded playback at all (error 101/150) — a restriction
-       * on the embed, not on the video. A directly resolved stream is not an embed and
-       * sidesteps it, so a track that would otherwise be permanently unplayable on this engine
-       * gets one try at native audio before giving up.
-       */
+      const canFallBackToIframe = !isDownloaded;
       const canFallBackToNative = !this.audioEngine.usesNativeAudio() && !isDownloaded;
 
       try {

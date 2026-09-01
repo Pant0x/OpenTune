@@ -3937,11 +3937,11 @@ export class YouTubeMusicDataSource extends DataSource {
     const portrait = selectArtworkUrl(collectArtworkCandidates(foregroundThumbnail));
     const channelAvatar = await this.getChannelAvatar(artistId);
     const pageImage = selectArtworkUrl(collectArtworkCandidates(thumbnail));
-    const artworkUrl = portrait ?? channelAvatar ?? pageImage;
+    const artworkUrl = portrait ?? pageImage ?? channelAvatar;
 
     logInternalInfo("YouTubeMusicDataSource.resolveArtistArtwork", {
       artistId,
-      source: portrait ? "portrait" : channelAvatar ? "channel" : pageImage ? "page-image" : "none",
+      source: portrait ? "portrait" : pageImage ? "page-image" : channelAvatar ? "channel" : "none",
       artworkUrl,
     });
     return artworkUrl;
@@ -6190,6 +6190,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     let targetId = track.id;
     if (
+      !isVideoId(track.id) &&
       track.title &&
       track.artist &&
       track.artist !== "Unknown artist" &&
@@ -7016,6 +7017,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     let targetId = track.id;
     if (
+      !isVideoId(track.id) &&
       track.title &&
       track.artist &&
       track.artist !== "Unknown artist" &&

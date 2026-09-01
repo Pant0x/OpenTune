@@ -609,7 +609,7 @@ useMediaSession(playerState, playerController);
     const message = `Playback failed:\n\n${playerState.error}`;
     if (lastErrorAlertRef.current === message) return;
     lastErrorAlertRef.current = message;
-    window.alert(message);
+    logInternalWarn("App playback error", { error: playerState.error });
   }, [playerState.error, playerState.status]);
 
   useEffect(() => {

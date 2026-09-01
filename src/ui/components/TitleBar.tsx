@@ -111,9 +111,6 @@ export function TitleBar({
     startY: number;
   } | null>(null);
   const suppressHomeClickRef = useRef(false);
-  const lastTitleClickRef = useRef<number>(0);
-  const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const titleDragPointerRef = useRef<{ startX: number; startY: number } | null>(null);
   const hideHomeText = sidebarWidth <= 120;
 
   const handleAuthSuccess = () => {
@@ -236,50 +233,15 @@ export function TitleBar({
         aria-label="Drag window"
         onPointerDown={(event) => {
           if (event.button !== 0) return;
-          const now = Date.now();
-          if (now - lastTitleClickRef.current < 350) {
-            lastTitleClickRef.current = 0;
-            if (dragTimerRef.current !== null) {
-              window.clearTimeout(dragTimerRef.current);
-              dragTimerRef.current = null;
-            }
-            titleDragPointerRef.current = null;
+          if (event.detail === 2) {
             void handleToggleMaximize();
             return;
           }
-          lastTitleClickRef.current = now;
-          titleDragPointerRef.current = { startX: event.clientX, startY: event.clientY };
-          if (dragTimerRef.current !== null) window.clearTimeout(dragTimerRef.current);
-          dragTimerRef.current = window.setTimeout(() => {
-            dragTimerRef.current = null;
-            void startWindowDrag();
-          }, 220);
-        }}
-        onPointerMove={(event) => {
-          if (!titleDragPointerRef.current) return;
-          const dist = Math.hypot(
-            event.clientX - titleDragPointerRef.current.startX,
-            event.clientY - titleDragPointerRef.current.startY,
-          );
-          if (dist > 5) {
-            titleDragPointerRef.current = null;
-            if (dragTimerRef.current !== null) {
-              window.clearTimeout(dragTimerRef.current);
-              dragTimerRef.current = null;
-            }
-            void startWindowDrag();
-          }
-        }}
-        onPointerUp={() => {
-          titleDragPointerRef.current = null;
+          void startWindowDrag();
         }}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (dragTimerRef.current !== null) {
-            window.clearTimeout(dragTimerRef.current);
-            dragTimerRef.current = null;
-          }
           void handleToggleMaximize();
         }}
       />
