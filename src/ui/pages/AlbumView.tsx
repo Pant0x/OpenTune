@@ -115,6 +115,11 @@ export function AlbumView({
 
   const resolvedArtistName = isInvalidArtist(rawArtistName) ? undefined : rawArtistName;
   const resolvedArtistId = album?.artists?.[0]?.id || trackArtistId;
+  const displayArtistName = (artistDetails?.name && !isInvalidArtist(artistDetails.name))
+    ? artistDetails.name
+    : (resolvedArtistName && !isInvalidArtist(resolvedArtistName))
+      ? resolvedArtistName
+      : undefined;
 
   // Reset album state when navigating between albums
   useEffect(() => {
@@ -430,10 +435,6 @@ export function AlbumView({
           ) : (
             <div className="flex flex-col gap-0.5">
               {visibleTracks.map((track, index) => {
-                /*
-                 * Matched on track identity rather than row position: the queue can be
-                 * shuffled or reordered independently of how this album is displayed.
-                 */
                 const isCurrent = currentTrackId !== null && track.id === currentTrackId;
                 const viewFormatted = formatCompactNumber(track.viewCount ?? track.viewCountText);
                 return (
@@ -470,21 +471,20 @@ export function AlbumView({
         </>
       )}
 
-
-      {album?.year && resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
+      {(album?.year || displayArtistName) && (
         <div className="text-xs text-muted-foreground pt-4 flex flex-col gap-0.5">
           <p className="text-[11px] opacity-75">
-            ℗ {album.year} {resolvedArtistName !== album.year ? resolvedArtistName : ""}
+            ℗ {album?.year ? `${album.year} ` : ""}{displayArtistName && displayArtistName !== album?.year ? displayArtistName : ""}
           </p>
         </div>
       )}
 
       {/* Artist Profile Card */}
-      {resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
+      {displayArtistName && (
         <div
           onClick={() => {
             if (artistDetails) onOpenDiscography?.(artistDetails, moreReleases);
-            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: resolvedArtistName }, moreReleases);
+            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: displayArtistName }, moreReleases);
           }}
           className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
         >
@@ -496,22 +496,26 @@ export function AlbumView({
           />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>
-            <span className="text-base font-bold text-foreground group-hover:underline truncate">{resolvedArtistName}</span>
+            <span className="text-base font-bold text-foreground group-hover:underline truncate">{displayArtistName}</span>
             {artistDetails?.subscriberCount && (
-              <span className="text-xs text-muted-foreground">{artistDetails.subscriberCount}</span>
+              <span className="text-xs text-muted-foreground">
+                {artistDetails.subscriberCount.toLowerCase().includes("subscriber")
+                  ? artistDetails.subscriberCount
+                  : `${artistDetails.subscriberCount} subscribers`}
+              </span>
             )}
           </div>
         </div>
       )}
 
-      {moreReleases.length > 0 && resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
+      {moreReleases.length > 0 && displayArtistName && (
         <section className="flex flex-col gap-3 pt-6 border-t border-border/40">
           <div className="flex items-center justify-between gap-3">
-            <h2>More by {resolvedArtistName}</h2>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">More by {displayArtistName}</h2>
             {onOpenDiscography && (
               <button
                 type="button"
-                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: resolvedArtistName }, moreReleases)}
+                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: displayArtistName }, moreReleases)}
                 className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none cursor-pointer"
               >
                 See discography

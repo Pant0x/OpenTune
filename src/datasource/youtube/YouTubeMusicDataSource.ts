@@ -3962,10 +3962,13 @@ export class YouTubeMusicDataSource extends DataSource {
       artistPage.page,
       new Set(["artist", "song", "video", "album", "playlist"]),
     );
+    const rawHeaderStr = JSON.stringify(header ?? {});
     const headerText = [
-      header?.subtitle?.toString(),
-      header?.description?.toString(),
-      ...(header?.description?.runs?.map((run) => run.text) ?? []),
+      (header as any)?.subtitle?.toString(),
+      (header as any)?.second_subtitle?.toString(),
+      (header as any)?.byline?.toString(),
+      (header as any)?.description?.toString(),
+      ...(header?.description?.runs?.map((run: any) => run.text) ?? []),
     ].filter(Boolean).join(" ");
     /*
      * The artist card for *this* artist, if the page even has one — not merely the first one
@@ -3976,7 +3979,10 @@ export class YouTubeMusicDataSource extends DataSource {
     const artistItem = responseItems.find((item) =>
       item.item_type === "artist"
       && this.normalizeArtistId(item.id ?? this.findBrowseId(item.endpoint)) === artistId);
-    const subscriberCount = headerText.match(/[\d,.]+\s*[KMB]?\s+subscribers?/i)?.[0]
+    const subMatch = headerText.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0]
+      ?? rawHeaderStr.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0];
+    const subscriberCount = subMatch
+      ?? (header as any)?.subscriber_count?.toString()
       ?? artistItem?.subscribers;
     // A visual header hands back a plain array, an immersive one a node with `contents`.
     const headerThumbnail = Array.isArray(header?.thumbnail)

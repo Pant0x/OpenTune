@@ -315,7 +315,15 @@ export function ArtistView({
             />
           </button>
         }
-        meta={displayedArtist.subscriberCount}
+        meta={
+          displayedArtist.subscriberCount ? (
+            <span className="text-xs font-semibold text-muted-foreground">
+              {displayedArtist.subscriberCount.toLowerCase().includes("subscriber")
+                ? displayedArtist.subscriberCount
+                : `${displayedArtist.subscriberCount} subscribers`}
+            </span>
+          ) : undefined
+        }
         circularArtwork
         /* Supplied even though artworkSlot draws the image: MediaHeader publishes this to
            the ambient store, which is what tints the chrome above the page. */

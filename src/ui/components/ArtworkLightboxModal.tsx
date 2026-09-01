@@ -1,6 +1,6 @@
 import { useEffect, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { CloseIcon, CopyIcon } from "@/ui/icons";
+import { CopyIcon } from "@/ui/icons";
 import { TrackArtwork } from "./TrackArtwork";
 import { cn } from "@/lib/utils";
 
@@ -51,19 +51,11 @@ export function ArtworkLightboxModal({
       role="dialog"
       aria-modal="true"
       aria-label={title ? `Cover art preview for ${title}` : "Cover art preview"}
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-4 sm:p-8 backdrop-blur-xl animate-in fade-in duration-200"
+      onClick={onClose}
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-4 sm:p-8 backdrop-blur-xl animate-in fade-in duration-200 cursor-pointer"
     >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close preview"
-        className="absolute top-4 right-4 z-10 flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-      >
-        <CloseIcon size={20} />
-      </button>
-
       <div
-        className="relative flex max-h-[85vh] max-w-[85vw] flex-col items-center gap-4 text-center"
+        className="relative flex max-h-[85vh] max-w-[85vw] flex-col items-center gap-4 text-center cursor-default"
         onClick={(event) => event.stopPropagation()}
       >
         <div

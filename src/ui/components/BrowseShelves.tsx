@@ -72,7 +72,7 @@ function BrowseShelfSection({
   onOpenPlaylist: (playlist: Playlist) => void;
   onFollowLink?: (link: BrowseLink) => void;
 }) {
-  const { openTrackMenu, openPlaylistPicker } = useTrackContextMenu();
+  const { openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const scrollRef = useRef<HTMLDivElement>(null);
 

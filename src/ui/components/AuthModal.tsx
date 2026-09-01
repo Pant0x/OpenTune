@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { libraryController } from "../../player/playerStore";
 import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
+import loadingVideo from "../../../assets/img/Loading.mp4";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
 
