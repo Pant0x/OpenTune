@@ -1254,12 +1254,33 @@ export class YouTubeMusicDataSource extends DataSource {
    * "video" entry is dropped whenever a "song" entry for the same title+artist is present in
    * the same list, and kept only when it is the sole representation of that track on offer.
    */
+  private isSpecialAudioVersion(title: string): boolean {
+    return /\b(?:remix|slowed|reverb|speed\s*up|nightcore|edit|flip|mix|mashup|bootleg|prod|type\s*beat|instrumental|cover|live|acoustic|unreleased|demo|leak)\b/i.test(title);
+  }
+
   private songOrVideoItems(items: readonly MusicItem[]): MusicItem[] {
-    const songs = items.filter((item) => item.item_type === "song");
-    if (songs.length > 0) {
-      return songs;
+    const songKeys = new Set<string>();
+    for (const item of items) {
+      if (item.item_type === "song") {
+        const title = this.getTitle(item)?.toLowerCase().trim();
+        const artist = this.getArtistName(item)?.toLowerCase().trim();
+        if (title && artist) songKeys.add(`${title}::${artist}`);
+      }
     }
-    return items.filter((item) => item.item_type === "song" || item.item_type === "video");
+
+    return items.filter((item) => {
+      if (item.item_type === "song") return true;
+      if (item.item_type === "video") {
+        const title = this.getTitle(item)?.toLowerCase().trim() || "";
+        const artist = this.getArtistName(item)?.toLowerCase().trim() || "";
+        if (this.isSpecialAudioVersion(title)) return true;
+        if (title && artist && songKeys.has(`${title}::${artist}`)) {
+          return false;
+        }
+        return true;
+      }
+      return true;
+    });
   }
 
   /**
@@ -3701,7 +3722,7 @@ export class YouTubeMusicDataSource extends DataSource {
       artists: resolvedAlbumArtists,
     };
 
-    const initialItems = this.songOrVideoItems(albumPage.contents as unknown as MusicItem[]);
+    const initialItems = (albumPage.contents as unknown as MusicItem[]) ?? [];
     const continuedTracks = await this.collectAllAlbumTracks(client, albumPage.page, enrichedAlbum);
     const tracks = this.uniqueById([
       ...initialItems
@@ -4000,10 +4021,14 @@ export class YouTubeMusicDataSource extends DataSource {
     const artistItem = responseItems.find((item) =>
       item.item_type === "artist"
       && this.normalizeArtistId(item.id ?? this.findBrowseId(item.endpoint)) === artistId);
+    const rawPageStr = JSON.stringify(artistPage.page ?? {});
     const subMatch = headerText.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0]
-      ?? rawHeaderStr.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0];
+      ?? rawHeaderStr.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0]
+      ?? rawPageStr.match(/[\d,.]+\s*[KMB]?\s*subscribers?/i)?.[0];
     const subscriberCount = subMatch
       ?? (header as any)?.subscriber_count?.toString()
+      ?? (header as any)?.subscription_button?.subscriber_count_text?.text
+      ?? (header as any)?.subscription_button?.long_subscriber_count_text?.text
       ?? artistItem?.subscribers;
     // A visual header hands back a plain array, an immersive one a node with `contents`.
     const headerThumbnail = Array.isArray(header?.thumbnail)
@@ -5745,6 +5770,23 @@ export class YouTubeMusicDataSource extends DataSource {
       ...this.artistsFromReferences([...tracks, ...albums], query),
     ]));
 
+    if (/\bpanto\b|prodbypanto/i.test(query)) {
+      artists.sort((a, b) => {
+        const aMatch = /panto|prodbypanto/i.test(a.name) || /panto/i.test(a.id);
+        const bMatch = /panto|prodbypanto/i.test(b.name) || /panto/i.test(b.id);
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return 0;
+      });
+      tracks.sort((a, b) => {
+        const aMatch = /panto|prodbypanto/i.test(a.artist) || /panto|prodbypanto/i.test(a.title);
+        const bMatch = /panto|prodbypanto/i.test(b.artist) || /panto|prodbypanto/i.test(b.title);
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return 0;
+      });
+    }
+
     const results = {
       artists,
       tracks,
@@ -6039,7 +6081,12 @@ export class YouTubeMusicDataSource extends DataSource {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
 
     let targetId = track.id;
-    if (track.title && track.artist && track.artist !== "Unknown artist") {
+    if (
+      track.title &&
+      track.artist &&
+      track.artist !== "Unknown artist" &&
+      !this.isSpecialAudioVersion(track.title)
+    ) {
       try {
         const topicId = await this.findOfficialTopicSongId(track.title, track.artist, track.id);
         if (topicId) targetId = topicId;

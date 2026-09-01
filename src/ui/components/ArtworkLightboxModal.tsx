@@ -58,12 +58,12 @@ export function ArtworkLightboxModal({
       >
         <div
           className={cn(
-            "relative overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300 rounded-2xl",
-            "size-[min(65vh,65vw,540px)]",
+            "relative flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300 rounded-2xl bg-black/40",
+            "max-h-[70vh] max-w-[70vw] min-w-[280px] min-h-[280px]",
           )}
         >
           <TrackArtwork
-            className="size-full object-cover"
+            className="size-full max-h-[70vh] max-w-[70vw] object-contain rounded-2xl"
             artworkUrl={artworkUrl}
             iconSize={96}
             size={1200}

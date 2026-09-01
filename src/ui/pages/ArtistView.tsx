@@ -179,6 +179,14 @@ export function ArtistView({
   }, [filteredReleases, showAllReleases]);
 
   const displayedArtist = page?.artist ?? artist;
+  const subCount = displayedArtist?.subscriberCount || page?.artist.subscriberCount;
+  const formattedSubCount = useMemo(() => {
+    if (!subCount) return undefined;
+    const compact = formatCompactNumber(subCount);
+    if (compact) return `${compact} subscribers`;
+    const cleaned = subCount.trim();
+    return cleaned.toLowerCase().includes("subscriber") ? cleaned : `${cleaned} subscribers`;
+  }, [subCount]);
   /*
    * Six is all `popularSongs` ever holds — the data source caps it there when it enriches them
    * with view counts. The rest of the artist's catalogue is already fetched and sitting in
@@ -316,11 +324,9 @@ export function ArtistView({
           </button>
         }
         meta={
-          displayedArtist.subscriberCount ? (
+          formattedSubCount ? (
             <span className="text-xs font-semibold text-muted-foreground">
-              {displayedArtist.subscriberCount.toLowerCase().includes("subscriber")
-                ? displayedArtist.subscriberCount
-                : `${displayedArtist.subscriberCount} subscribers`}
+              {formattedSubCount}
             </span>
           ) : undefined
         }

@@ -69,7 +69,7 @@ function withYoutubeSize(url: string, size: number): string | null {
   if (!/googleusercontent\.com|ggpht\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com/.test(url)) return null;
   if (/[?&]/.test(url)) return null;
   if (/=s\d+/.test(url)) {
-    return url.replace(/=s\d+.*$/, `=s${size}-l90-rj`);
+    return url.replace(/=s\d+.*$/, `=s${size}-c-l90-rj`);
   }
   if (/=/.test(url)) {
     return url.replace(/=[^=/]+$/, `=w${size}-h${size}-l90-rj`);

@@ -503,9 +503,13 @@ export function AlbumView({
             <span className="text-base font-bold text-foreground group-hover:underline truncate">{displayArtistName}</span>
             {artistDetails?.subscriberCount && (
               <span className="text-xs text-muted-foreground">
-                {artistDetails.subscriberCount.toLowerCase().includes("subscriber")
-                  ? artistDetails.subscriberCount
-                  : `${artistDetails.subscriberCount} subscribers`}
+                {(() => {
+                  const c = formatCompactNumber(artistDetails.subscriberCount);
+                  if (c) return `${c} subscribers`;
+                  return artistDetails.subscriberCount.toLowerCase().includes("subscriber")
+                    ? artistDetails.subscriberCount
+                    : `${artistDetails.subscriberCount} subscribers`;
+                })()}
               </span>
             )}
           </div>
