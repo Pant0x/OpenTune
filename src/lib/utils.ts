@@ -27,10 +27,6 @@ export function formatCompactNumber(value: number | string | undefined | null): 
     num = value;
   } else {
     const str = value.toString().trim();
-    if (!str) return "";
-    let cleaned = str.replace(/\s*(?:views?|plays?|subscribers?)\b\.?/gi, "").trim();
-    if (/^[\d.]+\s*[KMB]$/i.test(cleaned)) {
-      return cleaned.replace(/\s+/g, "").toUpperCase();
     }
     // Remove all commas and periods if formatted as thousands (e.g. "1,800,000" or "1.800.000")
     if (/^\d{1,3}(?:[.,]\d{3})+$/.test(cleaned)) {
@@ -39,15 +35,11 @@ export function formatCompactNumber(value: number | string | undefined | null): 
       cleaned = cleaned.replace(/,/g, "");
     }
     num = parseFloat(cleaned);
-    if (isNaN(num)) return str;
-  }
-  if (!Number.isFinite(num) || num < 0) return "";
   if (num < 1000) return num.toString();
   if (num < 1_000_000) {
     const k = num / 1_000;
     const formatted = (Math.round(k * 10) / 10).toString().replace(/\.0$/, "");
     return `${formatted}K`;
-  }
   if (num < 1_000_000_000) {
     const m = num / 1_000_000;
     const formatted = (Math.round(m * 10) / 10).toString().replace(/\.0$/, "");
