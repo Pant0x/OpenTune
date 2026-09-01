@@ -601,7 +601,7 @@ useMediaSession(playerState, playerController);
     const message = `YouTube Music sign-in or library sync failed:\n\n${libraryState.error}`;
     if (lastErrorAlertRef.current === message) return;
     lastErrorAlertRef.current = message;
-    window.alert(message);
+    logInternalWarn("App library error", { error: libraryState.error });
   }, [libraryState.error, libraryState.status]);
 
   useEffect(() => {
