@@ -954,7 +954,7 @@ export class PlayerController {
     const currentRetries = (this.prematureEndRetryCountMap.get(track.id) ?? 0) + 1;
     this.prematureEndRetryCountMap.set(track.id, currentRetries);
 
-    if (currentRetries > 3 && position > 15) {
+    if (currentRetries > 2) {
       logInternalWarn("PlayerController.prematureEnd retry failed, advancing", {
         trackId: track.id,
         positionSec: Math.round(position),
@@ -975,7 +975,7 @@ export class PlayerController {
     this.discardWarmedStream(track.id);
 
     await this.playTrackById(track.id, undefined, false, false);
-    if (position > 5 && this.loadedTrackId === track.id) {
+    if (position > 0.5 && this.loadedTrackId === track.id) {
       await this.seekTo(position);
     }
     return true;

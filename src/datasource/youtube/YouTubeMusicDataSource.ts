@@ -3935,13 +3935,13 @@ export class YouTubeMusicDataSource extends DataSource {
     thumbnail: unknown,
   ): Promise<string | undefined> {
     const portrait = selectArtworkUrl(collectArtworkCandidates(foregroundThumbnail));
+    const channelAvatar = await this.getChannelAvatar(artistId);
     const pageImage = selectArtworkUrl(collectArtworkCandidates(thumbnail));
-    const channelAvatar = portrait || pageImage ? undefined : await this.getChannelAvatar(artistId);
-    const artworkUrl = portrait ?? pageImage ?? channelAvatar;
+    const artworkUrl = portrait ?? channelAvatar ?? pageImage;
 
     logInternalInfo("YouTubeMusicDataSource.resolveArtistArtwork", {
       artistId,
-      source: portrait ? "portrait" : pageImage ? "page-image" : channelAvatar ? "channel" : "none",
+      source: portrait ? "portrait" : channelAvatar ? "channel" : pageImage ? "page-image" : "none",
       artworkUrl,
     });
     return artworkUrl;

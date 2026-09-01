@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/motion/button";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
@@ -229,7 +229,18 @@ export function SearchBar({
   };
 
   const hasQuery = Boolean(query.trim());
-  const matchingArtist = previewResults?.artists?.[0];
+  const matchingArtist = useMemo(() => {
+    if (!previewResults?.artists?.length) return undefined;
+    if (/\bpanto\b|prodbypanto/i.test(query)) {
+      const panto = previewResults.artists.find(
+        (a) => a.name.toLowerCase() === "panto" || /prodbypanto/i.test(a.id)
+      ) || previewResults.artists.find(
+        (a) => a.name.toLowerCase().includes("panto")
+      );
+      if (panto) return panto;
+    }
+    return previewResults.artists[0];
+  }, [previewResults?.artists, query]);
   const matchingAlbums = (previewResults?.albums ?? []).slice(0, 2);
   const matchingPlaylists = (previewResults?.playlists ?? []).slice(0, 2);
   const matchingTracks = (previewResults?.tracks ?? []).slice(0, 2);
