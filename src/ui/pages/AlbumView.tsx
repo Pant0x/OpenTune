@@ -105,7 +105,6 @@ export function AlbumView({
 
   const trackArtist = tracks.find((t) => !isInvalidArtist(t.artists?.[0]?.name))?.artists?.[0]?.name
     || tracks.find((t) => !isInvalidArtist(t.artist))?.artist;
-  const trackArtistId = tracks.find((t) => t.artists?.[0]?.id)?.artists?.[0]?.id;
 
   const rawArtistName = !isInvalidArtist(album?.artists?.[0]?.name)
     ? album?.artists?.[0]?.name
@@ -114,7 +113,10 @@ export function AlbumView({
       : trackArtist;
 
   const resolvedArtistName = isInvalidArtist(rawArtistName) ? undefined : rawArtistName;
-  const resolvedArtistId = album?.artists?.[0]?.id || trackArtistId;
+  const albumMainArtistId = (album?.artists?.[0]?.name && !isInvalidArtist(album.artists[0].name) && album.artists[0].name === resolvedArtistName)
+    ? album.artists[0].id
+    : undefined;
+  const resolvedArtistId = albumMainArtistId || undefined;
   const displayArtistName = (artistDetails?.name && !isInvalidArtist(artistDetails.name))
     ? artistDetails.name
     : (resolvedArtistName && !isInvalidArtist(resolvedArtistName))
@@ -327,16 +329,18 @@ export function AlbumView({
             {artistDetails?.artworkUrl && !isInvalidArtist(artistDetails.name) && (
               <button
                 type="button"
-                className="group/avatar shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/avatar shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {
                   if (artistDetails && onOpenArtist) onOpenArtist(artistDetails);
-                  else if (resolvedArtistId && onOpenArtist) onOpenArtist({ id: resolvedArtistId, name: resolvedArtistName || "" });
+                  else if (resolvedArtistId && onOpenArtist) onOpenArtist({ id: resolvedArtistId, name: displayArtistName || "" });
                 }}
               >
-                <img
-                  src={artistDetails.artworkUrl}
-                  alt={artistDetails.name}
-                  className="size-6 rounded-full object-cover transition-opacity group-hover/avatar:opacity-80"
+                <TrackArtwork
+                  artworkUrl={artistDetails.artworkUrl}
+                  size={24}
+                  variant="artist"
+                  preferProxy
+                  className="size-6 rounded-md object-cover transition-opacity group-hover/avatar:opacity-80"
                 />
               </button>
             )}

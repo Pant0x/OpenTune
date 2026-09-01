@@ -1241,10 +1241,7 @@ export class YouTubeMusicDataSource extends DataSource {
     };
   }
 
-  /** Title+artist, normalized, so a song and its own music video land on the same key. */
-  private trackIdentityKey(item: MusicItem): string {
-    return `${this.normalizeSearchKey(this.getTitle(item) ?? "")}::${this.normalizeSearchKey(this.getArtistName(item))}`;
-  }
+
 
   /**
    * Every `item_type === "song" || item_type === "video"` site in this file routes through
@@ -1258,22 +1255,11 @@ export class YouTubeMusicDataSource extends DataSource {
    * the same list, and kept only when it is the sole representation of that track on offer.
    */
   private songOrVideoItems(items: readonly MusicItem[]): MusicItem[] {
-    const matches = items.filter(
-      (item) => item.item_type === "song" || item.item_type === "video",
-    );
-    const songKeys = new Set(
-      matches
-        .filter((item) => item.item_type === "song")
-        .map((item) => this.trackIdentityKey(item)),
-    );
-    const filtered = matches.filter(
-      (item) => item.item_type !== "video" || !songKeys.has(this.trackIdentityKey(item)),
-    );
-    return filtered.sort((a, b) => {
-      if (a.item_type === "song" && b.item_type !== "song") return -1;
-      if (a.item_type !== "song" && b.item_type === "song") return 1;
-      return 0;
-    });
+    const songs = items.filter((item) => item.item_type === "song");
+    if (songs.length > 0) {
+      return songs;
+    }
+    return items.filter((item) => item.item_type === "song" || item.item_type === "video");
   }
 
   /**
@@ -5988,18 +5974,54 @@ export class YouTubeMusicDataSource extends DataSource {
     }
   }
 
+  private topicSongCache = new Map<string, string>();
+
+  private async findOfficialTopicSongId(title: string, artist: string, currentId: string): Promise<string | null> {
+    const key = `${title.toLowerCase()}::${artist.toLowerCase()}`;
+    if (this.topicSongCache.has(key)) return this.topicSongCache.get(key)!;
+
+    try {
+      const yt = await this.getClient("music");
+      const searchResults = await yt.music.search(`${title} ${artist}`, { type: "song" });
+      const items = this.collectMusicItems(searchResults, new Set(["song"]));
+      for (const item of items) {
+        if (item.item_type === "song" && item.id && isVideoId(item.id)) {
+          const itemTitle = this.getTitle(item)?.toLowerCase() || "";
+          if (itemTitle.includes(title.toLowerCase())) {
+            this.topicSongCache.set(key, item.id);
+            return item.id;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    this.topicSongCache.set(key, currentId);
+    return currentId;
+  }
+
   async getStreamUrl(track: Track): Promise<string> {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
+
+    let targetId = track.id;
+    if (track.title && track.artist && track.artist !== "Unknown artist") {
+      try {
+        const topicId = await this.findOfficialTopicSongId(track.title, track.artist, track.id);
+        if (topicId) targetId = topicId;
+      } catch {
+        // ignore
+      }
+    }
 
     for (const label of ["music", "web", "download"] as ClientLabel[]) {
       try {
         const yt = await this.getClient(label);
         let url: string | undefined;
         try {
-          const format = await yt.getStreamingData(track.id, { type: "audio", quality: "best" });
+          const format = await yt.getStreamingData(targetId, { type: "audio", quality: "best" });
           url = this.withSessionClientVersion((format as any).url as string, yt);
         } catch {
-          const resolved = await this.resolveStream(track, "high", [label]);
+          const resolved = await this.resolveStream({ ...track, id: targetId }, "high", [label]);
           url = resolved.url;
         }
 
@@ -6008,7 +6030,7 @@ export class YouTubeMusicDataSource extends DataSource {
         }
 
         logInternalInfo("YouTubeMusicDataSource.getStreamUrl success", {
-          trackId: track.id,
+          trackId: targetId,
           client: label,
           urlLength: url.length,
         });
@@ -6016,7 +6038,7 @@ export class YouTubeMusicDataSource extends DataSource {
         return url;
       } catch (error) {
         logInternalWarn("YouTubeMusicDataSource.getStreamUrl client failed", {
-          trackId: track.id,
+          trackId: targetId,
           client: label,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -6024,7 +6046,7 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     try {
-      const resolved = await this.resolveStream(track, "normal", ["music", "web", "download"]);
+      const resolved = await this.resolveStream({ ...track, id: targetId }, "normal", ["music", "web", "download"]);
       if (resolved.url) return resolved.url;
     } catch {
       // ignore
@@ -6033,7 +6055,7 @@ export class YouTubeMusicDataSource extends DataSource {
     logInternalError(
       "YouTubeMusicDataSource.getStreamUrl failed",
       new Error("No YouTube client returned a playable audio URL."),
-      { trackId: track.id },
+      { trackId: targetId },
     );
     throw new Error("Unable to resolve a playable YouTube audio stream.");
   }

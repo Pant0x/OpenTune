@@ -178,8 +178,6 @@ export class PlayerController {
   private playTrackRequestId = 0;
   private autoplayEnabled = false;
   private handlingTrackEnd = false;
-  /** The track already reloaded once after ending early, so a second failure gives up. */
-  private prematureEndTrackId: string | null = null;
   private pendingSeekTime: number | null = null;
   private radioQueueRequestId = 0;
   /*
@@ -204,6 +202,7 @@ export class PlayerController {
   /** Audio resolved ahead of time for the next track, claimed by `ensureTrackLoaded`. */
   private warmedStream: { trackId: string; data: StreamData } | null = null;
   private warmingStream = false;
+  private prematureEndRetryCountMap = new Map<string, number>();
   private crossfadeSec = 0;
   private gaplessEnabled = true;
   private transitionTimerId: number | null = null;
@@ -948,46 +947,35 @@ export class PlayerController {
       toleranceSec: PREMATURE_END_TOLERANCE_SEC,
     })) {
       // A track that reached its end clears the marker: the next failure gets its own retry.
-      this.prematureEndTrackId = null;
+      this.prematureEndRetryCountMap.delete(track.id);
       return false;
     }
 
-    /*
-     * One retry. If a freshly resolved URL dies in the same place the track itself is the
-     * problem, and looping on it is worse for the listener than moving to the next one.
-     */
-    if (this.prematureEndTrackId === track.id) {
+    const currentRetries = (this.prematureEndRetryCountMap.get(track.id) ?? 0) + 1;
+    this.prematureEndRetryCountMap.set(track.id, currentRetries);
+
+    if (currentRetries > 3 && position > 15) {
       logInternalWarn("PlayerController.prematureEnd retry failed, advancing", {
         trackId: track.id,
         positionSec: Math.round(position),
         durationSec: Math.round(duration),
+        retryCount: currentRetries,
       });
-      this.prematureEndTrackId = null;
+      this.prematureEndRetryCountMap.delete(track.id);
       return false;
     }
 
-    this.prematureEndTrackId = track.id;
     logInternalWarn("PlayerController.prematureEnd reloading", {
       trackId: track.id,
       positionSec: Math.round(position),
       durationSec: Math.round(duration),
+      retryCount: currentRetries,
     });
 
-    /*
-     * `playTrackById` clears `loadedTrackId` and `pendingSeekTime` itself, so the resume
-     * position has to be applied after it rather than staged before — staging it here is what
-     * the seek path does for a restored session, and it would be wiped on the way in.
-     *
-     * It also skips its own `stop()` when the track is still preloaded; by this point the
-     * exhausted deck has already been swapped in and is no longer the standby, so the engine
-     * is torn down properly and the reload resolves a fresh stream URL.
-     */
-    // The warmed slot holds the same signed URL that just died; keeping it would have the
-    // reload fetch the identical 403 and end early again.
     this.discardWarmedStream(track.id);
 
-    await this.playTrackById(track.id);
-    if (position > 0 && this.loadedTrackId === track.id) {
+    await this.playTrackById(track.id, undefined, false, false);
+    if (position > 5 && this.loadedTrackId === track.id) {
       await this.seekTo(position);
     }
     return true;
@@ -1007,7 +995,6 @@ export class PlayerController {
         logInternalInfo("PlayerController.handleTrackEnded looping single track", {
           trackId: this.state.currentTrack.id,
         });
-        this.prematureEndTrackId = null;
         this.audioEngine.seekTo(0);
         if (this.isTabActive) {
           await this.audioEngine.play();

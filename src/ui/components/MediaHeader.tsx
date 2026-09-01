@@ -202,7 +202,7 @@ export function MediaHeader({
             }}
             className={cn(
               "group relative size-44 shrink-0 overflow-hidden shadow-2xl ring-1 ring-white/10 transition-transform duration-200 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              circularArtwork ? "rounded-full" : "rounded-xl",
+              circularArtwork ? "rounded-2xl" : "rounded-xl",
             )}
             title="Click to preview cover art"
           >
