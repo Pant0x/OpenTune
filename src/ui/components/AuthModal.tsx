@@ -7,7 +7,6 @@ import { libraryController } from "../../player/playerStore";
 import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
-import loadingVideo from "../../../assets/img/Loading.mp4";
 
 interface AuthModalProps {
   isOpen: boolean;
