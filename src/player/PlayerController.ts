@@ -1339,7 +1339,7 @@ export class PlayerController {
        * never reached at all.
        */
       const isDownloaded = isTrackDownloaded(track.id);
-      const useNativeAudio = this.audioEngine.usesNativeAudio() || isDownloaded;
+      const requiresStreamData = this.audioEngine.usesRustAudio() || this.audioEngine.usesNativeAudio() || isDownloaded;
       /*
        * A warmed track skips the whole resolve-and-download round trip, which is the entire
        * wait a listener feels when they press next. Claimed rather than read: it is one slot,
@@ -1368,13 +1368,13 @@ export class PlayerController {
        * sidesteps it, so a track that would otherwise be permanently unplayable on this engine
        * gets one try at native audio before giving up.
        */
-      const canFallBackToNative = !useNativeAudio && !isDownloaded;
+      const canFallBackToNative = !this.audioEngine.usesNativeAudio() && !isDownloaded;
 
       try {
-        const audioData = useNativeAudio
+        const audioData = requiresStreamData
           ? warmed ?? await this.dataSource.getStreamData?.(track)
           : undefined;
-        if (useNativeAudio && !audioData) {
+        if (requiresStreamData && !audioData) {
           throw new Error("The data source does not support native audio playback.");
         }
 

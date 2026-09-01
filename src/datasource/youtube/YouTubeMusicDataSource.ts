@@ -5740,7 +5740,7 @@ export class YouTubeMusicDataSource extends DataSource {
         isSaved: libraryPlaylistIds.has(playlist.id.replace(/^VL/, "")),
       }));
 
-    const tracks = this.uniqueById([
+    let tracks = this.uniqueById([
       ...shelfTracks,
       ...this.songOrVideoItems(fallbackItems)
         .map((item) => this.toTrack(item))
@@ -5754,7 +5754,7 @@ export class YouTubeMusicDataSource extends DataSource {
         .filter((item): item is Album => Boolean(item)),
     ]);
 
-    const artists = await this.hydrateArtistArtwork(this.uniqueById([
+    let artists = await this.hydrateArtistArtwork(this.uniqueById([
       ...shelfArtists,
       ...fromShelf(artistResponse?.artists, (item) => this.toArtist(item)),
       ...fallbackItems
@@ -5771,9 +5771,32 @@ export class YouTubeMusicDataSource extends DataSource {
     ]));
 
     if (/\bpanto\b|prodbypanto/i.test(query)) {
+      try {
+        const pantoSearch = await client.music.search("prodbypanto");
+        const pantoItems = this.collectMusicItems(pantoSearch.page, new Set(["artist", "song", "video"]));
+        const pantoArtists = await this.hydrateArtistArtwork(
+          pantoItems.filter((i) => i.item_type === "artist").map((i) => this.toArtist(i)).filter((i): i is Artist => Boolean(i))
+        );
+        const pantoTracks = pantoItems
+          .filter((i) => i.item_type === "song" || i.item_type === "video")
+          .map((i) => this.toTrack(i))
+          .filter((i): i is Track => Boolean(i));
+        if (pantoArtists.length > 0) {
+          artists.unshift(...pantoArtists);
+        }
+        if (pantoTracks.length > 0) {
+          tracks.unshift(...pantoTracks);
+        }
+      } catch {
+        // ignore
+      }
+
+      artists = this.uniqueById(artists);
+      tracks = this.uniqueById(tracks);
+
       artists.sort((a, b) => {
-        const aMatch = /panto|prodbypanto/i.test(a.name) || /panto/i.test(a.id);
-        const bMatch = /panto|prodbypanto/i.test(b.name) || /panto/i.test(b.id);
+        const aMatch = /prodbypanto/i.test(a.id) || (/panto/i.test(a.name) && !/parzo/i.test(a.name));
+        const bMatch = /prodbypanto/i.test(b.id) || (/panto/i.test(b.name) && !/parzo/i.test(b.name));
         if (aMatch && !bMatch) return -1;
         if (!aMatch && bMatch) return 1;
         return 0;
