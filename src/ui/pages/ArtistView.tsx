@@ -342,7 +342,7 @@ export function ArtistView({
          */
         artworkSlot={
           <TrackArtwork
-            className="size-44 shrink-0 rounded-2xl bg-card shadow-2xl ring-1 ring-white/10"
+            className="size-44 shrink-0 rounded-full bg-card shadow-2xl ring-1 ring-white/10"
             size={544}
             artworkUrl={displayedArtist.artworkUrl}
             iconSize={72}
@@ -559,7 +559,7 @@ export function ArtistView({
                       variant="artist"
                       size={400}
                       preferProxy
-                      className="size-28 rounded-2xl shadow-md transition-transform duration-200 group-hover:scale-105"
+                      className="size-28 rounded-full shadow-md transition-transform duration-200 group-hover:scale-105"
                     />
                     <div className="flex flex-col items-center min-w-0 w-full">
                       <span className="truncate w-full text-sm font-medium text-foreground group-hover:underline">

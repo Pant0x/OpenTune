@@ -13,7 +13,6 @@ import { queueDownloads, useOfflineState } from "../../player/offlineStore";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { MediaHeader } from "../components/MediaHeader";
 import { AlbumCard } from "../components/AlbumCard";
-import { TrackArtwork } from "../components/TrackArtwork";
 
 interface SongPageProps {
   song?: Track;
@@ -188,21 +187,6 @@ export function SongPage({
         title={currentSong.title}
         subtitle={
           <div className="flex items-center gap-2">
-            {artistDetails?.artworkUrl && (
-              <button
-                type="button"
-                className="group/avatar shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => artistDetails && onOpenArtist?.(artistDetails)}
-              >
-                <TrackArtwork
-                  artworkUrl={artistDetails.artworkUrl}
-                  size={120}
-                  variant="artist"
-                  preferProxy
-                  className="size-6 rounded-md object-cover transition-opacity group-hover/avatar:opacity-80"
-                />
-              </button>
-            )}
             <ArtistLinks artists={currentSong.artists} fallback={currentSong.artist} />
             {currentSong.album && (
               <>
@@ -286,7 +270,15 @@ export function SongPage({
           </div>
           <div>
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Artist</div>
-            <div className="mt-1 font-medium text-foreground">{currentSong.artist}</div>
+            <div
+              className="mt-1 font-medium text-foreground cursor-pointer hover:underline"
+              onClick={() => {
+                if (artistDetails && onOpenArtist) onOpenArtist(artistDetails);
+                else if (resolvedArtistName && onOpenArtist) onOpenArtist({ id: resolvedArtistId || "", name: resolvedArtistName });
+              }}
+            >
+              {currentSong.artist}
+            </div>
           </div>
           <div>
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Release Type</div>

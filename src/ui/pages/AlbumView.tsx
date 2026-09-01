@@ -106,11 +106,18 @@ export function AlbumView({
   const trackArtist = tracks.find((t) => !isInvalidArtist(t.artists?.[0]?.name))?.artists?.[0]?.name
     || tracks.find((t) => !isInvalidArtist(t.artist))?.artist;
 
+  const titleArtistMatch = album?.title ? album.title.match(/^([A-Za-z0-9\s_-]+?)(?:\s+(?:vol\.?|part|pt\.?|\d+))?$/i) : null;
+  const inferredArtistFromTitle = (titleArtistMatch && titleArtistMatch[1] && !/^(?:album|single|ep|deluxe|remix|greatest hits|soundtrack|live)$/i.test(titleArtistMatch[1].trim()))
+    ? titleArtistMatch[1].trim()
+    : undefined;
+
   const rawArtistName = !isInvalidArtist(album?.artists?.[0]?.name)
     ? album?.artists?.[0]?.name
     : !isInvalidArtist(album?.artist)
       ? album?.artist
-      : trackArtist;
+      : (inferredArtistFromTitle && !isInvalidArtist(inferredArtistFromTitle) && inferredArtistFromTitle.toLowerCase() !== album?.title.toLowerCase())
+        ? inferredArtistFromTitle
+        : trackArtist;
 
   const resolvedArtistName = isInvalidArtist(rawArtistName) ? undefined : rawArtistName;
   const albumMainArtistId = (album?.artists?.[0]?.name && !isInvalidArtist(album.artists[0].name) && album.artists[0].name === resolvedArtistName)
@@ -325,30 +332,16 @@ export function AlbumView({
         eyebrow={album.year ? `${releaseTypeLabel} • ${album.year}` : releaseTypeLabel}
         title={album.title}
         subtitle={
-          <div className="flex items-center gap-2">
-            {artistDetails?.artworkUrl && !isInvalidArtist(artistDetails.name) && (
-              <button
-                type="button"
-                className="group/avatar shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => {
-                  if (artistDetails && onOpenArtist) onOpenArtist(artistDetails);
-                  else if (resolvedArtistId && onOpenArtist) onOpenArtist({ id: resolvedArtistId, name: displayArtistName || "" });
-                }}
-              >
-                <TrackArtwork
-                  artworkUrl={artistDetails.artworkUrl}
-                  size={24}
-                  variant="artist"
-                  preferProxy
-                  className="size-6 rounded-md object-cover transition-opacity group-hover/avatar:opacity-80"
-                />
-              </button>
-            )}
-            <ArtistLinks
-              artists={album.artists?.filter((a) => !isInvalidArtist(a.name))}
-              fallback={isInvalidArtist(album.artist) ? undefined : album.artist}
-            />
-          </div>
+          <ArtistLinks
+            artists={
+              album.artists?.filter((a) => !isInvalidArtist(a.name))?.length
+                ? album.artists.filter((a) => !isInvalidArtist(a.name))
+                : displayArtistName
+                  ? [{ id: resolvedArtistId || "", name: displayArtistName }]
+                  : undefined
+            }
+            fallback={displayArtistName || (!isInvalidArtist(album.artist) ? album.artist : undefined)}
+          />
         }
         meta={formatCollectionMeta(tracks)}
         artworkUrl={album.artworkUrl || tracks[0]?.artworkUrl}
@@ -487,8 +480,14 @@ export function AlbumView({
       {displayArtistName && (
         <div
           onClick={() => {
-            if (artistDetails) onOpenDiscography?.(artistDetails, moreReleases);
-            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: displayArtistName }, moreReleases);
+            if (artistDetails) {
+              if (onOpenDiscography) onOpenDiscography(artistDetails, moreReleases);
+              else onOpenArtist?.(artistDetails);
+            } else if (resolvedArtistId) {
+              const target = { id: resolvedArtistId, name: displayArtistName };
+              if (onOpenDiscography) onOpenDiscography(target, moreReleases);
+              else onOpenArtist?.(target);
+            }
           }}
           className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
         >
@@ -497,7 +496,7 @@ export function AlbumView({
             variant="artist"
             size={400}
             preferProxy
-            className="size-16 rounded-xl shadow-md object-cover transition-transform group-hover:scale-105"
+            className="size-16 rounded-full shadow-md object-cover transition-transform group-hover:scale-105"
           />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>

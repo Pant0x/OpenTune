@@ -3666,11 +3666,46 @@ export class YouTubeMusicDataSource extends DataSource {
   private async fetchAlbumTracksFresh(album: Album): Promise<Track[]> {
     const client = await this.getMusicClient();
     const albumPage = await client.music.getAlbum(album.id);
+    const header = albumPage.header as any;
+
+    const headerArtists: ArtistReference[] = [];
+    if (Array.isArray(header?.artists)) {
+      for (const a of header.artists) {
+        if (a?.name && typeof a.name === "string" && this.isValidArtistString(a.name)) {
+          headerArtists.push({ id: a.id || a.browse_id || a.channel_id || "", name: a.name });
+        }
+      }
+    }
+    const headerAuthorName = header?.author?.name
+      || headerArtists[0]?.name
+      || header?.strapline_text_one?.text;
+    const headerAuthorId = header?.author?.id
+      || header?.author?.browse_id
+      || headerArtists[0]?.id;
+
+    const resolvedAlbumArtist = (album.artist && this.isValidArtistString(album.artist) && album.artist !== "Unknown artist")
+      ? album.artist
+      : (headerAuthorName && this.isValidArtistString(headerAuthorName))
+        ? headerAuthorName
+        : undefined;
+
+    const resolvedAlbumArtists = album.artists?.length
+      ? album.artists
+      : headerArtists.length
+        ? headerArtists
+        : (resolvedAlbumArtist ? [{ id: headerAuthorId || "", name: resolvedAlbumArtist }] : undefined);
+
+    const enrichedAlbum: Album = {
+      ...album,
+      artist: resolvedAlbumArtist || album.artist,
+      artists: resolvedAlbumArtists,
+    };
+
     const initialItems = this.songOrVideoItems(albumPage.contents as unknown as MusicItem[]);
-    const continuedTracks = await this.collectAllAlbumTracks(client, albumPage.page, album);
+    const continuedTracks = await this.collectAllAlbumTracks(client, albumPage.page, enrichedAlbum);
     const tracks = this.uniqueById([
       ...initialItems
-        .map((item) => this.toAlbumTrack(item, album))
+        .map((item) => this.toAlbumTrack(item, enrichedAlbum))
         .filter((item): item is Track => Boolean(item)),
       ...continuedTracks,
     ]);
