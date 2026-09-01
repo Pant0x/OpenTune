@@ -5771,10 +5771,11 @@ export class YouTubeMusicDataSource extends DataSource {
     ]));
 
     if (/\bpanto\b|prodbypanto/i.test(query)) {
+      let pantoArtists: Artist[] = [];
       try {
         const pantoSearch = await client.music.search("prodbypanto");
         const pantoItems = this.collectMusicItems(pantoSearch.page, new Set(["artist", "song", "video"]));
-        const pantoArtists = await this.hydrateArtistArtwork(
+        pantoArtists = await this.hydrateArtistArtwork(
           pantoItems.filter((i) => i.item_type === "artist").map((i) => this.toArtist(i)).filter((i): i is Artist => Boolean(i))
         );
         const pantoTracks = pantoItems
@@ -5794,9 +5795,10 @@ export class YouTubeMusicDataSource extends DataSource {
       artists = this.uniqueById(artists);
       tracks = this.uniqueById(tracks);
 
+      const beatmakerIds = new Set(pantoArtists.map((a) => a.id));
       artists.sort((a, b) => {
-        const aMatch = /prodbypanto/i.test(a.id) || (/panto/i.test(a.name) && !/parzo/i.test(a.name));
-        const bMatch = /prodbypanto/i.test(b.id) || (/panto/i.test(b.name) && !/parzo/i.test(b.name));
+        const aMatch = beatmakerIds.has(a.id) || /prodbypanto/i.test(a.id);
+        const bMatch = beatmakerIds.has(b.id) || /prodbypanto/i.test(b.id);
         if (aMatch && !bMatch) return -1;
         if (!aMatch && bMatch) return 1;
         return 0;
@@ -6929,9 +6931,28 @@ export class YouTubeMusicDataSource extends DataSource {
       return { mimeType, rustSource: { kind: "offline", trackId: track.id, mimeType } };
     }
 
-    const { url, mimeType, cookie } = await this.resolveStreamUrl(track);
+    let targetId = track.id;
+    if (
+      track.title &&
+      track.artist &&
+      track.artist !== "Unknown artist" &&
+      !this.isSpecialAudioVersion(track.title)
+    ) {
+      try {
+        const topicId = await this.findOfficialTopicSongId(track.title, track.artist, track.id);
+        if (topicId) targetId = topicId;
+      } catch {
+        // ignore
+      }
+    }
+
+    const { url, mimeType, cookie } = await this.resolveStream(
+      { ...track, id: targetId },
+      "high",
+      ["music", "web", "download"],
+    );
     logInternalInfo("YouTubeMusicDataSource.getRustStreamData resolved", {
-      trackId: track.id,
+      trackId: targetId,
       mimeType,
       authenticated: Boolean(cookie),
     });

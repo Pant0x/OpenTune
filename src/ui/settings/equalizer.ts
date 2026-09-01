@@ -57,6 +57,10 @@ export const EQUALIZER_PRESETS: ReadonlyArray<{ name: string; settings: Equalize
     name: "Treble",
     settings: { preampDb: -3, bandsDb: [0, 0, 0, 0, 0, 1, 2, 4, 5, 5] },
   },
+  {
+    name: "Slowed+Reverb",
+    settings: { preampDb: -4, bandsDb: [7, 6, 4, 2, 0, -1, -2, -4, -6, -8] },
+  },
 ];
 
 /**
