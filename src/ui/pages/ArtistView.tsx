@@ -343,7 +343,7 @@ export function ArtistView({
         artworkSlot={
           <TrackArtwork
             className="size-44 shrink-0 rounded-2xl bg-card shadow-2xl ring-1 ring-white/10"
-            size={176}
+            size={544}
             artworkUrl={displayedArtist.artworkUrl}
             iconSize={72}
             variant="artist"
@@ -557,7 +557,8 @@ export function ArtistView({
                     <TrackArtwork
                       artworkUrl={similarArtist.artworkUrl}
                       variant="artist"
-                      size={240}
+                      size={400}
+                      preferProxy
                       className="size-28 rounded-2xl shadow-md transition-transform duration-200 group-hover:scale-105"
                     />
                     <div className="flex flex-col items-center min-w-0 w-full">

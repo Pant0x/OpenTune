@@ -495,8 +495,9 @@ export function AlbumView({
           <TrackArtwork
             artworkUrl={artistDetails?.artworkUrl}
             variant="artist"
-            size={120}
-            className="size-16 rounded-full shadow-md object-cover transition-transform group-hover:scale-105"
+            size={400}
+            preferProxy
+            className="size-16 rounded-xl shadow-md object-cover transition-transform group-hover:scale-105"
           />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>

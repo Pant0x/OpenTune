@@ -91,8 +91,12 @@ check(
   "one pixel past the 400 bucket steps up rather than rendering soft",
 );
 check(
-  getArtworkSizeBucket(280) === null,
-  "a 2x slot needing more than 544 still keeps the original",
+  getArtworkSizeBucket(280) === 800,
+  "a 2x slot needing more than 544 steps up to 800",
+);
+check(
+  getArtworkSizeBucket(420) === null,
+  "a 2x slot needing more than 800 still keeps the original",
 );
 
 console.log("artwork.check.ts OK");

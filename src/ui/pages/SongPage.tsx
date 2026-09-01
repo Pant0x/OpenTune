@@ -13,6 +13,7 @@ import { queueDownloads, useOfflineState } from "../../player/offlineStore";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { MediaHeader } from "../components/MediaHeader";
 import { AlbumCard } from "../components/AlbumCard";
+import { TrackArtwork } from "../components/TrackArtwork";
 
 interface SongPageProps {
   song?: Track;
@@ -190,13 +191,15 @@ export function SongPage({
             {artistDetails?.artworkUrl && (
               <button
                 type="button"
-                className="group/avatar shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/avatar shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => artistDetails && onOpenArtist?.(artistDetails)}
               >
-                <img
-                  src={artistDetails.artworkUrl}
-                  alt={artistDetails.name}
-                  className="size-6 rounded-full object-cover transition-opacity group-hover/avatar:opacity-80"
+                <TrackArtwork
+                  artworkUrl={artistDetails.artworkUrl}
+                  size={120}
+                  variant="artist"
+                  preferProxy
+                  className="size-6 rounded-md object-cover transition-opacity group-hover/avatar:opacity-80"
                 />
               </button>
             )}

@@ -69,7 +69,7 @@ function withYoutubeSize(url: string, size: number): string | null {
   if (!/googleusercontent\.com|ggpht\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com/.test(url)) return null;
   if (/[?&]/.test(url)) return null;
   if (/=s\d+/.test(url)) {
-    return url.replace(/=s\d+.*$/, `=s${size}-c-l90-rj`);
+    return url.replace(/=s\d+.*$/, `=s${size}-l90-rj`);
   }
   if (/=/.test(url)) {
     return url.replace(/=[^=/]+$/, `=w${size}-h${size}-l90-rj`);
@@ -94,7 +94,7 @@ function withYoutubeSize(url: string, size: number): string | null {
  * One extra bucket is the whole cost. It was chosen to catch both card widths at 2× rather than
  * splitting them across two new entries, which is what would actually fragment the cache.
  */
-const ARTWORK_SIZE_BUCKETS = [120, 240, 400, 544];
+const ARTWORK_SIZE_BUCKETS = [120, 240, 400, 544, 800];
 
 /**
  * The smallest bucket that still covers `cssPx` at this display's pixel density.
@@ -135,6 +135,7 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
 
   // Original URL
   candidates.push(normalized);
+  candidates.push(withYoutubeSize(normalized, 800));
   candidates.push(withYoutubeSize(normalized, 544));
   candidates.push(withYoutubeSize(normalized, 400));
   candidates.push(withYoutubeSize(normalized, 240));

@@ -375,7 +375,6 @@ export function MediaHeader({
       onClose={() => setIsLightboxOpen(false)}
       artworkUrl={artworkUrl}
       title={typeof title === "string" ? title : undefined}
-      circular={circularArtwork}
     />
   </>
   );

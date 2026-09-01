@@ -10,7 +10,6 @@ interface ArtworkLightboxModalProps {
   artworkUrl?: string;
   title?: string;
   subtitle?: string;
-  circular?: boolean;
 }
 
 export function ArtworkLightboxModal({
@@ -19,7 +18,6 @@ export function ArtworkLightboxModal({
   artworkUrl,
   title,
   subtitle,
-  circular = false,
 }: ArtworkLightboxModalProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -60,8 +58,7 @@ export function ArtworkLightboxModal({
       >
         <div
           className={cn(
-            "relative overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300",
-            circular ? "rounded-full" : "rounded-2xl",
+            "relative overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300 rounded-2xl",
             "size-[min(65vh,65vw,540px)]",
           )}
         >
