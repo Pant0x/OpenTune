@@ -22,6 +22,7 @@ import {
   CloseIcon,
   CompassIcon,
   DownloadIcon,
+  FileTextIcon,
   FolderIcon,
   MusicNoteIcon,
   PlaylistIcon,
@@ -129,12 +130,13 @@ interface SidebarProps {
   onWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
-  onNavigateArtist?: (artist: Artist) => void;
-  onNavigateHistory?: () => void;
-  onNavigateLibrary?: () => void;
-  onNavigateBrowse?: () => void;
-  onNavigateDownloads?: () => void;
-  onNavigateLocalFiles?: () => void;
+  onNavigateArtist: (artist: Artist) => void;
+  onNavigateHistory: () => void;
+  onNavigateLibrary: () => void;
+  onNavigateBrowse: () => void;
+  onNavigateDownloads: () => void;
+  onNavigateReleases: () => void;
+  onNavigateLocalFiles: () => void;
 }
 
 /**
@@ -541,6 +543,7 @@ export function Sidebar({
   onNavigateLibrary,
   onNavigateBrowse,
   onNavigateDownloads,
+  onNavigateReleases,
   onNavigateLocalFiles,
 }: SidebarProps) {
   const libraryState = useLibraryState();
@@ -1698,6 +1701,21 @@ export function Sidebar({
               >
                 <ClockIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
                 {!shouldHideText && <span className="truncate">History</span>}
+              </button>
+            </SidebarItemTooltip>
+          )}
+          {onNavigateReleases && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Releases" subtitle="New albums, EPs, singles">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateReleases}
+              >
+                <FileTextIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Releases</span>}
               </button>
             </SidebarItemTooltip>
           )}

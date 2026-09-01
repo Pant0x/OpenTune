@@ -1,9 +1,10 @@
-  import { useEffect, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import { CheckIcon, DownloadIcon, ListIcon, PauseActiveIcon, PlayActiveIcon, PlaylistAddIcon, RepeatActiveIcon, RepeatOneActiveIcon, ShuffleActiveIcon } from "@/ui/icons";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { TrackArtwork } from "./TrackArtwork";
+import { ArtworkLightboxModal } from "./ArtworkLightboxModal";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
 
 function parseTrackDurationToSeconds(track: { durationSec?: number; duration?: string }): number {
@@ -178,30 +179,42 @@ export function MediaHeader({
     return () => setAmbientArtwork(null);
   }, [artworkUrl]);
 
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
   return (
-    <header className="relative flex flex-wrap items-end gap-6 px-1 pb-6 pt-2">
-      {artworkSlot ?? (
-        <button
-          type="button"
-          onClick={() => {
-            if (artworkUrl) window.open(artworkUrl, "_blank");
-          }}
-          className={cn(
-            "group relative size-44 shrink-0 overflow-hidden shadow-2xl ring-1 ring-white/10 transition-transform duration-200 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            circularArtwork ? "rounded-full" : "rounded-xl",
-          )}
-          title="Click to view full cover"
-        >
-          <TrackArtwork
-            className="size-full object-cover"
-            artworkUrl={artworkUrl}
-            iconSize={72}
-            loading="eager"
-            size={544}
-            variant={artworkVariant}
-          />
-        </button>
-      )}
+    <>
+      <header className="relative flex flex-wrap items-end gap-6 px-1 pb-6 pt-2">
+        {artworkSlot ? (
+          <div
+            onClick={() => {
+              if (artworkUrl) setIsLightboxOpen(true);
+            }}
+            className="cursor-pointer"
+            title="Click to preview cover art"
+          >
+            {artworkSlot}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (artworkUrl) setIsLightboxOpen(true);
+            }}
+            className={cn(
+              "group relative size-44 shrink-0 overflow-hidden shadow-2xl ring-1 ring-white/10 transition-transform duration-200 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              circularArtwork ? "rounded-full" : "rounded-xl",
+            )}
+            title="Click to preview cover art"
+          >
+            <TrackArtwork
+              className="size-full object-cover"
+              artworkUrl={artworkUrl}
+              iconSize={72}
+              loading="eager"
+              variant={artworkVariant}
+            />
+          </button>
+        )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -356,5 +369,14 @@ export function MediaHeader({
         </div>
       </div>
     </header>
+
+    <ArtworkLightboxModal
+      isOpen={isLightboxOpen}
+      onClose={() => setIsLightboxOpen(false)}
+      artworkUrl={artworkUrl}
+      title={typeof title === "string" ? title : undefined}
+      circular={circularArtwork}
+    />
+  </>
   );
 }

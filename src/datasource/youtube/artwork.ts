@@ -66,8 +66,11 @@ export function selectArtworkUrl(
 }
 
 function withYoutubeSize(url: string, size: number): string | null {
-  if (!/googleusercontent\.com|ggpht\.com|yt3\.ggpht\.com/.test(url)) return null;
+  if (!/googleusercontent\.com|ggpht\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com/.test(url)) return null;
   if (/[?&]/.test(url)) return null;
+  if (/=s\d+/.test(url)) {
+    return url.replace(/=s\d+.*$/, `=s${size}-c-l90-rj`);
+  }
   if (/=/.test(url)) {
     return url.replace(/=[^=/]+$/, `=w${size}-h${size}-l90-rj`);
   }
@@ -113,18 +116,34 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
   if (!url?.trim()) return [];
 
   const normalized = normalizeArtworkUrl(url);
-  const candidates = [
-    size == null ? null : withYoutubeSize(normalized, size),
-    normalized,
-    withYoutubeSize(normalized, 544),
-    withYoutubeSize(normalized, 240),
-    withYoutubeSize(normalized, 120),
-  ].filter((candidate): candidate is string => Boolean(candidate));
+  const candidates: Array<string | null> = [];
+
+  // If a specific size was requested, try the resized URL first
+  if (size != null) {
+    candidates.push(withYoutubeSize(normalized, size));
+  }
+
+  // If it's a YouTube video thumbnail (e.g. hqdefault, sddefault, mqdefault), try maxres and high-res
+  if (/i\.ytimg\.com\/vi\/([^/]+)\/(?:hqdefault|sddefault|mqdefault|default)\.jpg/i.test(normalized)) {
+    const videoId = normalized.match(/i\.ytimg\.com\/vi\/([^/]+)\//)?.[1];
+    if (videoId) {
+      candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
+      candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
+      candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+    }
+  }
+
+  // Original URL
+  candidates.push(normalized);
+  candidates.push(withYoutubeSize(normalized, 544));
+  candidates.push(withYoutubeSize(normalized, 400));
+  candidates.push(withYoutubeSize(normalized, 240));
+  candidates.push(withYoutubeSize(normalized, 120));
 
   // Deduplicate while preserving order.
   const seen = new Set<string>();
-  return candidates.filter((candidate) => {
-    if (seen.has(candidate)) return false;
+  return candidates.filter((candidate): candidate is string => {
+    if (!candidate || seen.has(candidate)) return false;
     seen.add(candidate);
     return true;
   });
@@ -132,6 +151,7 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
 
 export function getVideoArtworkFallback(videoId: string): string | undefined {
   return /^[A-Za-z0-9_-]{11}$/.test(videoId)
-    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+    ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
     : undefined;
 }
+

@@ -7,7 +7,7 @@ import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { TrackArtwork } from "../TrackArtwork";
-import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
+import { ArtistLinks, useAlbumNavigation, useSongNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 
 export function TrackInfo() {
@@ -15,6 +15,7 @@ export function TrackInfo() {
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
   const navigateAlbum = useAlbumNavigation();
+  const navigateSong = useSongNavigation();
   const { openTrackMenu, toggleTrackLike } = useTrackContextMenu();
   const currentTrack = state.currentTrack;
   const titleViewportRef = useRef<HTMLDivElement>(null);
@@ -53,24 +54,37 @@ export function TrackInfo() {
   ) ?? false);
 
   const handleTitleClick = () => {
+    // If it's a single or has no album, navigate to Song / Single page
+    if (currentTrack.releaseType === "single" || (!currentTrack.albumId && !currentTrack.album)) {
+      if (navigateSong) {
+        navigateSong(currentTrack);
+        return;
+      }
+    }
+    // If it's an EP or Album track, navigate to EP/Album page
     if (navigateAlbum && (currentTrack.albumId || currentTrack.album)) {
       navigateAlbum({
         id: currentTrack.albumId || currentTrack.album!,
         title: currentTrack.album || currentTrack.title,
         artist: currentTrack.artist,
         artworkUrl: currentTrack.artworkUrl,
+        releaseType: currentTrack.releaseType || "album",
       });
+    } else if (navigateSong) {
+      navigateSong(currentTrack);
     } else if (navigateAlbum) {
       navigateAlbum({
         id: currentTrack.id,
         title: currentTrack.title,
         artist: currentTrack.artist,
         artworkUrl: currentTrack.artworkUrl,
+        releaseType: "single",
       });
     } else {
       playerUIStore.openNowPlaying();
     }
   };
+
 
   return (
     <div

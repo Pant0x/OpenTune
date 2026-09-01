@@ -9,7 +9,6 @@ import {
   writeLocalJsonSetting,
 } from "../../internal/durableLocalSetting";
 import { logInternalWarn } from "../../internal/logging";
-import { usesRustAudioEngine } from "./audioEngine";
 
 /**
  * Ten-band graphic equaliser.
@@ -120,7 +119,7 @@ export function isEqualizerFlat(settings: EqualizerSettings): boolean {
 
 /** Whether the selected engine can apply it at all. */
 export function isEqualizerAvailable(): boolean {
-  return usesRustAudioEngine();
+  return true;
 }
 
 /** The bypass switch — independent of the curve. See `ENABLED_STORAGE_KEY`. */

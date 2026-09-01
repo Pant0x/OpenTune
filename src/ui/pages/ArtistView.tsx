@@ -29,20 +29,12 @@ import { TrackRow } from "../components/TrackRow";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
+import { formatCompactNumber } from "@/lib/utils";
 
 type ReleaseFilter = "all" | "album" | "singles_eps";
 
 export function compactViews(track: Track): string {
-  let countStr = "";
-  if (track.viewCount) {
-    countStr = new Intl.NumberFormat("en", {
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(track.viewCount);
-  } else if (track.viewCountText) {
-    countStr = track.viewCountText.replace(/\s*\b(?:views?|plays?)\b\.?/i, "").trim();
-  }
-  return countStr ? `${countStr} plays` : "";
+  return formatCompactNumber(track.viewCount ?? track.viewCountText);
 }
 
 function getArtistUrl(artist: Artist): string {
@@ -89,6 +81,7 @@ export function ArtistView({
   onOpenAlbum: (album: Album) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
   onOpenArtist?: (artist: Artist) => void;
+  onOpenSong?: (song: Track) => void;
   onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
@@ -306,7 +299,7 @@ export function ArtistView({
   return (
     <div className="flex flex-col gap-8">
       <MediaHeader
-        eyebrow="Artist"
+        eyebrow={displayedArtist.isCreator || page?.isCreator ? "CREATOR" : "ARTIST"}
         title={
           <button
             type="button"
@@ -458,7 +451,6 @@ export function ArtistView({
                     }
                     onSelect={() => void playerController.playTrackById(track.id, page.allSongs)}
                     showDownload
-
                     showRating
                     onQuickAddToQueue={() => playerController.addToQueue(track)}
                     onQuickAdd={() => openPlaylistPicker(track)}
@@ -466,6 +458,7 @@ export function ArtistView({
                   />
                 ))}
               </div>
+
               {(hiddenSongCount > 0 || showAllSongs) && (
                 <button
                   type="button"
@@ -575,14 +568,14 @@ export function ArtistView({
 
           {page.appearsOn && page.appearsOn.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2>Appears on</h2>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Appears on</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {page.appearsOn.map((album) => (
                   <AlbumCard
                     key={album.id}
                     artworkUrl={album.artworkUrl}
                     title={album.title}
-                    subtitle={album.artist}
+                    subtitle={album.artist || "Featured release"}
                     onClick={() => onOpenAlbum(album)}
                     onContextMenu={(event) => openAlbumMenu(event, album)}
                   />
@@ -593,14 +586,14 @@ export function ArtistView({
 
           {page.discoveredOn && page.discoveredOn.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2>Discovered on</h2>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Discovered on</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {page.discoveredOn.map((playlist) => (
                   <AlbumCard
                     key={playlist.id}
                     artworkUrl={playlist.artworkUrl}
                     title={playlist.title}
-                    subtitle={playlist.owner}
+                    subtitle={playlist.owner || "Playlist • YouTube Music"}
                     onClick={() => onOpenPlaylist(playlist)}
                     onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                   />

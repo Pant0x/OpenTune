@@ -29,11 +29,14 @@ const SEARCH_FIELD =
   "[&_input]:text-foreground [&_input]:outline-none [&_input]:placeholder:text-muted-foreground";
 const SEARCH_FIELD_COLLAPSED = "w-9 hover:w-56 focus-within:w-56";
 
+import { formatCompactNumber } from "@/lib/utils";
+
 interface AlbumViewProps {
   album?: Album;
   playerController: PlayerControllerActions;
   libraryController: LibraryController;
   onOpenAlbum?: (album: Album) => void;
+  onOpenArtist?: (artist: Artist) => void;
   onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }
 
@@ -46,6 +49,7 @@ export function AlbumView({
   playerController,
   libraryController,
   onOpenAlbum,
+  onOpenArtist,
   onOpenDiscography,
 }: AlbumViewProps) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
@@ -78,12 +82,54 @@ export function AlbumView({
   const [artistDetails, setArtistDetails] = useState<Artist | null>(null);
   const albumSearchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const resolvedArtistId = album?.artists?.[0]?.id || tracks[0]?.artists?.[0]?.id;
-  const resolvedArtistName = album?.artists?.[0]?.name || album?.artist || tracks[0]?.artist;
+  const isInvalidArtist = (name?: string) => {
+    if (!name) return true;
+    const trimmed = name.trim();
+    if (!trimmed) return true;
+    const lower = trimmed.toLowerCase();
+    // Pure numbers or years
+    if (/^\d+$/.test(lower)) return true;
+    if (/\b(?:19|20)\d{2}\b/.test(lower) && !/[a-zA-Z]{3,}/.test(lower)) return true;
+    // Release metadata strings e.g. "2025 • Album", "2024 • Single", "Album • 2025"
+    if (/[•·]/.test(lower) && /\b(?:19|20)\d{2}|album|single|ep|songs?|tracks?|release\b/i.test(lower)) return true;
+    // Generic words
+    const generic = new Set([
+      "single", "album", "ep", "video", "unknown artist", "various artists",
+      "unknown", "music", "topic", "artist", "release", "track", "audio", "various"
+    ]);
+    if (generic.has(lower)) return true;
+    if (/^(?:album|single|ep|song|video|audio|artist)\s*[•·-]\s*(?:19|20)\d{2}$/i.test(lower)) return true;
+    if (/^(?:19|20)\d{2}\s*[•·-]\s*(?:album|single|ep|song|video|audio|artist)$/i.test(lower)) return true;
+    return false;
+  };
+
+  const trackArtist = tracks.find((t) => !isInvalidArtist(t.artists?.[0]?.name))?.artists?.[0]?.name
+    || tracks.find((t) => !isInvalidArtist(t.artist))?.artist;
+  const trackArtistId = tracks.find((t) => t.artists?.[0]?.id)?.artists?.[0]?.id;
+
+  const rawArtistName = !isInvalidArtist(album?.artists?.[0]?.name)
+    ? album?.artists?.[0]?.name
+    : !isInvalidArtist(album?.artist)
+      ? album?.artist
+      : trackArtist;
+
+  const resolvedArtistName = isInvalidArtist(rawArtistName) ? undefined : rawArtistName;
+  const resolvedArtistId = album?.artists?.[0]?.id || trackArtistId;
+
+  // Reset album state when navigating between albums
+  useEffect(() => {
+    setArtistDetails(null);
+    setMoreReleases([]);
+    setTracks([]);
+    setIsLoading(true);
+    setError(null);
+    setAlbumSearchQuery("");
+  }, [album?.id]);
 
   useEffect(() => {
     if (!resolvedArtistName && !resolvedArtistId) {
       setMoreReleases([]);
+      setArtistDetails(null);
       return;
     }
     let active = true;
@@ -104,7 +150,7 @@ export function AlbumView({
           ? await libraryController.getArtist(targetId)
           : null;
         if (!active) return;
-        if (artistPage) {
+        if (artistPage && !isInvalidArtist(artistPage.artist.name)) {
           setArtistDetails(artistPage.artist);
           const otherReleases = (artistPage.releases ?? []).filter((r) => r.id !== album?.id);
           setMoreReleases(otherReleases.slice(0, 10));
@@ -258,20 +304,45 @@ export function AlbumView({
     }
   };
 
-  const releaseTypeLabel = album.releaseType === "single" || tracks.length === 1
-    ? "Single"
-    : album.releaseType === "ep" || (tracks.length > 1 && tracks.length <= 6)
-      ? "EP"
-      : "Album";
+  const releaseTypeLabel = album.releaseType
+    ? album.releaseType.toUpperCase()
+    : tracks.length === 1
+      ? "SINGLE"
+      : tracks.length > 1 && tracks.length <= 6
+        ? "EP"
+        : "ALBUM";
 
   return (
     <div className="flex flex-col gap-8 pb-16">
       <MediaHeader
         eyebrow={album.year ? `${releaseTypeLabel} • ${album.year}` : releaseTypeLabel}
         title={album.title}
-        subtitle={<ArtistLinks artists={album.artists} fallback={album.artist} />}
+        subtitle={
+          <div className="flex items-center gap-2">
+            {artistDetails?.artworkUrl && !isInvalidArtist(artistDetails.name) && (
+              <button
+                type="button"
+                className="group/avatar shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  if (artistDetails && onOpenArtist) onOpenArtist(artistDetails);
+                  else if (resolvedArtistId && onOpenArtist) onOpenArtist({ id: resolvedArtistId, name: resolvedArtistName || "" });
+                }}
+              >
+                <img
+                  src={artistDetails.artworkUrl}
+                  alt={artistDetails.name}
+                  className="size-6 rounded-full object-cover transition-opacity group-hover/avatar:opacity-80"
+                />
+              </button>
+            )}
+            <ArtistLinks
+              artists={album.artists?.filter((a) => !isInvalidArtist(a.name))}
+              fallback={isInvalidArtist(album.artist) ? undefined : album.artist}
+            />
+          </div>
+        }
         meta={formatCollectionMeta(tracks)}
-        artworkUrl={album.artworkUrl}
+        artworkUrl={album.artworkUrl || tracks[0]?.artworkUrl}
         artworkVariant="album"
         actionsDisabled={isLoading || Boolean(error) || tracks.length === 0}
         actions={
@@ -364,7 +435,7 @@ export function AlbumView({
                  * shuffled or reordered independently of how this album is displayed.
                  */
                 const isCurrent = currentTrackId !== null && track.id === currentTrackId;
-                const viewFormatted = track.viewCount ? Number(track.viewCount).toLocaleString() : undefined;
+                const viewFormatted = formatCompactNumber(track.viewCount ?? track.viewCountText);
                 return (
                   <TrackRow
                     key={getTrackRenderKey(track, index)}
@@ -399,19 +470,21 @@ export function AlbumView({
         </>
       )}
 
-      {album?.year && (
+
+      {album?.year && resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
         <div className="text-xs text-muted-foreground pt-4 flex flex-col gap-0.5">
-          <p>{album.year}</p>
-          <p className="text-[11px] opacity-75">℗ {album.year} {album.artist}</p>
+          <p className="text-[11px] opacity-75">
+            ℗ {album.year} {resolvedArtistName !== album.year ? resolvedArtistName : ""}
+          </p>
         </div>
       )}
 
       {/* Artist Profile Card */}
-      {(resolvedArtistName || artistDetails) && (
+      {resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
         <div
           onClick={() => {
             if (artistDetails) onOpenDiscography?.(artistDetails, moreReleases);
-            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: resolvedArtistName || "" }, moreReleases);
+            else if (resolvedArtistId) onOpenDiscography?.({ id: resolvedArtistId, name: resolvedArtistName }, moreReleases);
           }}
           className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
         >
@@ -423,7 +496,7 @@ export function AlbumView({
           />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>
-            <span className="text-base font-bold text-foreground group-hover:underline truncate">{resolvedArtistName || artistDetails?.name}</span>
+            <span className="text-base font-bold text-foreground group-hover:underline truncate">{resolvedArtistName}</span>
             {artistDetails?.subscriberCount && (
               <span className="text-xs text-muted-foreground">{artistDetails.subscriberCount}</span>
             )}
@@ -431,15 +504,15 @@ export function AlbumView({
         </div>
       )}
 
-      {moreReleases.length > 0 && (
+      {moreReleases.length > 0 && resolvedArtistName && !isInvalidArtist(resolvedArtistName) && (
         <section className="flex flex-col gap-3 pt-6 border-t border-border/40">
           <div className="flex items-center justify-between gap-3">
-            <h2>More by {resolvedArtistName || album?.artist || "this artist"}</h2>
+            <h2>More by {resolvedArtistName}</h2>
             {onOpenDiscography && (
               <button
                 type="button"
-                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: resolvedArtistName || album.artist }, moreReleases)}
-                className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none"
+                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: resolvedArtistName }, moreReleases)}
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none cursor-pointer"
               >
                 See discography
               </button>

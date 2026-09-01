@@ -74,6 +74,7 @@ export { FolderOpenIcon } from "@solar-icons/react/linear/folder-open";
 export { AddFolderIcon as FolderAddIcon } from "@solar-icons/react/linear/add-folder";
 export { GalleryIcon as ImageIcon } from "@solar-icons/react/linear/gallery";
 export { DocumentTextIcon as LogFileIcon } from "@solar-icons/react/linear/document-text";
+export { FileTextIcon } from "@solar-icons/react/linear/file-text";
 
 /* ── Navigation & chrome ───────────────────────────────────────────── */
 export { Home2Icon as HomeIcon } from "@solar-icons/react/linear/home-2";

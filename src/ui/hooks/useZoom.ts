@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
 const ZOOM_STORAGE_KEY = "amber-ui-zoom";
-const MIN_ZOOM = 0.7;
-const MAX_ZOOM = 1.4;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2.0;
 const STEP = 0.05;
 
 function getStoredZoom(): number {

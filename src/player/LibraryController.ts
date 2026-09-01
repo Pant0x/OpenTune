@@ -552,6 +552,22 @@ export class LibraryController {
     return this.dataSource.getAlbumTracks(album, onUpdate);
   }
 
+  async getReleases(onUpdate?: (releases: Album[]) => void): Promise<Album[]> {
+    if (!this.dataSource.getReleases) return this.state.library?.albums ?? [];
+    const exploreReleases = await this.dataSource.getReleases(onUpdate).catch(() => []);
+    const libraryAlbums = this.state.library?.albums ?? [];
+    const seen = new Set<string>();
+    const combined: Album[] = [];
+    for (const item of [...libraryAlbums, ...exploreReleases]) {
+      if (item && !seen.has(item.id)) {
+        seen.add(item.id);
+        combined.push(item);
+      }
+    }
+    return combined;
+  }
+
+
   async getArtist(
     artistId: string,
     onUpdate?: (artist: ArtistPage) => void,

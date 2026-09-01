@@ -30,6 +30,9 @@ export interface Track {
   /** Carries an explicit-content badge. Absent means unknown, not "clean". */
   isExplicit?: boolean;
   localPath?: string;
+  releaseType?: "album" | "single" | "ep";
+  releaseDate?: string;
+  year?: string;
 }
 
 export interface LyricLine {
@@ -95,6 +98,7 @@ export interface Artist {
   name: string;
   artworkUrl?: string;
   subscriberCount?: string;
+  isCreator?: boolean;
 }
 
 export interface ArtistPage {
@@ -109,6 +113,7 @@ export interface ArtistPage {
   appearsOn?: Album[];
   fansAlsoLike?: Artist[];
   discoveredOn?: Playlist[];
+  isCreator?: boolean;
 }
 
 /**

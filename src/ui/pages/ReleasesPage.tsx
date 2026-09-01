@@ -1,12 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { Album, Artist } from "../../datasource/types";
+import type { LibraryController } from "../../player/LibraryController";
 import { AlbumCard } from "../components/AlbumCard";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
-import { CheckIcon, PlayActiveIcon } from "@/ui/icons";
+import { CheckIcon, PlayActiveIcon, ListIcon } from "@/ui/icons";
+import { AlbumGridSkeleton } from "../components/Skeleton";
 import { cn } from "@/lib/utils";
 
-// Grid icon (4 squares)
 function GridIcon({ className }: { className?: string }) {
   return (
     <svg className={cn("size-4", className)} viewBox="0 0 16 16" fill="currentColor">
@@ -15,33 +16,55 @@ function GridIcon({ className }: { className?: string }) {
   );
 }
 
-// List icon (3 horizontal lines with bullets)
-function ListIcon({ className }: { className?: string }) {
-  return (
-    <svg className={cn("size-4", className)} viewBox="0 0 16 16" fill="currentColor">
-      <path fillRule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z" />
-    </svg>
-  );
-}
+type ReleaseFilter = "all" | "album" | "ep" | "single";
 
-type DiscographyFilter = "all" | "album" | "ep" | "single";
-
-export function DiscographyPage({
+export function ReleasesPage({
   artist,
-  releases,
+  releases: initialReleases,
+  libraryController,
   onOpenAlbum,
+  onOpenArtist: _onOpenArtist,
 }: {
   artist?: Artist;
   releases?: Album[];
+  libraryController?: LibraryController;
   onOpenAlbum: (album: Album) => void;
+  onOpenArtist?: (artist: Artist) => void;
 }) {
-  const [filter, setFilter] = useState<DiscographyFilter>("all");
+  const [filter, setFilter] = useState<ReleaseFilter>("all");
   const [sort, setSort] = useState<"date" | "title">("date");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const [fetchedReleases, setFetchedReleases] = useState<Album[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const releases = initialReleases && initialReleases.length > 0 ? initialReleases : fetchedReleases;
 
   const sortRef = useRef<HTMLDivElement | null>(null);
   const { openAlbumMenu } = usePlaylistContextMenu();
+
+  useEffect(() => {
+    if (initialReleases && initialReleases.length > 0) return;
+    if (!libraryController) return;
+    let active = true;
+    setIsLoading(true);
+    void libraryController.getReleases((updated) => {
+      if (active && updated.length > 0) {
+        setFetchedReleases(updated);
+        setIsLoading(false);
+      }
+    }).then((items) => {
+      if (active) {
+        setFetchedReleases(items);
+        setIsLoading(false);
+      }
+    }).catch(() => {
+      if (active) setIsLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialReleases, libraryController]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -77,14 +100,27 @@ export function DiscographyPage({
 
   const sortLabel = sort === "date" ? "Release date" : "Name";
 
+  const releaseTypeCounts = useMemo(() => {
+    const counts = { all: 0, album: 0, ep: 0, single: 0 };
+    (releases ?? []).forEach((r) => {
+      counts.all++;
+      if (r.releaseType === "album") counts.album++;
+      else if (r.releaseType === "ep") counts.ep++;
+      else if (r.releaseType === "single") counts.single++;
+    });
+    return counts;
+  }, [releases]);
+
   return (
     <div className="flex flex-col gap-6 p-2 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/30 pb-4">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">{artist?.name || "Discography"}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          {artist?.name ? `${artist.name} - Releases` : "Releases"}
+        </h1>
 
         <div className="flex items-center gap-3">
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-1.5" role="tablist" aria-label="Filter discography">
+          {/* Category Filter Pills - separate from search filters */}
+          <div className="flex items-center gap-1.5" role="tablist" aria-label="Filter releases">
             <button
               type="button"
               role="tab"
@@ -92,10 +128,13 @@ export function DiscographyPage({
               onClick={() => setFilter("all")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                filter === "all" ? "bg-white/20 text-foreground font-bold" : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
+                filter === "all"
+                  ? "bg-white/20 text-foreground font-bold"
+                  : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
               )}
             >
               All
+              <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts.all}</span>
             </button>
             <button
               type="button"
@@ -104,10 +143,13 @@ export function DiscographyPage({
               onClick={() => setFilter("album")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                filter === "album" ? "bg-white/20 text-foreground font-bold" : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
+                filter === "album"
+                  ? "bg-white/20 text-foreground font-bold"
+                  : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
               )}
             >
               Albums
+              <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts.album}</span>
             </button>
             <button
               type="button"
@@ -116,10 +158,13 @@ export function DiscographyPage({
               onClick={() => setFilter("ep")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                filter === "ep" ? "bg-white/20 text-foreground font-bold" : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
+                filter === "ep"
+                  ? "bg-white/20 text-foreground font-bold"
+                  : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
               )}
             >
               EPs
+              <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts.ep}</span>
             </button>
             <button
               type="button"
@@ -128,13 +173,15 @@ export function DiscographyPage({
               onClick={() => setFilter("single")}
               className={cn(
                 "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-                filter === "single" ? "bg-white/20 text-foreground font-bold" : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
+                filter === "single"
+                  ? "bg-white/20 text-foreground font-bold"
+                  : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
               )}
             >
               Singles
+              <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts.single}</span>
             </button>
           </div>
-
 
           {/* Spotify-style View & Sort Dropdown Menu */}
           <div className="relative" ref={sortRef}>
@@ -219,8 +266,12 @@ export function DiscographyPage({
         </div>
       </div>
 
+      {isLoading && filteredReleases.length === 0 && (
+        <AlbumGridSkeleton label="Loading new releases" />
+      )}
+
       {/* Grid View */}
-      {viewMode === "grid" && (
+      {!isLoading && viewMode === "grid" && (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
           {filteredReleases.map((release) => {
             const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";

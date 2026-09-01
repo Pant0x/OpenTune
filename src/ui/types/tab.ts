@@ -1,12 +1,13 @@
 import type { Album, Artist, Playlist, SearchResults, Track } from "../../datasource/types";
 
-export type TabView = "home" | "album" | "artist" | "discography" | "playlist" | "related" | "search" | "history" | "browse" | "library" | "settings" | "local-files";
+export type TabView = "home" | "album" | "song" | "artist" | "discography" | "playlist" | "related" | "search" | "history" | "browse" | "library" | "settings" | "local-files" | "releases";
 export type NavigableTabView = Exclude<TabView, "settings">;
 
 export interface TabViewState {
   title?: string;
   view: NavigableTabView;
   album?: Album;
+  song?: Track;
   artist?: Artist;
   releases?: Album[];
   playlist?: Playlist;
@@ -16,6 +17,8 @@ export interface TabViewState {
   searchResults?: Track[];
   mixedSearchResults?: SearchResults;
   searchLoading?: boolean;
+  /** Which Browse tab to open on. Only meaningful when `view` is "browse". */
+  browseTab?: string;
 }
 
 export interface TabNavigationHistory {
@@ -30,6 +33,7 @@ export interface Tab {
   title?: string;
   view: TabView;
   album?: Album;
+  song?: Track;
   artist?: Artist;
   releases?: Album[];
   playlist?: Playlist;

@@ -111,6 +111,9 @@ export function TitleBar({
     startY: number;
   } | null>(null);
   const suppressHomeClickRef = useRef(false);
+  const lastTitleClickRef = useRef<number>(0);
+  const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleDragPointerRef = useRef<{ startX: number; startY: number } | null>(null);
   const hideHomeText = sidebarWidth <= 120;
 
   const handleAuthSuccess = () => {
@@ -228,17 +231,57 @@ export function TitleBar({
       />
 
       <div
+        data-tauri-drag-region=""
         className="min-w-6 flex-1 cursor-default select-none"
         aria-label="Drag window"
         onPointerDown={(event) => {
           if (event.button !== 0) return;
-          if (event.detail === 2) {
+          const now = Date.now();
+          if (now - lastTitleClickRef.current < 350) {
+            lastTitleClickRef.current = 0;
+            if (dragTimerRef.current !== null) {
+              window.clearTimeout(dragTimerRef.current);
+              dragTimerRef.current = null;
+            }
+            titleDragPointerRef.current = null;
             void handleToggleMaximize();
             return;
           }
-          void startWindowDrag();
+          lastTitleClickRef.current = now;
+          titleDragPointerRef.current = { startX: event.clientX, startY: event.clientY };
+          if (dragTimerRef.current !== null) window.clearTimeout(dragTimerRef.current);
+          dragTimerRef.current = window.setTimeout(() => {
+            dragTimerRef.current = null;
+            void startWindowDrag();
+          }, 220);
         }}
-        onDoubleClick={() => void handleToggleMaximize()}
+        onPointerMove={(event) => {
+          if (!titleDragPointerRef.current) return;
+          const dist = Math.hypot(
+            event.clientX - titleDragPointerRef.current.startX,
+            event.clientY - titleDragPointerRef.current.startY,
+          );
+          if (dist > 5) {
+            titleDragPointerRef.current = null;
+            if (dragTimerRef.current !== null) {
+              window.clearTimeout(dragTimerRef.current);
+              dragTimerRef.current = null;
+            }
+            void startWindowDrag();
+          }
+        }}
+        onPointerUp={() => {
+          titleDragPointerRef.current = null;
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (dragTimerRef.current !== null) {
+            window.clearTimeout(dragTimerRef.current);
+            dragTimerRef.current = null;
+          }
+          void handleToggleMaximize();
+        }}
       />
 
       {/*

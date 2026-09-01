@@ -41,11 +41,13 @@ const LocalFilesPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
+const ReleasesPage = lazy(() => import("./pages/ReleasesPage").then((m) => ({ default: m.ReleasesPage })));
+const SongPage = lazy(() => import("./pages/SongPage").then((m) => ({ default: m.SongPage })));
 import { TrackContextMenuProvider } from "./components/TrackContextMenu";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PlaylistContextMenuProvider } from "./components/PlaylistContextMenu";
 import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
-import { AlbumNavigationProvider, ArtistNavigationProvider } from "./components/ArtistLinks";
+import { AlbumNavigationProvider, ArtistNavigationProvider, SongNavigationProvider } from "./components/ArtistLinks";
 import { cn } from "@/lib/utils";
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
@@ -149,6 +151,7 @@ function getNavigationState(tab: Tab): TabViewState | null {
     title: tab.title,
     view: tab.view,
     album: tab.album,
+    song: tab.song,
     artist: tab.artist,
     releases: tab.releases,
     playlist: tab.playlist,
@@ -164,10 +167,14 @@ function getNavigationKey(state: TabViewState): string {
   switch (state.view) {
     case "album":
       return `album:${state.album?.id ?? ""}`;
+    case "song":
+      return `song:${state.song?.id ?? ""}`;
     case "artist":
       return `artist:${state.artist?.id ?? state.artist?.name ?? ""}`;
     case "discography":
       return `discography:${state.artist?.id ?? state.artist?.name ?? ""}`;
+    case "releases":
+      return "releases";
     case "playlist":
       return `playlist:${state.playlist?.id ?? ""}`;
     case "related":
@@ -179,7 +186,7 @@ function getNavigationKey(state: TabViewState): string {
     case "history":
       return "history";
     case "browse":
-      return "browse";
+      return `browse:${state.browseTab ?? "explore"}`;
     case "library":
       return "library";
     case "local-files":
@@ -193,6 +200,7 @@ function applyNavigationState(tab: Tab, state: TabViewState): Tab {
     title: state.title,
     view: state.view,
     album: state.album,
+    song: state.song,
     artist: state.artist,
     releases: state.releases,
     playlist: state.playlist,
@@ -794,6 +802,28 @@ useMediaSession(playerState, playerController);
     });
   };
 
+  const handleNavigateSong = (song: Track, openInNewTab = false) => {
+    playerUIStore.setLyricsOpen(false);
+    if (openInNewTab) {
+      const newId = nextTabId.toString();
+      tabManager.createTab(newId);
+      void tabManager.setActive(newId);
+      setTabs((prevTabs) => [
+        ...prevTabs,
+        { id: newId, view: "song", song, title: song.title },
+      ]);
+      setActiveTabId(newId);
+      setNextTabId((currentId) => currentId + 1);
+      return;
+    }
+    navigateTab(activeTabId, {
+      title: song.title,
+      view: "song",
+      song,
+    });
+  };
+
+
   /**
    * Opens the album a track belongs to.
    *
@@ -1173,6 +1203,23 @@ useMediaSession(playerState, playerController);
     setTabs((prevTabs) => [
       ...prevTabs,
       { id: newId, view: "local-files", title: "Local Files" },
+    ]);
+    setActiveTabId(newId);
+    setNextTabId((currentId) => currentId + 1);
+  };
+
+  const handleOpenReleases = () => {
+    playerUIStore.setLyricsOpen(false);
+    const existing = tabs.find((tab) => tab.view === "releases");
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newId = nextTabId.toString();
+    setTabs((prevTabs) => [
+      ...prevTabs,
+      { id: newId, view: "releases", title: "Releases" },
     ]);
     setActiveTabId(newId);
     setNextTabId((currentId) => currentId + 1);
@@ -1606,6 +1653,7 @@ const backOnboardingStep = () => {
   return (
     <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
     <AlbumNavigationProvider onNavigate={handleNavigateAlbum}>
+    <SongNavigationProvider onNavigate={(song, openInNewTab) => handleNavigateSong(song, openInNewTab)}>
     <ArtistNavigationProvider onNavigate={handleNavigateArtist}>
     <TrackContextMenuProvider
       libraryController={libraryController}
@@ -1613,15 +1661,7 @@ const backOnboardingStep = () => {
       onOpenAlbum={(track) => void handleNavigateAlbumForTrack(track)}
     >
     <PlaylistContextMenuProvider libraryController={libraryController}>
-    {/*
-      `ring-inset` is load-bearing: the window is transparent, so an outward ring would be
-      drawn into nothing and clipped. The specular line along the top edge is the same cue
-      the picks cards and the mini player use, which is what makes the whole app read as one
-      material rather than three separately-styled surfaces.
-
-      Both drop out under OS native decorations: the WM already draws a real frame above the
-      webview there, so this edge would just be a stray line under the OS title bar.
-    */}
+    <VolumeSyncBridge />
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden ${
         nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen
@@ -1671,6 +1711,7 @@ const backOnboardingStep = () => {
           onNavigateLibrary={handleOpenLibrary}
           onNavigateBrowse={() => handleOpenBrowse()}
           onNavigateDownloads={() => handleOpenBrowse("downloads")}
+          onNavigateReleases={handleOpenReleases}
           onNavigateLocalFiles={handleOpenLocalFiles}
           onSearch={(q, openInNewTab = false) => handleSearch(q, openInNewTab)}
           showSearchBar={activeTab?.view !== "settings" && !playerUIState.isLyricsOpen}
@@ -1737,7 +1778,18 @@ const backOnboardingStep = () => {
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
+                onOpenArtist={(artist) => handleNavigateArtist(artist)}
                 onOpenDiscography={handleNavigateDiscography}
+              />
+            )}
+            {activeTab?.view === "song" && (
+              <SongPage
+                song={activeTab?.song}
+                playerController={playerController}
+                libraryController={libraryController}
+                onOpenAlbum={handleNavigateAlbum}
+                onOpenArtist={(artist) => handleNavigateArtist(artist)}
+                onOpenSong={handleNavigateSong}
               />
             )}
             {activeTab?.view === "artist" && (
@@ -1748,6 +1800,7 @@ const backOnboardingStep = () => {
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenPlaylist={handleNavigatePlaylist}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
+                onOpenSong={handleNavigateSong}
                 onOpenDiscography={handleNavigateDiscography}
               />
             )}
@@ -1756,6 +1809,15 @@ const backOnboardingStep = () => {
                 artist={activeTab.artist}
                 releases={activeTab.releases}
                 onOpenAlbum={handleNavigateAlbum}
+              />
+            )}
+            {activeTab?.view === "releases" && (
+              <ReleasesPage
+                artist={activeTab?.artist}
+                releases={activeTab?.releases}
+                libraryController={libraryController}
+                onOpenAlbum={handleNavigateAlbum}
+                onOpenArtist={(artist) => handleNavigateArtist(artist)}
               />
             )}
             {activeTab?.view === "playlist" && (
@@ -1941,6 +2003,7 @@ const backOnboardingStep = () => {
     </PlaylistContextMenuProvider>
     </TrackContextMenuProvider>
     </ArtistNavigationProvider>
+    </SongNavigationProvider>
     </AlbumNavigationProvider>
     </MotionConfig>
   );

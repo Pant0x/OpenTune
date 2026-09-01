@@ -9,7 +9,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
  * the startup win is real but it is not worth a client nobody can sign in to, and the split
  * needs to be reproduced and tested against a live session before it goes back.
  */
-import { ClientType, Innertube, Platform, Types, YTNodes } from "youtubei.js";
+import { ClientType, Innertube, Platform, Types, YTNodes, YTMusic } from "youtubei.js";
 import { getAppSetting, removeAppSetting, setAppSetting } from "../../internal/appSettings";
 import { createSerialQueue } from "../../internal/asyncQueue";
 import { clearCache, getCachedJson, setCachedJson } from "../../internal/cache";
@@ -193,6 +193,7 @@ type LrcLibTrack = {
   albumName?: string;
   duration?: number;
   syncedLyrics?: string | null;
+  plainLyrics?: string | null;
 };
 
 type BetterLyricsResponse = {
@@ -756,19 +757,25 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private cleanArtistNameCandidate(name?: string): string {
     if (!name) return "";
-    return name
-      .replace(/\s*[•·]\s*(?:(?:19|20)\d{2}|\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)|album|single|ep|song|video)\b.*$/i, "")
+    const cleaned = name
+      .replace(/\s*[•·]\s*(?:(?:19|20)\d{2}|\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)|album|single|ep|song|video|audio)\b.*$/i, "")
+      .replace(/^(?:(?:19|20)\d{2}|album|single|ep|song|video|audio)\s*[•·]\s*/i, "")
       .replace(/\s{2,}/g, " ")
       .trim();
+    if (/^(?:album|single|ep|song|video|audio|unknown artist)$/i.test(cleaned)) return "";
+    return cleaned;
   }
 
   private isValidArtistString(name?: string): boolean {
     if (!name) return false;
     const trimmed = name.trim();
-    if (!trimmed || trimmed === "Unknown artist") return false;
+    if (!trimmed || trimmed === "Unknown artist" || trimmed === "Various Artists") return false;
+    if (/^\d+$/.test(trimmed)) return false;
     if (/^(?:19|20)\d{2}$/.test(trimmed)) return false;
     if (/^\d+(?:[.,]\d+)?\s*[KMB]?\s*(?:views?|plays?)$/i.test(trimmed)) return false;
-    if (/^(?:album|single|ep|song|video|audio)$/i.test(trimmed)) return false;
+    if (/^(?:album|single|ep|song|video|audio|artist|release|track|music|topic)$/i.test(trimmed)) return false;
+    if (/^(?:album|single|ep|song|video|audio)\s*[•·]\s*(?:19|20)\d{2}$/i.test(trimmed)) return false;
+    if (/^(?:19|20)\d{2}\s*[•·]\s*(?:album|single|ep|song|video|audio)$/i.test(trimmed)) return false;
     return true;
   }
 
@@ -789,7 +796,9 @@ export class YouTubeMusicDataSource extends DataSource {
       .map((s) => s.trim())
       .filter((s) => this.isValidArtistString(s));
 
-    return validParts.length > 0 ? validParts.join(", ") : (cleaned || "Unknown artist");
+    if (validParts.length > 0) return validParts.join(", ");
+    if (this.isValidArtistString(cleaned)) return cleaned;
+    return "Unknown artist";
   }
 
   private getArtists(item: MusicItem): ArtistReference[] | undefined {
@@ -970,7 +979,12 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private parseViewCount(value?: string): number | undefined {
     if (!value) return undefined;
-    const match = value.replace(/,/g, "").match(/([\d.]+)\s*([KMB])?/i);
+    let cleaned = value.trim();
+    // Strip dot-separated thousands (European format: 73.000.000)
+    if (/^\d{1,3}(\.\d{3})+$/.test(cleaned.replace(/\s*(?:views?|plays?)\s*/gi, "").trim())) {
+      cleaned = cleaned.replace(/\./g, "");
+    }
+    const match = cleaned.replace(/,/g, "").match(/([\d]+(?:\.\d+)?)\s*([KMB])?/i);
     if (!match) return undefined;
     const amount = Number(match[1]);
     if (!Number.isFinite(amount)) return undefined;
@@ -1095,12 +1109,16 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const yearMatch = this.findStringByKey(item, new Set(["year", "subtitle", "byline"]))?.match(/\b(19\d\d|20\d\d)\b/);
 
+    const rawArtist = this.getArtistName(item);
+    const artist = this.isValidArtistString(rawArtist) ? rawArtist : "Unknown artist";
+    const artists = this.getArtists(item)?.filter((a) => this.isValidArtistString(a.name));
+
     return {
       id,
       playlistId: this.findAlbumPlaylistId(item),
       title,
-      artist: this.getArtistName(item),
-      artists: this.getArtists(item),
+      artist,
+      artists: artists?.length ? artists : undefined,
       artworkUrl: this.getArtwork(item),
       year: yearMatch ? yearMatch[1] : undefined,
     };
@@ -1111,11 +1129,12 @@ export class YouTubeMusicDataSource extends DataSource {
     const title = this.getTitle(item);
     if (!id || !title) return null;
 
-    const owner = this.getArtistName(item);
+    const rawOwner = this.getArtistName(item);
+    const owner = this.isValidArtistString(rawOwner) ? rawOwner : "YouTube Music playlist";
     return {
       id,
       title,
-      owner: owner === "Unknown artist" ? "YouTube Music playlist" : owner,
+      owner,
       artworkUrl: this.getArtwork(item),
       isSaved: false,
     };
@@ -1200,12 +1219,16 @@ export class YouTubeMusicDataSource extends DataSource {
     const album = this.getTrackAlbum(item);
     const { duration, durationSec } = this.getTrackDuration(item);
 
+    const rawArtist = this.getArtistName(item);
+    const artist = this.isValidArtistString(rawArtist) ? rawArtist : "Unknown artist";
+    const artists = this.getArtists(item)?.filter((a) => this.isValidArtistString(a.name));
+
     return {
       id,
       source: "youtube",
       title,
-      artist: this.getArtistName(item),
-      artists: this.getArtists(item),
+      artist,
+      artists: artists?.length ? artists : undefined,
       album: album.name,
       albumId: album.id,
       artworkUrl: this.getArtwork(item) ?? getVideoArtworkFallback(id),
@@ -3677,7 +3700,14 @@ export class YouTubeMusicDataSource extends DataSource {
   ): Promise<ArtistPage> {
     const cacheKey = this.getArtistCacheKey(artistId);
     const cached = await getCachedJson<ArtistPage>(cacheKey);
-    if (cached) {
+    const hasFullSections = Boolean(
+      cached &&
+      Array.isArray(cached.appearsOn) &&
+      Array.isArray(cached.discoveredOn) &&
+      (cached.appearsOn.length > 0 || cached.discoveredOn.length > 0)
+    );
+
+    if (cached && hasFullSections) {
       const refreshedAt = this.artistRefreshedAt.get(artistId) ?? 0;
       if (Date.now() - refreshedAt >= ARTIST_REFRESH_COOLDOWN_MS) {
         globalThis.setTimeout(() => {
@@ -3990,7 +4020,13 @@ export class YouTubeMusicDataSource extends DataSource {
             .filter((item): item is Track => Boolean(item)),
         );
       }
-      if (sectionTitle.includes("appears on") || sectionTitle.includes("featured in") || sectionTitle.includes("featuring")) {
+      if (
+        sectionTitle.includes("appears on")
+        || sectionTitle.includes("featured in")
+        || sectionTitle.includes("featuring")
+        || sectionTitle.includes("collaborat")
+        || sectionTitle.includes("features")
+      ) {
         appearsOn.push(
           ...contents
             .map((item) => this.toAlbum(item))
@@ -4028,7 +4064,13 @@ export class YouTubeMusicDataSource extends DataSource {
             .map((item) => this.toArtist(item))
             .filter((item): item is Artist => Boolean(item)),
         );
-      } else if (sectionTitle.includes("discovered") || sectionTitle.includes("station") || sectionTitle.includes("radio")) {
+      } else if (
+        sectionTitle.includes("discovered")
+        || sectionTitle.includes("station")
+        || sectionTitle.includes("radio")
+        || sectionTitle.includes("playlists featuring")
+        || sectionTitle.includes("featured on")
+      ) {
         discoveredOn.push(
           ...contents
             .map((item) => this.toPlaylist(item))
@@ -4052,14 +4094,23 @@ export class YouTubeMusicDataSource extends DataSource {
     }
     if (artistPage.getAlbums) {
       try {
-        const fullAlbums = await artistPage.getAlbums();
-        if (fullAlbums?.contents) {
-          releases.push(
-            ...(fullAlbums.contents as MusicItem[])
-              .map((item) => this.toAlbum(item))
-              .filter((item): item is Album => Boolean(item))
-              .map((a) => ({ ...a, releaseType: "album" as const })),
-          );
+        let fullAlbums = await artistPage.getAlbums();
+        let albumPageCount = 0;
+        while (fullAlbums && albumPageCount < 10) {
+          if (fullAlbums?.contents) {
+            releases.push(
+              ...(fullAlbums.contents as MusicItem[])
+                .map((item) => this.toAlbum(item))
+                .filter((item): item is Album => Boolean(item))
+                .map((a) => ({ ...a, releaseType: "album" as const })),
+            );
+          }
+          if (fullAlbums.has_continuation && typeof fullAlbums.getContinuation === "function") {
+            fullAlbums = await fullAlbums.getContinuation();
+            albumPageCount++;
+          } else {
+            break;
+          }
         }
       } catch {
         // ignore
@@ -4067,14 +4118,23 @@ export class YouTubeMusicDataSource extends DataSource {
     }
     if (artistPage.getSingles) {
       try {
-        const fullSingles = await artistPage.getSingles();
-        if (fullSingles?.contents) {
-          releases.push(
-            ...(fullSingles.contents as MusicItem[])
-              .map((item) => this.toAlbum(item))
-              .filter((item): item is Album => Boolean(item))
-              .map((a) => ({ ...a, releaseType: "single" as const })),
-          );
+        let fullSingles = await artistPage.getSingles();
+        let singlePageCount = 0;
+        while (fullSingles && singlePageCount < 10) {
+          if (fullSingles?.contents) {
+            releases.push(
+              ...(fullSingles.contents as MusicItem[])
+                .map((item) => this.toAlbum(item))
+                .filter((item): item is Album => Boolean(item))
+                .map((a) => ({ ...a, releaseType: "single" as const })),
+            );
+          }
+          if (fullSingles.has_continuation && typeof fullSingles.getContinuation === "function") {
+            fullSingles = await fullSingles.getContinuation();
+            singlePageCount++;
+          } else {
+            break;
+          }
         }
       } catch {
         // ignore
@@ -4106,38 +4166,62 @@ export class YouTubeMusicDataSource extends DataSource {
       );
     }
 
-    let allSongShelf: Awaited<ReturnType<typeof artistPage.getAllSongs>>;
+    let allSongsList: Track[] = [];
     try {
-      allSongShelf = await artistPage.getAllSongs();
+      let allSongShelf = await artistPage.getAllSongs();
+      let songPageCount = 0;
+      while (allSongShelf && songPageCount < 15) {
+        if (allSongShelf.contents) {
+          const batch = (allSongShelf.contents as unknown as MusicItem[])
+            .map((item) => this.toTrack(item))
+            .filter((item): item is Track => Boolean(item));
+          allSongsList.push(...batch);
+        }
+        if (allSongShelf.has_continuation && typeof allSongShelf.getContinuation === "function") {
+          allSongShelf = await allSongShelf.getContinuation();
+          songPageCount++;
+        } else {
+          break;
+        }
+      }
     } catch (error) {
       logInternalWarn("YouTubeMusicDataSource.fetchArtistFresh all songs unavailable", {
         artistId,
         error: error instanceof Error ? error.message : String(error),
       });
-      allSongShelf = undefined;
     }
-    let allSongs = allSongShelf
-      ? (allSongShelf.contents as unknown as MusicItem[])
-        .map((item) => this.toTrack(item))
-        .filter((item): item is Track => Boolean(item))
-      : popularSongs;
+    let allSongs = allSongsList.length > 0 ? allSongsList : popularSongs;
 
+    let isCreator = false;
     if (allSongs.length < 5 && artistId.startsWith("UC")) {
       try {
         const webClient = await this.getWebClient();
         const channel = await webClient.getChannel(artistId);
         const videosFeed = await channel.getVideos().catch(() => null);
-        const channelTracks: Track[] = ((videosFeed as any)?.videos ?? []).map((v: any) => ({
-          id: v.id,
-          source: "youtube" as const,
-          title: v.title?.toString() ?? "Video",
-          artist: artist.name,
-          artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
-          durationSec: v.duration?.seconds,
-        }));
-        if (channelTracks.length > 0) {
+        const channelVideos = (videosFeed as any)?.videos ?? [];
+        if (channelVideos.length > 0) {
+          isCreator = true;
+          const channelTracks: Track[] = channelVideos.map((v: any) => ({
+            id: v.id,
+            source: "youtube" as const,
+            title: v.title?.toString() ?? "Video",
+            artist: artist.name,
+            artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
+            durationSec: v.duration?.seconds,
+            releaseType: "single" as const,
+          }));
           popularSongs.push(...channelTracks);
           allSongs = this.uniqueById([...allSongs, ...channelTracks]);
+
+          // Create release entries for creator singles/uploads
+          const creatorReleases: Album[] = channelTracks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            artist: artist.name,
+            artworkUrl: t.artworkUrl,
+            releaseType: "single" as const,
+          }));
+          releases.push(...creatorReleases);
         }
       } catch {
         // ignore
@@ -4172,11 +4256,81 @@ export class YouTubeMusicDataSource extends DataSource {
       }),
     );
 
+    if (discoveredOn.length === 0 && playlists.length > 0) {
+      const curated = playlists.filter((p) =>
+        /present|radio|this is|best of|complete|official|hits|mix/i.test(p.title) ||
+        p.owner.toLowerCase().includes("youtube")
+      );
+      if (curated.length > 0) {
+        discoveredOn.push(...curated);
+      }
+    }
+
+    if (discoveredOn.length === 0 && artist.name) {
+      try {
+        const searchResults = await client.music.search(artist.name, { type: "playlist" });
+        const playlistShelf = searchResults?.playlists?.contents ?? [];
+        const playlistFallback = playlistShelf.length === 0
+          ? this.collectMusicItems(searchResults?.page, new Set(["playlist"]))
+          : [];
+        const allPlaylistItems = [...playlistShelf, ...playlistFallback] as MusicItem[];
+        const matchingPlaylists = allPlaylistItems
+          .map((item) => this.toPlaylist(item))
+          .filter((item): item is Playlist => Boolean(item));
+        discoveredOn.push(...matchingPlaylists.slice(0, 8));
+      } catch {
+        // ignore
+      }
+    }
+
+    if (appearsOn.length === 0 && artist.name) {
+      try {
+        const featResults = await client.music.search(`${artist.name} feat`, { type: "album" });
+        const albumShelf = featResults?.albums?.contents ?? [];
+        const albumFallback = albumShelf.length === 0
+          ? this.collectMusicItems(featResults?.page, new Set(["album"]))
+          : [];
+        const allAlbumItems = [...albumShelf, ...albumFallback] as MusicItem[];
+        const featAlbums = allAlbumItems
+          .map((item) => this.toAlbum(item))
+          .filter((item): item is Album => Boolean(item))
+          .filter((a) => !releases.some((r) => r.id === a.id));
+        appearsOn.push(...featAlbums.slice(0, 8));
+
+        if (appearsOn.length === 0) {
+          const songResults = await client.music.search(`${artist.name} feat`, { type: "song" });
+          const songShelf = songResults?.songs?.contents ?? [];
+          const songFallback = songShelf.length === 0
+            ? this.collectMusicItems(songResults?.page, new Set(["song"]))
+            : [];
+          const allSongItems = [...songShelf, ...songFallback] as MusicItem[];
+          const featTracks = allSongItems
+            .map((item) => this.toTrack(item))
+            .filter((item): item is Track => Boolean(item))
+            .filter((t) => t.album && t.albumId && !releases.some((r) => r.id === t.albumId));
+          const albumsFromTracks: Album[] = featTracks.map((t) => ({
+            id: t.albumId || t.id,
+            title: t.album || t.title,
+            artist: t.artist,
+            artists: t.artists,
+            artworkUrl: t.artworkUrl,
+            releaseType: "single",
+          }));
+          appearsOn.push(...this.uniqueById(albumsFromTracks).slice(0, 8));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const subscriptionToggle = this.findArtistSubscriptionToggle(artistPage.page);
     const subscribed = this.getArtistSubscriptionOverride(artistId) ?? subscriptionToggle?.subscribed;
 
     return {
-      artist,
+      artist: {
+        ...artist,
+        isCreator,
+      },
       subscribed,
       popularSongs: enrichedPopularSongs,
       allSongs: this.uniqueById(allSongs),
@@ -4185,6 +4339,7 @@ export class YouTubeMusicDataSource extends DataSource {
       appearsOn: this.uniqueById(appearsOn),
       fansAlsoLike: this.uniqueById(fansAlsoLike),
       discoveredOn: this.uniqueById(discoveredOn),
+      isCreator,
     };
   }
 
@@ -5085,16 +5240,25 @@ export class YouTubeMusicDataSource extends DataSource {
         if (!response.ok) continue;
 
         const matches = await response.json() as LrcLibTrack[];
-        const candidates = matches
+        const withDelta = matches
           .map((match) => ({
             match,
             durationDelta: this.getLyricsDurationDelta(track, match.duration),
           }))
-          .filter(({ match, durationDelta }) => Boolean(match.syncedLyrics) && durationDelta <= 2)
+          .filter(({ durationDelta }) => durationDelta <= 6)
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
-        for (const candidate of candidates) {
+        // Prefer synced lyrics
+        const syncedCandidates = withDelta.filter(({ match }) => Boolean(match.syncedLyrics));
+        for (const candidate of syncedCandidates) {
           const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search");
+          if (result) return result;
+        }
+
+        // Fallback: accept unsynced lyrics if no synced found
+        const unsyncedCandidates = withDelta.filter(({ match }) => Boolean(match.plainLyrics) && !match.syncedLyrics);
+        for (const candidate of unsyncedCandidates) {
+          const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search (unsynced)");
           if (result) return result;
         }
       } catch (error) {
@@ -5198,14 +5362,26 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private getLyricsQueries(track: Track): Array<{ title: string; artist: string; album?: string }> {
-    const artists = [
+    const rawArtists = [
       track.artist,
       ...(track.artists?.map((artist) => artist.name) ?? []),
     ];
+    const splitArtists: string[] = [];
+    for (const a of rawArtists) {
+      if (!a) continue;
+      const parts = a.split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+and\s+/i).map((s) => s.trim()).filter(Boolean);
+      splitArtists.push(...parts);
+    }
+    const artists = [...new Set([...rawArtists, ...splitArtists])];
+
+    const cleanTitle = this.cleanLyricsLookupText(track.title);
     const titles = [
       track.title,
-      this.cleanLyricsLookupText(track.title),
-    ];
+      cleanTitle,
+      track.title.replace(/\s*\([^)]*\)\s*/g, " ").trim(),
+      track.title.replace(/\s*\[[^\]]*\]\s*/g, " ").trim(),
+    ].filter(Boolean);
+
     const albums = [
       track.album,
       track.album ? this.cleanLyricsLookupText(track.album) : undefined,
@@ -5221,7 +5397,7 @@ export class YouTubeMusicDataSource extends DataSource {
         for (const artistName of [artist, cleanedArtist]) {
           if (!artistName) continue;
           const album = albums.find((value) => value && value !== "Unknown album");
-          const key = `${title}\n${artistName}\n${album ?? ""}`;
+          const key = `${title.toLowerCase()}\n${artistName.toLowerCase()}`;
           if (seen.has(key)) continue;
           seen.add(key);
           queries.push({ title, artist: artistName, album });
@@ -5230,14 +5406,14 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     return queries.length > 0
-      ? queries.slice(0, 6)
+      ? queries.slice(0, 10)
       : [{ title: track.title, artist: track.artist, album: track.album }];
   }
 
   private cleanLyricsLookupText(value: string): string {
     return value
-      .replace(/\s*[\[(](?:official\s*)?(?:music\s*)?(?:video|visualizer|audio|lyrics?|lyric\s*video|remaster(?:ed)?|radio edit|single version|album version|live|feat\.?|ft\.?)[^\])]*[\])]\s*/gi, " ")
-      .replace(/\s+-\s+(?:official\s*)?(?:music\s*)?(?:video|visualizer|audio|lyrics?|lyric\s*video).*$/i, "")
+      .replace(/\s*[\[(](?:official\s*)?(?:music\s*)?(?:video|visualizer|audio|lyrics?|lyric\s*video|remaster(?:ed)?|radio edit|single version|album version|live|feat\.?|ft\.?|remix|soundtrack|version|with\s+[^\])]+)[^\])]*\s*/gi, " ")
+      .replace(/\s+-\s+(?:official\s*)?(?:music\s*)?(?:video|visualizer|audio|lyrics?|lyric\s*video|remix).*$/i, "")
       .replace(/\s{2,}/g, " ")
       .trim();
   }
@@ -5349,18 +5525,67 @@ export class YouTubeMusicDataSource extends DataSource {
   private async fetchTrackFresh(trackId: string): Promise<Track> {
     logInternalInfo("YouTubeMusicDataSource.getTrack start", { trackId });
     const yt = await this.getMusicClient();
-    const info = await yt.getBasicInfo(trackId);
-    const basic = (info as any).basic_info;
-    const artwork = selectArtworkUrl(basic?.thumbnail);
+
+    // Use music.getInfo to get TrackInfo which includes tabs for audio/video versions
+    const trackInfo = await yt.music.getInfo(trackId);
+    const basic = trackInfo.basic_info;
+
+    // Check if this is a music video (category === "Music")
+    // If so, try to find the audio-only version via tabs
+    let trackIdToUse = basic?.id ?? trackId;
+    let trackBasic = basic;
+
+    if (basic?.category === "Music" && trackInfo.tabs) {
+      logInternalInfo("YouTubeMusicDataSource: Detected music video, looking for audio version", {
+        trackId,
+        title: basic?.title,
+      });
+
+      // Look for a "Song" or audio tab (not "Video")
+      for (const tab of trackInfo.tabs) {
+        const tabTitle = tab.title?.toLowerCase() ?? "";
+        const pageType = tab.endpoint?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType ?? "";
+
+        // Skip video tabs, look for audio/song tabs
+        if (tabTitle.includes("video") || pageType.includes("VIDEO")) {
+          continue;
+        }
+
+        // Found a potential audio tab - try to get its track info
+        try {
+          const audioTrackInfo = await tab.endpoint.call(trackInfo["actions"], { client: "YTMUSIC", parse: true });
+          const audioTrackInfoParsed = new YTMusic.TrackInfo(
+            [audioTrackInfo, null] as any,
+            trackInfo["actions"],
+            trackInfo["cpn"],
+          );
+
+          if (audioTrackInfoParsed.basic_info?.category !== "Music") {
+            trackIdToUse = audioTrackInfoParsed.basic_info?.id ?? trackId;
+            trackBasic = audioTrackInfoParsed.basic_info;
+            logInternalInfo("YouTubeMusicDataSource: Found audio version", {
+              originalId: trackId,
+              audioId: trackIdToUse,
+              title: trackBasic?.title,
+            });
+            break;
+          }
+        } catch (e) {
+          logInternalWarn("YouTubeMusicDataSource: Failed to fetch audio tab", { error: e });
+        }
+      }
+    }
+
+    const artwork = selectArtworkUrl(trackBasic?.thumbnail);
     const track: Track = {
-      id: basic?.id ?? trackId,
+      id: trackIdToUse,
       source: "youtube",
-      title: basic?.title ?? `Track (${trackId})`,
-      artist: basic?.author ?? "Unknown artist",
-      artists: basic?.channel_id && basic?.author
-        ? [{ id: basic.channel_id, name: basic.author }]
+      title: trackBasic?.title ?? `Track (${trackId})`,
+      artist: trackBasic?.author ?? "Unknown artist",
+      artists: trackBasic?.channel_id && trackBasic?.author
+        ? [{ id: trackBasic.channel_id, name: trackBasic.author }]
         : undefined,
-      durationSec: basic?.duration,
+      durationSec: trackBasic?.duration,
       artworkUrl: artwork,
     };
 
@@ -5760,14 +5985,17 @@ export class YouTubeMusicDataSource extends DataSource {
   async getStreamUrl(track: Track): Promise<string> {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
 
-    for (const label of ["music", "web"] as ClientLabel[]) {
+    for (const label of ["music", "web", "download"] as ClientLabel[]) {
       try {
         const yt = await this.getClient(label);
-        const format = await yt.getStreamingData(track.id, { type: "audio", quality: "best" });
-        // Already deciphered — getStreamingData runs decipher internally and assigns the result
-        // to format.url, so `pot` and the transformed `n` are on it. Deciphering again would
-        // re-transform an already-transformed `n` and earn a 403.
-        const url = this.withSessionClientVersion((format as any).url as string, yt);
+        let url: string | undefined;
+        try {
+          const format = await yt.getStreamingData(track.id, { type: "audio", quality: "best" });
+          url = this.withSessionClientVersion((format as any).url as string, yt);
+        } catch {
+          const resolved = await this.resolveStream(track, "high", [label]);
+          url = resolved.url;
+        }
 
         if (!url) {
           throw new Error("YouTube.js returned an empty stream URL.");
@@ -5776,8 +6004,6 @@ export class YouTubeMusicDataSource extends DataSource {
         logInternalInfo("YouTubeMusicDataSource.getStreamUrl success", {
           trackId: track.id,
           client: label,
-          itag: (format as any).itag ?? null,
-          mimeType: (format as any).mime_type ?? null,
           urlLength: url.length,
         });
 
@@ -5789,6 +6015,13 @@ export class YouTubeMusicDataSource extends DataSource {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+
+    try {
+      const resolved = await this.resolveStream(track, "normal", ["music", "web", "download"]);
+      if (resolved.url) return resolved.url;
+    } catch {
+      // ignore
     }
 
     logInternalError(
@@ -6287,6 +6520,41 @@ export class YouTubeMusicDataSource extends DataSource {
     });
     return page;
   }
+
+  async getReleases(onUpdate?: (releases: Album[]) => void): Promise<Album[]> {
+    const cacheKey = "youtube-music:explore-releases:v1";
+    const cached = await getCachedJson<Album[]>(cacheKey);
+    if (cached?.length) {
+      globalThis.setTimeout(() => {
+        void this.refreshReleases(cacheKey).then(({ changed, value }) => {
+          if (changed) onUpdate?.(value);
+        }).catch(() => {});
+      }, 0);
+      return cached;
+    }
+    return (await this.refreshReleases(cacheKey)).value;
+  }
+
+  private async refreshReleases(cacheKey: string): Promise<{ changed: boolean; value: Album[] }> {
+    try {
+      const explorePage = await this.getBrowsePage("explore");
+      const albums: Album[] = [];
+      for (const shelf of explorePage.shelves) {
+        if (shelf.albums?.length) {
+          albums.push(...shelf.albums);
+        }
+      }
+      const unique = this.uniqueById(albums);
+      const changed = unique.length > 0 ? await setCachedJson(cacheKey, unique) : false;
+      return { changed, value: unique };
+    } catch (error) {
+      logInternalWarn("YouTubeMusicDataSource.getReleases failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { changed: false, value: [] };
+    }
+  }
+
 
   /**
    * Mood and genre chips inside a shelf.

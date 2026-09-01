@@ -126,6 +126,7 @@ export abstract class DataSource {
     onError?: (error: unknown) => void,
   ): Promise<LibrarySnapshot>;
   getAlbumTracks?(album: Album, onUpdate?: (tracks: Track[]) => void): Promise<Track[]>;
+  getReleases?(onUpdate?: (releases: Album[]) => void): Promise<Album[]>;
   setAlbumSaved?(album: Album, saved: boolean): Promise<void>;
   getArtist?(artistId: string, onUpdate?: (artist: ArtistPage) => void): Promise<ArtistPage>;
   setArtistSubscribed?(artistId: string, subscribed: boolean): Promise<void>;

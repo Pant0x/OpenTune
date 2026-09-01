@@ -7,15 +7,17 @@ import {
   useMemo,
   useRef,
 } from "react";
-import type { Album, Artist, ArtistReference } from "../../datasource/types";
+import type { Album, Artist, ArtistReference, Track } from "../../datasource/types";
 import { cn } from "@/lib/utils";
 import { isMacOS } from "../platform";
 
 type NavigateArtist = (artist: Artist, openInNewTab: boolean) => void;
 type NavigateAlbum = (album: Album, openInNewTab?: boolean) => void;
+type NavigateSong = (song: Track, openInNewTab?: boolean) => void;
 
 const ArtistNavigationContext = createContext<NavigateArtist | null>(null);
 const AlbumNavigationContext = createContext<NavigateAlbum | null>(null);
+const SongNavigationContext = createContext<NavigateSong | null>(null);
 
 export function AlbumNavigationProvider({
   children,
@@ -38,13 +40,39 @@ export function AlbumNavigationProvider({
   );
 }
 
+export function SongNavigationProvider({
+  children,
+  onNavigate,
+}: {
+  children: ReactNode;
+  onNavigate: NavigateSong;
+}) {
+  const navigateRef = useRef(onNavigate);
+  navigateRef.current = onNavigate;
+  const navigate = useMemo<NavigateSong>(
+    () => (song, openInNewTab = false) => navigateRef.current(song, openInNewTab),
+    [],
+  );
+
+  return (
+    <SongNavigationContext.Provider value={navigate}>
+      {children}
+    </SongNavigationContext.Provider>
+  );
+}
+
 export function useAlbumNavigation() {
   return useContext(AlbumNavigationContext);
+}
+
+export function useSongNavigation() {
+  return useContext(SongNavigationContext);
 }
 
 export function useArtistNavigation() {
   return useContext(ArtistNavigationContext);
 }
+
 
 
 export function ArtistNavigationProvider({

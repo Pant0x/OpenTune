@@ -13,13 +13,14 @@ interface LayoutProps {
   onSidebarWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
-  onNavigateArtist?: (artist: Artist) => void;
-  onNavigateHistory?: () => void;
-  onNavigateLibrary?: () => void;
-  onNavigateBrowse?: () => void;
-  onNavigateDownloads?: () => void;
-  onNavigateLocalFiles?: () => void;
-  onSearch?: (query: string, openInNewTab?: boolean) => void;
+  onNavigateArtist: (artist: Artist) => void;
+  onNavigateHistory: () => void;
+  onNavigateLibrary: () => void;
+  onNavigateBrowse: (tab?: string) => void;
+  onNavigateDownloads: () => void;
+  onNavigateReleases: () => void;
+  onNavigateLocalFiles: () => void;
+  onSearch: (query: string, openInNewTab?: boolean) => void;
   showSearchBar: boolean;
   onOpenSearch: () => void;
   canGoBack: boolean;
@@ -57,6 +58,7 @@ export function Layout({
   onNavigateLibrary,
   onNavigateBrowse,
   onNavigateDownloads,
+  onNavigateReleases,
   onNavigateLocalFiles,
   onSearch,
   showSearchBar,
@@ -257,6 +259,7 @@ export function Layout({
             onNavigateLibrary={onNavigateLibrary}
             onNavigateBrowse={onNavigateBrowse}
             onNavigateDownloads={onNavigateDownloads}
+            onNavigateReleases={onNavigateReleases}
             onNavigateLocalFiles={onNavigateLocalFiles}
           />
         )}

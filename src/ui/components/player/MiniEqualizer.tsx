@@ -138,7 +138,7 @@ function MiniEqBar({
 export function MiniEqualizer() {
   const equalizer = useEqualizer();
   const enabled = useEqualizerEnabled();
-  const available = false; // Rust engine removed - only YouTube player
+  const available = true;
   const flat = isEqualizerFlat(equalizer);
   const activePreset = activeEqualizerPreset(equalizer);
   const labelId = useId();
@@ -150,14 +150,14 @@ export function MiniEqualizer() {
   };
 
   return (
-    <div className={cn("flex flex-col gap-2.5 border-t border-border pt-3", !available && "opacity-50")}>
+    <div className="flex flex-col gap-2.5 border-t border-border pt-3">
       <div className="flex items-center justify-between gap-2">
         <span id={labelId} className="text-xs font-medium text-foreground">
           Equaliser
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">
-            {available ? (enabled ? (flat ? "Flat" : "On") : "Off") : "Rust engine only"}
+            {enabled ? (flat ? "Flat" : "On") : "Off"}
           </span>
           <Switch
             checked={enabled}
