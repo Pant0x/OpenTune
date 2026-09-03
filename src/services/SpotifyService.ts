@@ -1,9 +1,21 @@
 import { logInternalError, logInternalInfo, logInternalWarn } from "../internal/logging";
+import { tauriFetch } from "../datasource/youtube/tauriFetch";
 
 export interface SpotifyTopCity {
   city: string;
   country: string;
   numberOfListeners: number;
+}
+
+export interface SpotifyTrack {
+  id: string;
+  name: string;
+  playcount: string;
+  isExplicit: boolean;
+  durationMs: number;
+  artists: string[];
+  coverUrl?: string;
+  uri: string;
 }
 
 export interface SpotifyArtistOverview {
@@ -18,6 +30,7 @@ export interface SpotifyArtistOverview {
   galleryUrls: string[];
   instagramUrl?: string;
   topCities: SpotifyTopCity[];
+  topTracks: SpotifyTrack[];
 }
 
 export interface SpotifyRelease {
@@ -37,6 +50,14 @@ const QUERY_HASHES = {
   queryArtistOverview: "ae0e2958a4ab645b35ca19ac04d0495ae12d9c5d7b7286217674801a9aab281a",
   queryArtistDiscographyAll: "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599",
 };
+
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  // Use tauriFetch in desktop environment to bypass browser CORS completely
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    return tauriFetch(url, init);
+  }
+  return fetch(url, init);
+}
 
 class SpotifyServiceManager {
   private accessToken: string | null = null;
@@ -61,7 +82,7 @@ class SpotifyServiceManager {
 
     this.tokenPromise = (async () => {
       try {
-        const response = await fetch("https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC", {
+        const response = await safeFetch("https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC", {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -73,23 +94,18 @@ class SpotifyServiceManager {
         }
 
         const html = await response.text();
-        const scriptMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-        if (!scriptMatch) {
-          throw new Error("Could not find __NEXT_DATA__ in Spotify embed");
+        const tokenMatch = html.match(/"accessToken":"([^"]+)"/);
+        const expMatch = html.match(/"accessTokenExpirationTimestampMs":([0-9]+)/);
+
+        if (!tokenMatch) {
+          throw new Error("Could not extract Spotify accessToken from embed page");
         }
 
-        const nextData = JSON.parse(scriptMatch[1]);
-        const state = nextData?.props?.pageProps?.state;
-        const session = state?.data?.session || state?.settings?.session;
-        const token = session?.accessToken;
-
-        if (!token) {
-          throw new Error("Spotify session accessToken not found in __NEXT_DATA__");
-        }
+        const token = tokenMatch[1];
+        const expiresAt = expMatch ? Number(expMatch[1]) : (Date.now() + 3500 * 1000);
 
         this.accessToken = token;
-        // Typically valid for 3600 seconds
-        this.tokenExpiresAt = session?.accessTokenExpirationTimestampMs || (Date.now() + 3500 * 1000);
+        this.tokenExpiresAt = expiresAt;
         logInternalInfo("SpotifyService: Acquired anonymous access token successfully");
         return token;
       } catch (err) {
@@ -121,7 +137,7 @@ class SpotifyServiceManager {
       );
       url.searchParams.set("variables", JSON.stringify(variables));
 
-      const response = await fetch(url.toString(), {
+      const response = await safeFetch(url.toString(), {
         headers: {
           Authorization: `Bearer ${token}`,
           "app-platform": "WebPlayer",
@@ -132,7 +148,6 @@ class SpotifyServiceManager {
       });
 
       if (!response.ok) {
-        // If 401, invalidate token
         if (response.status === 401) {
           this.accessToken = null;
           this.tokenExpiresAt = 0;
@@ -163,7 +178,6 @@ class SpotifyServiceManager {
 
     const artists = result?.data?.searchV2?.artists?.items;
     if (Array.isArray(artists) && artists.length > 0) {
-      // Find matching artist name or take first top result
       const match = artists.find((a: any) => a?.data?.profile?.name?.toLowerCase() === cleanName) || artists[0];
       return match?.data?.uri || null;
     }
@@ -171,7 +185,7 @@ class SpotifyServiceManager {
   }
 
   /**
-   * Fetches artist monthly listeners, followers, bio, top cities, avatar and gallery.
+   * Fetches artist monthly listeners, followers, bio, top cities, avatar, gallery, and top tracks.
    */
   async getArtistOverview(artistNameOrUri: string): Promise<SpotifyArtistOverview | null> {
     const cached = this.artistOverviewCache.get(artistNameOrUri.toLowerCase());
@@ -212,6 +226,24 @@ class SpotifyServiceManager {
           .filter((url: any): url is string => typeof url === "string")
       : [];
 
+    const topTracks: SpotifyTrack[] = Array.isArray(union.discography?.topTracks?.items)
+      ? union.discography.topTracks.items.map((item: any) => {
+          const track = item.track || {};
+          return {
+            id: track.id || "",
+            name: track.name || "",
+            playcount: track.playcount ? Number(track.playcount).toLocaleString() : "",
+            isExplicit: track.contentRating?.label === "EXPLICIT",
+            durationMs: track.duration?.totalMilliseconds || 0,
+            artists: Array.isArray(track.artists?.items)
+              ? track.artists.items.map((a: any) => a.profile?.name || "").filter(Boolean)
+              : [],
+            coverUrl: track.albumOfTrack?.coverArt?.sources?.[0]?.url,
+            uri: track.uri || "",
+          };
+        })
+      : [];
+
     const instagramItem = profile.externalLinks?.items?.find((link: any) => link?.name?.toUpperCase() === "INSTAGRAM");
 
     const overview: SpotifyArtistOverview = {
@@ -226,6 +258,7 @@ class SpotifyServiceManager {
       galleryUrls,
       instagramUrl: instagramItem?.url || undefined,
       topCities,
+      topTracks,
     };
 
     this.artistOverviewCache.set(artistNameOrUri.toLowerCase(), { data: overview, timestamp: Date.now() });

@@ -142,11 +142,7 @@ export function TitleBar({
 
   const handleToggleMaximize = async () => {
     try {
-      if (await appWindow.isMaximized()) {
-        await appWindow.unmaximize();
-      } else {
-        await appWindow.maximize();
-      }
+      await appWindow.toggleMaximize();
     } catch (error) {
       logInternalError("TitleBar.maximize failed", error);
     }
@@ -231,19 +227,6 @@ export function TitleBar({
         data-tauri-drag-region=""
         className="min-w-6 flex-1 cursor-default select-none"
         aria-label="Drag window"
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          if (event.detail === 2) {
-            void handleToggleMaximize();
-            return;
-          }
-          void startWindowDrag();
-        }}
-        onDoubleClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          void handleToggleMaximize();
-        }}
       />
 
       {/*

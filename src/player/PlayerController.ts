@@ -331,9 +331,7 @@ export class PlayerController {
   applyPlaybackSettings(settings: PlaybackSettings, persist = true): void {
     this.audioEngine.setVolume(settings.volume);
     this.audioEngine.setMuted(settings.muted);
-    if (settings.playbackRate !== undefined) {
-      this.audioEngine.setPlaybackRate(settings.playbackRate);
-    }
+    this.audioEngine.setPlaybackRate(1);
     /*
      * Absent means "leave alone", not "reset".
      *

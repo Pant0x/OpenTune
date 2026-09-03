@@ -46,7 +46,7 @@ savePlaybackSettings({
 
 const stored = readPlaybackSettings();
 equal(stored.volume, 0.8, "volume round-trips");
-equal(stored.playbackRate, 1.25, "playbackRate round-trips");
+equal(stored.playbackRate, 1, "playbackRate is locked to 1");
 equal(stored.crossfadeSec, 6, "crossfadeSec round-trips");
 equal(stored.gaplessEnabled, false, "gaplessEnabled round-trips");
 

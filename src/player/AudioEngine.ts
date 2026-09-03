@@ -1127,20 +1127,20 @@ export class AudioEngine {
     if ("webkitPreservesPitch" in pitchPreserving) pitchPreserving.webkitPreservesPitch = true;
   }
 
-  /** 1 is normal speed. Applies to whichever backend is currently playing. */
-  setPlaybackRate(rate: number): void {
-    this.playbackRate = Math.min(4, Math.max(0.25, rate));
+  /** 1 is normal speed. Always 1.0x native speed. */
+  setPlaybackRate(_rate?: number): void {
+    this.playbackRate = 1;
     if (this.useRustAudio && !this.iframeFallbackActive) {
-      void rustAudio.setRate(this.playbackRate).catch((error: unknown) => {
+      void rustAudio.setRate(1).catch((error: unknown) => {
         rustAudio.warn("AudioEngine rust rate failed", error);
       });
     }
     this.applyNativeAudioSettings();
-    this.player?.setPlaybackRate?.(this.playbackRate);
+    this.player?.setPlaybackRate?.(1);
   }
 
   getPlaybackRate(): number {
-    return this.playbackRate;
+    return 1;
   }
 
   private applyOutputVolume(): void {

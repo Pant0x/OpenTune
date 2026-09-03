@@ -734,14 +734,13 @@ impl Engine {
                  * swap starts it in the same tick it becomes active.
                  */
                 let volume = if standby { 0.0 } else { self.output_volume() };
-                let rate = self.rate;
 
                 let deck = &mut self.decks[index];
                 deck.sink.stop();
                 deck.sink.append(source);
                 deck.sink.pause();
                 deck.sink.set_volume(volume);
-                deck.sink.set_speed(rate);
+                deck.sink.set_speed(1.0);
                 deck.track_id = Some(track_id);
                 deck.duration_sec = duration;
                 deck.health = health;
@@ -795,10 +794,10 @@ impl Engine {
                     self.decks[self.active].sink.set_volume(self.output_volume());
                 }
             }
-            Command::Rate(rate) => {
-                self.rate = rate.clamp(0.25, 4.0);
+            Command::Rate(_rate) => {
+                self.rate = 1.0;
                 for deck in &self.decks {
-                    deck.sink.set_speed(self.rate);
+                    deck.sink.set_speed(1.0);
                 }
             }
             Command::Transition { track_id, fade_ms, reply } => {
@@ -829,7 +828,7 @@ impl Engine {
                 self.decks[standby]
                     .sink
                     .set_volume(if fade_ms > 0 { 0.0 } else { target });
-                self.decks[standby].sink.set_speed(self.rate);
+                self.decks[standby].sink.set_speed(1.0);
                 self.decks[standby].sink.play();
 
                 let outgoing = self.active;

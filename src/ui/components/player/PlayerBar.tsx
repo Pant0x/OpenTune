@@ -8,7 +8,6 @@ import { TrackInfo } from "./TrackInfo";
 import { PlaybackControls } from "./PlaybackControls";
 import { SeekBar } from "./SeekBar";
 import { DownloadButton } from "./DownloadButton";
-import { PlaybackOptions } from "./PlaybackOptions";
 import { VolumeControl } from "./VolumeControl";
 import { LyricsButton } from "./LyricsButton";
 import {
@@ -228,7 +227,6 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
             </div>
 
             <DownloadButton />
-            <PlaybackOptions />
             <VolumeControl />
           </div>
         </div>

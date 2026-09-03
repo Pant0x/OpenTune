@@ -36,7 +36,7 @@ function isPlaybackSettings(value: unknown): value is PlaybackSettings {
 export function readPlaybackSettings(): PlaybackSettings {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as unknown;
-    if (isPlaybackSettings(parsed)) return parsed;
+    if (isPlaybackSettings(parsed)) return { ...parsed, playbackRate: 1 };
   } catch {
     // Defaults below keep playback usable if local storage is unavailable.
   }
@@ -48,7 +48,7 @@ export function savePlaybackSettings(settings: PlaybackSettings): void {
   const normalizedSettings = {
     volume: Math.min(1, Math.max(0, settings.volume)),
     muted: settings.muted,
-    playbackRate: Math.min(4, Math.max(0.25, settings.playbackRate ?? 1)),
+    playbackRate: 1,
     crossfadeSec: Math.min(MAX_CROSSFADE_SEC, Math.max(0, settings.crossfadeSec ?? 0)),
     gaplessEnabled: settings.gaplessEnabled ?? true,
   };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { CheckIcon, CopyIcon, UserPlusIcon } from "@/ui/icons";
+import { CheckIcon, ClockIcon, CopyIcon, PlayActiveIcon, UserPlusIcon } from "@/ui/icons";
 import {
   Select,
   SelectContent,
@@ -21,16 +21,18 @@ import type { LibraryController } from "../../player/LibraryController";
 import { searchController, type PlayerControllerActions } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { AlbumCard } from "../components/AlbumCard";
-import { ArtistLinks } from "../components/ArtistLinks";
 import { MediaHeader } from "../components/MediaHeader";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
-import { TrackRow } from "../components/TrackRow";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
-import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { cn, formatCompactNumber } from "@/lib/utils";
-import { SpotifyService, type SpotifyArtistOverview, type SpotifyRelease } from "../../services/SpotifyService";
+import {
+  SpotifyService,
+  type SpotifyArtistOverview,
+  type SpotifyRelease,
+} from "../../services/SpotifyService";
+import { logInternalError } from "../../internal/logging";
 
 type ReleaseFilter = "all" | "album" | "singles_eps";
 
@@ -55,8 +57,15 @@ function getArtistUrl(artist: Artist): string {
   return `https://music.youtube.com/search?q=${encodeURIComponent(artist.name)}`;
 }
 
-/** How many of the artist's songs the Popular shelf shows before it is expanded. */
-const POPULAR_PREVIEW_COUNT = 10;
+interface PopularSongItem {
+  id: string;
+  name: string;
+  artist: string;
+  isExplicit: boolean;
+  plays: string;
+  duration: string;
+  rawTrack?: Track;
+}
 
 const artistPageMemory = new Map<string, ArtistPage>();
 
@@ -78,7 +87,6 @@ export function ArtistView({
   onOpenSong?: (song: Track) => void;
   onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }) {
-  const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const { currentTrackId, isPlaying, isLoading: isPlayerLoading } = useNowPlaying();
 
@@ -104,6 +112,10 @@ export function ArtistView({
   const [spotifyReleases, setSpotifyReleases] = useState<SpotifyRelease[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
+  // Extra playlists for Featuring and Discovered on fallback
+  const [extraFeaturingPlaylists, setExtraFeaturingPlaylists] = useState<Playlist[]>([]);
+  const [extraDiscoveredOnPlaylists, setExtraDiscoveredOnPlaylists] = useState<Playlist[]>([]);
+
   useEffect(() => {
     if (!artist) return;
     let active = true;
@@ -115,6 +127,8 @@ export function ArtistView({
     setFilter("all");
     setShowAllSongs(false);
     setShowAllReleases(false);
+    setExtraFeaturingPlaylists([]);
+    setExtraDiscoveredOnPlaylists([]);
 
     // Fetch YouTube Music artist page
     void libraryController.getArtist(artist.id, (updated) => {
@@ -134,7 +148,7 @@ export function ArtistView({
         if (active) setIsLoading(false);
       });
 
-    // Fetch Spotify Overview & Discography in parallel (non-blocking)
+    // Fetch Spotify Overview & Discography in parallel (bypassing CORS via tauriFetch)
     const artistName = artist.name;
     void SpotifyService.getArtistOverview(artistName)
       .then((overview) => {
@@ -142,7 +156,9 @@ export function ArtistView({
           setSpotifyOverview(overview);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        logInternalError("Spotify overview fetch failed", err);
+      });
 
     void SpotifyService.getArtistDiscography(artistName)
       .then((releases) => {
@@ -150,7 +166,22 @@ export function ArtistView({
           setSpotifyReleases(releases);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        logInternalError("Spotify discography fetch failed", err);
+      });
+
+    // Fallback search for Featuring and Discovered on playlists if artist channel doesn't list them
+    searchController.search(`Featuring ${artistName}`).then((res) => {
+      if (active && res.playlists?.length) {
+        setExtraFeaturingPlaylists(res.playlists.slice(0, 10));
+      }
+    }).catch(() => {});
+
+    searchController.search(`${artistName} playlist`).then((res) => {
+      if (active && res.playlists?.length) {
+        setExtraDiscoveredOnPlaylists(res.playlists.slice(0, 10));
+      }
+    }).catch(() => {});
 
     return () => {
       active = false;
@@ -215,19 +246,11 @@ export function ArtistView({
     return cleaned.toLowerCase().includes("subscriber") ? cleaned : `${cleaned} subscribers`;
   }, [subCount]);
 
-  const allSongs = page?.allSongs ?? [];
-  const popularSongs = showAllSongs
-    ? allSongs
-    : (page?.popularSongs && page.popularSongs.length > 0
-      ? page.popularSongs.slice(0, POPULAR_PREVIEW_COUNT)
-      : allSongs.slice(0, POPULAR_PREVIEW_COUNT));
-  const hiddenSongCount = allSongs.length - popularSongs.length;
-
   // Separate Featuring playlists and Discovered On playlists
   const featuringPlaylists = useMemo(() => {
     const list = page?.playlists ?? [];
     const artistNameLower = (displayedArtist?.name || "").toLowerCase();
-    return list.filter((p) => {
+    const matches = list.filter((p) => {
       const lower = p.title.toLowerCase();
       const ownerLower = (p.owner || "").toLowerCase();
       return (
@@ -238,15 +261,58 @@ export function ArtistView({
         ownerLower.includes("youtube")
       );
     });
-  }, [page?.playlists, displayedArtist?.name]);
+    if (matches.length > 0) return matches;
+    return extraFeaturingPlaylists;
+  }, [page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
 
   const discoveredOnPlaylists = useMemo(() => {
     const base = page?.discoveredOn ?? [];
     if (base.length > 0) return base;
     const list = page?.playlists ?? [];
     const featSet = new Set(featuringPlaylists.map((p) => p.id));
-    return list.filter((p) => !featSet.has(p.id));
-  }, [page?.discoveredOn, page?.playlists, featuringPlaylists]);
+    const remaining = list.filter((p) => !featSet.has(p.id));
+    if (remaining.length > 0) return remaining;
+    return extraDiscoveredOnPlaylists;
+  }, [page?.discoveredOn, page?.playlists, featuringPlaylists, extraDiscoveredOnPlaylists]);
+
+  // Popular song items structured for the Spotify-style table
+  const popularItems: PopularSongItem[] = useMemo(() => {
+    if (spotifyOverview?.topTracks && spotifyOverview.topTracks.length > 0) {
+      return spotifyOverview.topTracks.map((st) => {
+        const matched = page?.allSongs.find((yt) => {
+          const c1 = yt.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const c2 = st.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+          return c1.includes(c2) || c2.includes(c1);
+        });
+        const minutes = Math.floor(st.durationMs / 60000);
+        const seconds = Math.floor((st.durationMs % 60000) / 1000);
+        const durStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+        return {
+          id: matched?.id || `spotify:${st.id}`,
+          name: st.name,
+          artist: st.artists.join(", ") || displayedArtist?.name || "",
+          isExplicit: st.isExplicit,
+          plays: st.playcount,
+          duration: durStr,
+          rawTrack: matched,
+        };
+      });
+    }
+
+    const allSongs = page?.allSongs ?? [];
+    const sourceSongs = page?.popularSongs && page.popularSongs.length > 0 ? page.popularSongs : allSongs;
+    return sourceSongs.map((yt) => ({
+      id: yt.id,
+      name: yt.title,
+      artist: yt.artist || displayedArtist?.name || "",
+      isExplicit: Boolean(yt.isExplicit),
+      plays: yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt),
+      duration: yt.durationSec ? formatDuration(yt.durationSec) : (yt.duration || ""),
+      rawTrack: yt,
+    }));
+  }, [spotifyOverview?.topTracks, page?.allSongs, page?.popularSongs, displayedArtist?.name]);
+
+  const displayedPopularItems = showAllSongs ? popularItems : popularItems.slice(0, 5);
 
   useEffect(() => {
     setIsSubscribed(page?.subscribed ?? false);
@@ -264,10 +330,7 @@ export function ArtistView({
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
   };
 
-  const trackIds = useMemo(
-    () => new Set((page?.allSongs ?? []).map((track) => track.id)),
-    [page],
-  );
+  const trackIds = new Set((page?.allSongs ?? []).map((track) => track.id));
   const isCurrentCollection = currentTrackId !== null && trackIds.has(currentTrackId);
 
   const togglePlayCollection = () => {
@@ -275,10 +338,6 @@ export function ArtistView({
       playerController.togglePlayPause();
       return;
     }
-    playInOrder();
-  };
-
-  const playInOrder = () => {
     const songs = page?.allSongs ?? [];
     if (songs[0]) void playerController.playTrackById(songs[0].id, songs);
   };
@@ -290,6 +349,23 @@ export function ArtistView({
     const started = await playerController.playTrackById(firstTrack.id, songs, false, true);
     if (!started) return;
     playerController.setShuffleEnabled(true);
+  };
+
+  const handlePlaySongItem = async (item: PopularSongItem) => {
+    if (item.rawTrack) {
+      void playerController.playTrackById(item.rawTrack.id, page?.allSongs ?? [item.rawTrack]);
+      return;
+    }
+    // Search YouTube Music for this track and play
+    try {
+      const searchRes = await searchController.search(`${item.name} ${displayedArtist.name}`);
+      const song = searchRes.tracks?.[0];
+      if (song) {
+        void playerController.playTrackById(song.id, [song]);
+      }
+    } catch (err) {
+      logInternalError("Failed to play song item", err);
+    }
   };
 
   const changeNotificationLevel = async (level: ArtistNotificationLevel) => {
@@ -320,11 +396,12 @@ export function ArtistView({
       await libraryController.setArtistSubscribed(displayedArtist, nextSubscribed);
       setIsSubscribed(nextSubscribed);
       if (!nextSubscribed) setNotificationLevel("personalized");
-    } catch (subscribeError) {
+      showToast(nextSubscribed ? "Subscribed to artist" : "Unsubscribed from artist");
+    } catch (subscriptionError) {
       showToast(
-        subscribeError instanceof Error
-          ? subscribeError.message
-          : "Unable to update this subscription.",
+        subscriptionError instanceof Error
+          ? subscriptionError.message
+          : "Subscription change failed.",
       );
     } finally {
       setIsSubscribing(false);
@@ -361,7 +438,7 @@ export function ArtistView({
           </button>
         }
         meta={
-          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mt-1">
             {spotifyOverview?.monthlyListeners ? (
               <span className="text-foreground/90 font-medium">
                 {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
@@ -398,10 +475,6 @@ export function ArtistView({
         }}
         onShuffle={() => void playShuffled()}
         onAddToQueue={() => playerController.addTracksToQueue(page?.allSongs ?? [])}
-        onAddToPlaylist={() => {
-          const songs = page?.allSongs ?? [];
-          if (songs.length > 0) openPlaylistPicker(songs[0], songs);
-        }}
         actions={
           <div className="flex items-center gap-2.5">
             {/* Themed Subscribe button: Red before sub, Neutral when subbed */}
@@ -455,7 +528,7 @@ export function ArtistView({
         <div className="flex flex-col gap-8">
           <section className="flex flex-col gap-3">
             <h2 className="text-xl font-bold tracking-tight text-foreground">Popular</h2>
-            <TrackListSkeleton count={POPULAR_PREVIEW_COUNT} label="Loading top songs" />
+            <TrackListSkeleton count={5} label="Loading top songs" />
           </section>
           <section className="flex flex-col gap-3">
             <h2 className="text-xl font-bold tracking-tight text-foreground">Discography</h2>
@@ -468,56 +541,108 @@ export function ArtistView({
 
       {!isLoading && !error && (
         <>
-          {/* 100-Song Head / Popular Tracks */}
-          {popularSongs.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xl font-bold tracking-tight text-foreground">Popular</h2>
-              <div className="flex flex-col gap-0.5">
-                {popularSongs.map((track, index) => (
-                  <TrackRow
-                    key={track.id}
-                    track={track}
-                    index={index}
-                    showIndex
-                    showArtwork
-                    showAlbum
-                    isCurrent={currentTrackId !== null && track.id === currentTrackId}
-                    isPlaying={isPlaying && track.id === currentTrackId}
-                    suppressArtistId={displayedArtist.id}
-                    trailing={
-                      <div className="flex items-center gap-6 shrink-0 text-xs tabular-nums text-muted-foreground ml-auto pr-2">
-                        <span className="w-24 text-right hidden sm:inline-block">
-                          {track.viewCount ? Number(track.viewCount).toLocaleString() : compactViews(track)}
-                        </span>
-                        <span className="w-12 text-right">
-                          {track.durationSec ? formatDuration(track.durationSec) : ""}
-                        </span>
-                      </div>
-                    }
-                    onSelect={() => void playerController.playTrackById(track.id, page?.allSongs ?? popularSongs)}
-                    showDownload
-                    showRating
-                    onQuickAddToQueue={() => playerController.addToQueue(track)}
-                    onQuickAdd={() => openPlaylistPicker(track)}
-                    onContextMenu={(event) => openTrackMenu(event, track)}
-                  />
-                ))}
-              </div>
+          {/* 1. Popular Tracks Table (Matches user image 3 with #, Title, Plays, Duration) */}
+          {popularItems.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-xl font-bold tracking-tight text-foreground mb-1">Popular</h2>
 
-              {(hiddenSongCount > 0 || showAllSongs) && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllSongs((current) => !current)}
-                  aria-expanded={showAllSongs}
-                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer mt-1"
-                >
-                  {showAllSongs ? "Show less" : `Show all ${allSongs.length} songs`}
-                </button>
-              )}
+              <div className="flex flex-col">
+                {/* Table Header */}
+                <div className="flex items-center h-9 px-3 text-xs font-semibold text-muted-foreground border-b border-white/[0.08] mb-1 select-none">
+                  <span className="w-10 text-center">#</span>
+                  <span className="flex-1 min-w-0 pl-1">Title</span>
+                  <span className="w-36 text-right hidden sm:inline-block pr-2">Plays</span>
+                  <div className="w-14 flex justify-end pr-3">
+                    <ClockIcon size={14} aria-hidden="true" />
+                  </div>
+                </div>
+
+                {/* Table Rows */}
+                <div className="flex flex-col gap-0.5">
+                  {displayedPopularItems.map((item, index) => {
+                    const isItemPlaying = isPlaying && (
+                      (item.rawTrack && item.rawTrack.id === currentTrackId) ||
+                      item.id === currentTrackId
+                    );
+                    const isItemCurrent = (item.rawTrack && item.rawTrack.id === currentTrackId) || item.id === currentTrackId;
+
+                    return (
+                      <div
+                        key={item.id + index}
+                        onClick={() => void handlePlaySongItem(item)}
+                        className={cn(
+                          "group flex items-center h-14 px-3 rounded-lg transition-colors cursor-pointer select-none",
+                          isItemCurrent ? "bg-white/[0.12]" : "hover:bg-white/[0.07]",
+                        )}
+                      >
+                        {/* Index or Play Icon */}
+                        <div className="w-10 flex items-center justify-center shrink-0">
+                          {isItemPlaying ? (
+                            <PlayActiveIcon size={16} className="text-primary animate-pulse" />
+                          ) : (
+                            <>
+                              <span className={cn(
+                                "text-sm font-medium tabular-nums group-hover:hidden",
+                                isItemCurrent ? "text-primary" : "text-muted-foreground",
+                              )}>
+                                {index + 1}
+                              </span>
+                              <PlayActiveIcon
+                                size={14}
+                                className="hidden group-hover:inline-block text-foreground"
+                              />
+                            </>
+                          )}
+                        </div>
+
+                        {/* Title and Artist */}
+                        <div className="flex-1 min-w-0 flex flex-col justify-center pl-1 pr-4">
+                          <span className={cn(
+                            "text-sm font-semibold truncate",
+                            isItemCurrent ? "text-primary" : "text-foreground",
+                          )}>
+                            {item.name}
+                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                            {item.isExplicit && (
+                              <span className="inline-flex items-center justify-center rounded-[3px] bg-white/20 px-1 py-[1px] text-[9px] font-bold uppercase tracking-wider text-white/90 shrink-0">
+                                E
+                              </span>
+                            )}
+                            <span className="text-xs text-muted-foreground truncate hover:text-foreground">
+                              {item.artist}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Plays count */}
+                        <div className="w-36 text-right text-xs tabular-nums text-muted-foreground font-normal hidden sm:inline-block pr-2">
+                          {item.plays}
+                        </div>
+
+                        {/* Duration */}
+                        <div className="w-14 text-right text-xs tabular-nums text-muted-foreground font-normal pr-3">
+                          {item.duration}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {popularItems.length > 5 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllSongs((prev) => !prev)}
+                    className="self-start text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2 px-3 py-1.5 rounded-full hover:bg-white/[0.06] cursor-pointer"
+                  >
+                    {showAllSongs ? "Show less" : "See more"}
+                  </button>
+                )}
+              </div>
             </section>
           )}
 
-          {/* 1. Discography (YouTube Music + Spotify releases) */}
+          {/* 2. Discography (YouTube Music + Spotify releases merged) */}
           {mergedReleases.length > 0 && (
             <section className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -558,46 +683,31 @@ export function ArtistView({
                 {visibleReleases.map((release) => {
                   const hasLinkedArtists = Boolean(release.artists?.length);
                   const releaseTypeLabel =
-                    release.releaseType === "ep"
-                      ? "EP"
-                      : release.releaseType === "single"
-                        ? "Single"
-                        : "Album";
-                  const subtitleText = release.year
-                    ? `${release.year} • ${releaseTypeLabel}`
-                    : (release.releaseType ? releaseTypeLabel : release.artist);
+                    release.releaseType === "album"
+                      ? "Album"
+                      : release.releaseType === "ep"
+                        ? "EP"
+                        : release.releaseType === "single"
+                          ? "Single"
+                          : undefined;
+                  const subtitle =
+                    release.year && releaseTypeLabel
+                      ? `${release.year} • ${releaseTypeLabel}`
+                      : release.year || releaseTypeLabel;
 
                   return (
-                    <div key={release.id}>
-                      <AlbumCard
-                        artworkUrl={release.artworkUrl}
-                        title={release.title}
-                        subtitle={hasLinkedArtists ? undefined : subtitleText}
-                        subtitleContent={
-                          hasLinkedArtists ? (
-                            <span className="truncate">
-                              {release.year ? `${release.year} • ` : ""}
-                              <ArtistLinks
-                                artists={release.artists}
-                                fallback={release.artist}
-                                suppressArtistId={displayedArtist.id}
-                              />
-                            </span>
-                          ) : undefined
-                        }
-                        onClick={() => {
-                          if (release.id.startsWith("spotify:")) {
-                            // Search or open title on YT music
-                            void searchController.search(release.title).then((res) => {
-                              if (res.albums[0]) onOpenAlbum(res.albums[0]);
-                            });
-                          } else {
-                            onOpenAlbum(release);
-                          }
-                        }}
-                        onContextMenu={(event) => openAlbumMenu(event, release)}
-                      />
-                    </div>
+                    <AlbumCard
+                      key={release.id}
+                      artworkUrl={release.artworkUrl}
+                      title={release.title}
+                      subtitle={
+                        hasLinkedArtists && release.artists
+                          ? release.artists.map((a) => a.name).join(", ")
+                          : subtitle
+                      }
+                      onClick={() => onOpenAlbum(release)}
+                      onContextMenu={(event) => openAlbumMenu(event, release)}
+                    />
                   );
                 })}
               </div>
@@ -606,7 +716,8 @@ export function ArtistView({
                 <button
                   type="button"
                   onClick={() => setShowAllReleases((current) => !current)}
-                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground cursor-pointer"
+                  aria-expanded={showAllReleases}
+                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
                   {showAllReleases ? "Show less releases" : `Show all ${filteredReleases.length} releases`}
                 </button>
@@ -614,7 +725,7 @@ export function ArtistView({
             </section>
           )}
 
-          {/* 2. Featuring "Artist Name" (YouTube-made playlists) */}
+          {/* 3. Featuring "Artist Name" (YouTube-made playlists) */}
           {featuringPlaylists.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">
@@ -635,7 +746,7 @@ export function ArtistView({
             </section>
           )}
 
-          {/* 3. About Section (Card + Modal with Spotify Stats) */}
+          {/* 4. About Section (Card + Modal with Spotify Stats) */}
           <section className="flex flex-col gap-4">
             <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
             <div
@@ -655,11 +766,11 @@ export function ArtistView({
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
 
               <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-2">
-                {spotifyOverview?.monthlyListeners && (
+                {spotifyOverview?.monthlyListeners ? (
                   <span className="text-base font-bold text-white/95">
                     {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
                   </span>
-                )}
+                ) : null}
                 {spotifyOverview?.bio && (
                   <p className="line-clamp-3 text-sm text-white/80 leading-relaxed max-w-xl">
                     {spotifyOverview.bio}
@@ -669,7 +780,7 @@ export function ArtistView({
             </div>
           </section>
 
-          {/* 4. Discovered on (Mix of fanmade + YT music playlists) */}
+          {/* 5. Discovered on (Mix of fanmade + YT music playlists) */}
           {discoveredOnPlaylists.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Discovered on</h2>
@@ -688,7 +799,7 @@ export function ArtistView({
             </section>
           )}
 
-          {/* 5. Fans also like */}
+          {/* 6. Fans also like (Similar artists) */}
           {page?.fansAlsoLike && page.fansAlsoLike.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Fans also like</h2>
@@ -720,7 +831,7 @@ export function ArtistView({
             </section>
           )}
 
-          {/* 6. Appears on (Features with other artists) */}
+          {/* 7. Appears on (Features with other artists) */}
           {page?.appearsOn && page.appearsOn.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Appears on</h2>
