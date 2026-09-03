@@ -75,7 +75,7 @@ type Listener = () => void;
  * well past twenty seconds. This only bounds the *initial* fetch — a cached library returns at
  * once and refreshes in the background, where nothing is waiting on it.
  */
-const LIBRARY_REFRESH_TIMEOUT_MS = 120_000;
+const LIBRARY_REFRESH_TIMEOUT_MS = 15_000;
 const SIGN_IN_REFRESH_RETRY_DELAYS_MS = [0, 1_500, 5_000];
 /**
  * Silent recovery opens a hidden webview, so it is rate-limited rather than reflexive. Long

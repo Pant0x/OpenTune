@@ -262,13 +262,13 @@ export function HomePage({
         const homePage = await libraryController.getBrowsePage("home").catch(() => null);
         const ytShelves = homePage ? splitMixedShelves(homePage.shelves) : [];
 
-        // Build a map of sections from YT response
-        const mappedShelves: BrowseShelf[] = [];
+        // 1. First pass: immediate render of available YouTube shelves and quick-picks
+        const initialShelves: BrowseShelf[] = [];
+        const missingSections: StaticSectionDef[] = [];
 
         for (let i = 0; i < STATIC_HOME_SECTIONS.length; i++) {
           const sectionDef = STATIC_HOME_SECTIONS[i];
 
-          // 1. Quick picks is handled by suggestions/recent plays
           if (sectionDef.key === "quick-picks") {
             const ytQuickPicks = ytShelves.find(
               (s) =>
@@ -281,7 +281,7 @@ export function HomePage({
                 ? suggestions
                 : recentPlays;
 
-            mappedShelves.push({
+            initialShelves.push({
               title: sectionDef.title,
               tracks: tracks.slice(0, 20),
               albums: [],
@@ -292,11 +292,10 @@ export function HomePage({
             continue;
           }
 
-          // 2. From your library
           if (sectionDef.key === "from-library") {
             const libTracks = recentPlays.slice(0, 16);
             if (libTracks.length > 0) {
-              mappedShelves.push({
+              initialShelves.push({
                 title: sectionDef.title,
                 tracks: libTracks,
                 albums: [],
@@ -304,11 +303,10 @@ export function HomePage({
                 artists: [],
                 links: [],
               });
-              continue;
             }
+            continue;
           }
 
-          // 3. Look for existing match in YouTube shelves
           const lowerKey = sectionDef.title.toLowerCase();
           const existingYtShelf = ytShelves.find((s) => {
             const lowerTitle = s.title.toLowerCase();
@@ -326,7 +324,7 @@ export function HomePage({
             existingYtShelf.albums.length > 0 ||
             existingYtShelf.playlists.length > 0
           )) {
-            mappedShelves.push({
+            initialShelves.push({
               title: sectionDef.title,
               tracks: existingYtShelf.tracks,
               albums: existingYtShelf.albums,
@@ -334,49 +332,64 @@ export function HomePage({
               artists: existingYtShelf.artists,
               links: existingYtShelf.links,
             });
-            continue;
+          } else if (sectionDef.query) {
+            missingSections.push(sectionDef);
           }
+        }
 
-          // 4. Fetch fallback data for this static section
-          if (sectionDef.query) {
-            try {
-              const res = await searchController.search(sectionDef.query);
-              if (sectionDef.type === "albums" && res.albums.length > 0) {
-                mappedShelves.push({
-                  title: sectionDef.title,
+        if (!active) return;
+        // Deliver immediate layout so home view appears within milliseconds
+        if (initialShelves.length > 0) {
+          setHomeShelves(initialShelves);
+          setIsLoadingHomeShelves(false);
+        }
+
+        // 2. Background pass: hydrate missing sections concurrently with limit
+        if (missingSections.length > 0) {
+          const fallbackResults = await Promise.allSettled(
+            missingSections.slice(0, 6).map(async (sec) => {
+              const res = await searchController.search(sec.query);
+              if (sec.type === "albums" && res.albums.length > 0) {
+                return {
+                  title: sec.title,
                   tracks: [],
                   albums: res.albums,
                   playlists: [],
                   artists: [],
                   links: [],
-                });
-              } else if (sectionDef.type === "playlists" && res.playlists.length > 0) {
-                mappedShelves.push({
-                  title: sectionDef.title,
+                } as BrowseShelf;
+              } else if (sec.type === "playlists" && res.playlists.length > 0) {
+                return {
+                  title: sec.title,
                   tracks: [],
                   albums: [],
                   playlists: res.playlists,
                   artists: [],
                   links: [],
-                });
+                } as BrowseShelf;
               } else if (res.tracks.length > 0) {
-                mappedShelves.push({
-                  title: sectionDef.title,
+                return {
+                  title: sec.title,
                   tracks: res.tracks,
                   albums: [],
                   playlists: [],
                   artists: [],
                   links: [],
-                });
+                } as BrowseShelf;
               }
-            } catch {
-              // Ignore single section error
-            }
+              return null;
+            })
+          );
+
+          if (!active) return;
+          const extraShelves = fallbackResults
+            .filter((r): r is PromiseFulfilledResult<BrowseShelf | null> => r.status === "fulfilled" && r.value !== null)
+            .map((r) => r.value as BrowseShelf);
+
+          if (extraShelves.length > 0) {
+            setHomeShelves((prev) => [...prev, ...extraShelves]);
           }
         }
-
-        if (!active) return;
-        setHomeShelves(mappedShelves);
       } catch {
         // Fallback
       } finally {

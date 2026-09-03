@@ -18,7 +18,7 @@ import type {
   Track,
 } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
-import type { PlayerControllerActions } from "../../player/playerStore";
+import { searchController, type PlayerControllerActions } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { AlbumCard } from "../components/AlbumCard";
 import { ArtistLinks } from "../components/ArtistLinks";
@@ -29,12 +29,20 @@ import { TrackRow } from "../components/TrackRow";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
-import { formatCompactNumber } from "@/lib/utils";
+import { cn, formatCompactNumber } from "@/lib/utils";
+import { SpotifyService, type SpotifyArtistOverview, type SpotifyRelease } from "../../services/SpotifyService";
 
 type ReleaseFilter = "all" | "album" | "singles_eps";
 
 export function compactViews(track: Track): string {
   return formatCompactNumber(track.viewCount ?? track.viewCountText);
+}
+
+function formatDuration(totalSec?: number): string {
+  if (!totalSec || totalSec <= 0) return "";
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = Math.floor(totalSec % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function getArtistUrl(artist: Artist): string {
@@ -48,22 +56,8 @@ function getArtistUrl(artist: Artist): string {
 }
 
 /** How many of the artist's songs the Popular shelf shows before it is expanded. */
-const POPULAR_PREVIEW_COUNT = 6;
+const POPULAR_PREVIEW_COUNT = 10;
 
-/*
- * Last-resolved page per artist, for this session only.
- *
- * Only the active tab's view is mounted (see App.tsx), so switching tabs away from an artist and
- * back is a full unmount/remount — and `getArtist` is async even on a cache hit. Without this,
- * every remount reset `page` to null and repainted the header from the nav-prop `artist` alone,
- * which for the common case — arriving via ArtistLinks on a track/album row — is an
- * `{id, name}` stub with no artworkUrl at all: the avatar dropped to its placeholder every time
- * you came back, however briefly. Seeding from here instead means a remount of an artist you've
- * already viewed repaints instantly while the background refresh below catches it up.
- *
- * ponytail: unbounded for the session — an ArtistPage is small and even a long session visiting
- * hundreds of artists is a non-issue; add an eviction if that stops being true.
- */
 const artistPageMemory = new Map<string, ArtistPage>();
 
 export function ArtistView({
@@ -87,17 +81,7 @@ export function ArtistView({
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const { currentTrackId, isPlaying, isLoading: isPlayerLoading } = useNowPlaying();
-  /*
-   * Seeded from the remembered page, not always null.
-   *
-   * `useEffect` runs after the first paint, so setting this from inside the effect (as the
-   * artist-change branch below still needs to, for switching artists without unmounting) left a
-   * remount's very first frame — the one right after switching tabs back — rendering with
-   * nothing, before the effect caught it up a moment later. Whether that flash was visible
-   * depended on timing against the browser's paint, which is exactly an intermittent "sometimes
-   * shows, sometimes doesn't". Seeding here means a remounted, already-viewed artist has the
-   * right data on the very first render, flash or race no longer possible.
-   */
+
   const [page, setPage] = useState<ArtistPage | null>(
     () => (artist ? artistPageMemory.get(artist.id) ?? null : null),
   );
@@ -110,21 +94,20 @@ export function ArtistView({
   const [showAllReleases, setShowAllReleases] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  /*
-   * "personalized" is YouTube's default for a new subscription, and the artist page does not
-   * report the stored level — so this starts at the default and tracks whatever the user
-   * chooses here rather than claiming to know what the account already holds.
-   */
   const [notificationLevel, setNotificationLevel] =
     useState<ArtistNotificationLevel>("personalized");
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
+  // Spotify data
+  const [spotifyOverview, setSpotifyOverview] = useState<SpotifyArtistOverview | null>(null);
+  const [spotifyReleases, setSpotifyReleases] = useState<SpotifyRelease[]>([]);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+
   useEffect(() => {
     if (!artist) return;
     let active = true;
-    // Whatever this artist last resolved to, if anything — shown immediately while the fetch
-    // below refreshes it, rather than dropping back to the artwork-less nav stub.
+
     const remembered = artistPageMemory.get(artist.id) ?? null;
     setPage(remembered);
     setIsLoading(!remembered);
@@ -132,6 +115,8 @@ export function ArtistView({
     setFilter("all");
     setShowAllSongs(false);
     setShowAllReleases(false);
+
+    // Fetch YouTube Music artist page
     void libraryController.getArtist(artist.id, (updated) => {
       if (!active) return;
       setPage(updated);
@@ -143,16 +128,60 @@ export function ArtistView({
         artistPageMemory.set(artist.id, result);
       })
       .catch(() => {
-        // A remembered page is still good to show; only a cold load has nothing to fall back to.
         if (active && !remembered) setError("Unable to load this artist.");
       })
       .finally(() => {
         if (active) setIsLoading(false);
       });
+
+    // Fetch Spotify Overview & Discography in parallel (non-blocking)
+    const artistName = artist.name;
+    void SpotifyService.getArtistOverview(artistName)
+      .then((overview) => {
+        if (active && overview) {
+          setSpotifyOverview(overview);
+        }
+      })
+      .catch(() => {});
+
+    void SpotifyService.getArtistDiscography(artistName)
+      .then((releases) => {
+        if (active && releases.length > 0) {
+          setSpotifyReleases(releases);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
     };
   }, [artist, libraryController]);
+
+  const displayedArtist = page?.artist ?? artist;
+
+  // Merge YouTube Music releases with Spotify discography
+  const mergedReleases = useMemo(() => {
+    const ytReleases = page?.releases ?? [];
+    const existingTitles = new Set(ytReleases.map((r) => r.title.toLowerCase().trim()));
+
+    const extraSpotify: Album[] = [];
+    for (const sr of spotifyReleases) {
+      const clean = sr.name.toLowerCase().trim();
+      if (!existingTitles.has(clean)) {
+        existingTitles.add(clean);
+        extraSpotify.push({
+          id: `spotify:${sr.id}`,
+          title: sr.name,
+          artist: displayedArtist?.name || "",
+          artworkUrl: sr.coverUrl,
+          year: sr.year ? String(sr.year) : undefined,
+          releaseType: sr.type,
+        });
+      }
+    }
+
+    return [...ytReleases, ...extraSpotify];
+  }, [page?.releases, spotifyReleases, displayedArtist?.name]);
 
   const releaseFilters = useMemo(
     () => [
@@ -164,21 +193,19 @@ export function ArtistView({
   );
 
   const filteredReleases = useMemo(() => {
-    const all = page?.releases ?? [];
     if (filter === "album") {
-      return all.filter((r) => r.releaseType === "album");
+      return mergedReleases.filter((r) => r.releaseType === "album");
     }
     if (filter === "singles_eps") {
-      return all.filter((r) => r.releaseType === "single" || r.releaseType === "ep");
+      return mergedReleases.filter((r) => r.releaseType === "single" || r.releaseType === "ep");
     }
-    return all;
-  }, [page?.releases, filter]);
+    return mergedReleases;
+  }, [mergedReleases, filter]);
 
   const visibleReleases = useMemo(() => {
-    return showAllReleases ? filteredReleases : filteredReleases.slice(0, 8);
+    return showAllReleases ? filteredReleases : filteredReleases.slice(0, 10);
   }, [filteredReleases, showAllReleases]);
 
-  const displayedArtist = page?.artist ?? artist;
   const subCount = displayedArtist?.subscriberCount || page?.artist.subscriberCount;
   const formattedSubCount = useMemo(() => {
     if (!subCount) return undefined;
@@ -187,17 +214,39 @@ export function ArtistView({
     const cleaned = subCount.trim();
     return cleaned.toLowerCase().includes("subscriber") ? cleaned : `${cleaned} subscribers`;
   }, [subCount]);
-  /*
-   * Six is all `popularSongs` ever holds — the data source caps it there when it enriches them
-   * with view counts. The rest of the artist's catalogue is already fetched and sitting in
-   * `allSongs`, so expanding costs a render rather than a round trip.
-   */
+
   const allSongs = page?.allSongs ?? [];
   const popularSongs = showAllSongs
     ? allSongs
-    : (page?.popularSongs.slice(0, POPULAR_PREVIEW_COUNT) ?? []);
-  // Hidden when the shelf was unavailable, in which case `allSongs` falls back to these six.
+    : (page?.popularSongs && page.popularSongs.length > 0
+      ? page.popularSongs.slice(0, POPULAR_PREVIEW_COUNT)
+      : allSongs.slice(0, POPULAR_PREVIEW_COUNT));
   const hiddenSongCount = allSongs.length - popularSongs.length;
+
+  // Separate Featuring playlists and Discovered On playlists
+  const featuringPlaylists = useMemo(() => {
+    const list = page?.playlists ?? [];
+    const artistNameLower = (displayedArtist?.name || "").toLowerCase();
+    return list.filter((p) => {
+      const lower = p.title.toLowerCase();
+      const ownerLower = (p.owner || "").toLowerCase();
+      return (
+        lower.includes("featuring") ||
+        lower.includes("this is") ||
+        lower.includes("best of") ||
+        lower.includes(artistNameLower) ||
+        ownerLower.includes("youtube")
+      );
+    });
+  }, [page?.playlists, displayedArtist?.name]);
+
+  const discoveredOnPlaylists = useMemo(() => {
+    const base = page?.discoveredOn ?? [];
+    if (base.length > 0) return base;
+    const list = page?.playlists ?? [];
+    const featSet = new Set(featuringPlaylists.map((p) => p.id));
+    return list.filter((p) => !featSet.has(p.id));
+  }, [page?.discoveredOn, page?.playlists, featuringPlaylists]);
 
   useEffect(() => {
     setIsSubscribed(page?.subscribed ?? false);
@@ -234,10 +283,6 @@ export function ArtistView({
     if (songs[0]) void playerController.playTrackById(songs[0].id, songs);
   };
 
-  /*
-   * Queued in its listed order with shuffle switched on afterwards, not pre-shuffled — so the
-   * player bar's toggle reflects reality, and turning shuffle off restores the original order.
-   */
   const playShuffled = async () => {
     const songs = page?.allSongs ?? [];
     const firstTrack = shuffleTracks(songs)[0];
@@ -247,13 +292,6 @@ export function ArtistView({
     playerController.setShuffleEnabled(true);
   };
 
-  /**
-   * Changes how often YouTube notifies about this artist.
-   *
-   * Optimistic, and deliberately so: YouTube does not report the current level on the artist
-   * page, so local state is the only record of the choice within a session. A failure puts the
-   * previous value back rather than leaving the control showing something that was refused.
-   */
   const changeNotificationLevel = async (level: ArtistNotificationLevel) => {
     const previous = notificationLevel;
     setNotificationLevel(level);
@@ -281,8 +319,6 @@ export function ArtistView({
     try {
       await libraryController.setArtistSubscribed(displayedArtist, nextSubscribed);
       setIsSubscribed(nextSubscribed);
-      // Unsubscribing drops the preference server-side; showing the old level after
-      // resubscribing would claim a setting that no longer exists.
       if (!nextSubscribed) setNotificationLevel("personalized");
     } catch (subscribeError) {
       showToast(
@@ -305,7 +341,8 @@ export function ArtistView({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10 pb-16">
+      {/* Header Section */}
       <MediaHeader
         eyebrow={displayedArtist.isCreator || page?.isCreator ? "CREATOR" : "ARTIST"}
         title={
@@ -324,33 +361,29 @@ export function ArtistView({
           </button>
         }
         meta={
-          formattedSubCount ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              {formattedSubCount}
-            </span>
-          ) : undefined
+          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            {spotifyOverview?.monthlyListeners ? (
+              <span className="text-foreground/90 font-medium">
+                {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
+              </span>
+            ) : formattedSubCount ? (
+              <span>{formattedSubCount}</span>
+            ) : null}
+            {spotifyOverview?.monthlyListeners && formattedSubCount && (
+              <>
+                <span>•</span>
+                <span>{formattedSubCount}</span>
+              </>
+            )}
+          </div>
         }
         circularArtwork
-        /* Supplied even though artworkSlot draws the image: MediaHeader publishes this to
-           the ambient store, which is what tints the chrome above the page. */
-        artworkUrl={displayedArtist.artworkUrl}
-        /*
-         * The same component every other cover in the app uses. Its own ladder ends by
-         * refetching the image through Tauri and painting the bytes, which is what rescues a
-         * url the webview refuses to load directly — the hand-rolled <img> here had no such
-         * step, and looped back to the first candidate forever once they had all failed.
-         *
-         * preferProxy: an artist portrait is a googleusercontent URL far more often than not,
-         * and those routinely refuse the webview's own referer. The direct ladder stays as a
-         * live fallback either way — this only starts the Rust proxy racing it immediately
-         * instead of waiting for the (likely) direct failures first, so switching away mid
-         * resolution no longer meant the avatar was still mid-walk whenever you came back.
-         */
+        artworkUrl={displayedArtist.artworkUrl || spotifyOverview?.avatarUrl}
         artworkSlot={
           <TrackArtwork
             className="size-44 shrink-0 rounded-full bg-card shadow-2xl ring-1 ring-white/10"
             size={544}
-            artworkUrl={displayedArtist.artworkUrl}
+            artworkUrl={displayedArtist.artworkUrl || spotifyOverview?.avatarUrl}
             iconSize={72}
             variant="artist"
             loading="eager"
@@ -370,9 +403,15 @@ export function ArtistView({
           if (songs.length > 0) openPlaylistPicker(songs[0], songs);
         }}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            {/* Themed Subscribe button: Red before sub, Neutral when subbed */}
             <button
-              className="flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className={cn(
+                "flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-200 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                isSubscribed
+                  ? "bg-card text-foreground hover:bg-muted"
+                  : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95",
+              )}
               type="button"
               disabled={isLoading || Boolean(error) || isSubscribing}
               onClick={() => void toggleArtistSubscription()}
@@ -391,11 +430,6 @@ export function ArtistView({
               </span>
             </button>
 
-            {/*
-              Only while subscribed: YouTube stores the preference against the subscription and
-              discards it when that goes away, so offering the control otherwise would accept a
-              choice it then silently drops.
-            */}
             {isSubscribed && (
               <Select
                 className="w-44"
@@ -417,53 +451,50 @@ export function ArtistView({
         }
       />
 
-      {/*
-       * Section headings stay in place — only the rows/cards under them are placeholders. The
-       * release-type filter is left out here rather than shown empty: it lists whichever
-       * types this artist actually has (`releaseFilters`), which is not known before `page`
-       * arrives, so there is nothing honest to render there yet.
-       */}
       {isLoading && (
         <div className="flex flex-col gap-8">
           <section className="flex flex-col gap-3">
-            <h2>Popular</h2>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Popular</h2>
             <TrackListSkeleton count={POPULAR_PREVIEW_COUNT} label="Loading top songs" />
           </section>
-          {/*
-            Releases has no fixed preview count — unlike Popular, every release the artist has
-            is shown. `AlbumGridSkeleton`'s own default is what "Listen again"/"More
-            recommendations" on Home use for the same reason: a guess at one row, not a real
-            number to match.
-          */}
           <section className="flex flex-col gap-3">
-            <h2>Releases</h2>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Discography</h2>
             <AlbumGridSkeleton label="Loading releases" />
           </section>
         </div>
       )}
+
       {error && <p className="px-2 py-10 text-center text-sm text-muted-foreground">{error}</p>}
 
-      {!isLoading && !error && page && (
+      {!isLoading && !error && (
         <>
+          {/* 100-Song Head / Popular Tracks */}
           {popularSongs.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2>Popular</h2>
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Popular</h2>
               <div className="flex flex-col gap-0.5">
                 {popularSongs.map((track, index) => (
                   <TrackRow
                     key={track.id}
                     track={track}
                     index={index}
+                    showIndex
+                    showArtwork
                     showAlbum
                     isCurrent={currentTrackId !== null && track.id === currentTrackId}
                     isPlaying={isPlaying && track.id === currentTrackId}
                     suppressArtistId={displayedArtist.id}
                     trailing={
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {compactViews(track)}
-                      </span>
+                      <div className="flex items-center gap-6 shrink-0 text-xs tabular-nums text-muted-foreground ml-auto pr-2">
+                        <span className="w-24 text-right hidden sm:inline-block">
+                          {track.viewCount ? Number(track.viewCount).toLocaleString() : compactViews(track)}
+                        </span>
+                        <span className="w-12 text-right">
+                          {track.durationSec ? formatDuration(track.durationSec) : ""}
+                        </span>
+                      </div>
                     }
-                    onSelect={() => void playerController.playTrackById(track.id, page.allSongs)}
+                    onSelect={() => void playerController.playTrackById(track.id, page?.allSongs ?? popularSongs)}
                     showDownload
                     showRating
                     onQuickAddToQueue={() => playerController.addToQueue(track)}
@@ -478,7 +509,7 @@ export function ArtistView({
                   type="button"
                   onClick={() => setShowAllSongs((current) => !current)}
                   aria-expanded={showAllSongs}
-                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer mt-1"
                 >
                   {showAllSongs ? "Show less" : `Show all ${allSongs.length} songs`}
                 </button>
@@ -486,21 +517,26 @@ export function ArtistView({
             </section>
           )}
 
-          {page.releases.length > 0 && (
-            <section className="flex flex-col gap-3">
+          {/* 1. Discography (YouTube Music + Spotify releases) */}
+          {mergedReleases.length > 0 && (
+            <section className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <button
                   type="button"
-                  onClick={() => onOpenDiscography?.(displayedArtist, page.releases)}
+                  onClick={() => onOpenDiscography?.(displayedArtist, mergedReleases)}
                   className="group/discog flex items-center gap-1.5 text-left focus-visible:outline-none hover:underline cursor-pointer"
                   title={`View full ${displayedArtist.name} discography`}
                 >
-                  <h2 className="group-hover/discog:text-foreground">Discography</h2>
-                  <span className="text-muted-foreground text-sm transition-transform group-hover/discog:translate-x-0.5">›</span>
+                  <h2 className="text-xl font-bold tracking-tight text-foreground group-hover/discog:text-foreground">
+                    Discography
+                  </h2>
+                  <span className="text-muted-foreground text-sm transition-transform group-hover/discog:translate-x-0.5">
+                    ›
+                  </span>
                 </button>
 
                 <div
-                  className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring"
+                  className="flex flex-wrap items-center gap-1.5 self-start [&>button]:flex [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-center [&>button]:gap-1.5 [&>button]:rounded-full [&>button]:bg-white/[0.04] [&>button]:px-3 [&>button]:text-sm [&>button]:font-medium [&>button]:text-muted-foreground [&>button]:transition-colors hover:[&>button]:bg-white/[0.08] hover:[&>button]:text-foreground focus-visible:[&>button]:outline-none focus-visible:[&>button]:ring-2 focus-visible:[&>button]:ring-ring cursor-pointer"
                   role="group"
                   aria-label="Release type"
                 >
@@ -517,42 +553,145 @@ export function ArtistView({
                   ))}
                 </div>
               </div>
+
               <div key={filter} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {visibleReleases.map((release) => {
                   const hasLinkedArtists = Boolean(release.artists?.length);
-                  const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
-                  const subtitleText = release.year ? `${release.year} • ${releaseTypeLabel}` : (release.releaseType ? releaseTypeLabel : release.artist);
+                  const releaseTypeLabel =
+                    release.releaseType === "ep"
+                      ? "EP"
+                      : release.releaseType === "single"
+                        ? "Single"
+                        : "Album";
+                  const subtitleText = release.year
+                    ? `${release.year} • ${releaseTypeLabel}`
+                    : (release.releaseType ? releaseTypeLabel : release.artist);
+
                   return (
                     <div key={release.id}>
                       <AlbumCard
                         artworkUrl={release.artworkUrl}
                         title={release.title}
                         subtitle={hasLinkedArtists ? undefined : subtitleText}
-                        subtitleContent={hasLinkedArtists
-                          ? (
-                              <span className="truncate">
-                                {release.year ? `${release.year} • ` : ""}
-                                <ArtistLinks
-                                  artists={release.artists}
-                                  fallback={release.artist}
-                                  suppressArtistId={displayedArtist.id}
-                                />
-                              </span>
-                            )
-                          : undefined}
-                        onClick={() => onOpenAlbum(release)}
+                        subtitleContent={
+                          hasLinkedArtists ? (
+                            <span className="truncate">
+                              {release.year ? `${release.year} • ` : ""}
+                              <ArtistLinks
+                                artists={release.artists}
+                                fallback={release.artist}
+                                suppressArtistId={displayedArtist.id}
+                              />
+                            </span>
+                          ) : undefined
+                        }
+                        onClick={() => {
+                          if (release.id.startsWith("spotify:")) {
+                            // Search or open title on YT music
+                            void searchController.search(release.title).then((res) => {
+                              if (res.albums[0]) onOpenAlbum(res.albums[0]);
+                            });
+                          } else {
+                            onOpenAlbum(release);
+                          }
+                        }}
                         onContextMenu={(event) => openAlbumMenu(event, release)}
                       />
                     </div>
                   );
                 })}
               </div>
+
+              {filteredReleases.length > 10 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllReleases((current) => !current)}
+                  className="self-start rounded-full bg-white/[0.04] px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/[0.08] hover:text-foreground cursor-pointer"
+                >
+                  {showAllReleases ? "Show less releases" : `Show all ${filteredReleases.length} releases`}
+                </button>
+              )}
             </section>
           )}
 
-          {page.fansAlsoLike && page.fansAlsoLike.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2>Fans also like</h2>
+          {/* 2. Featuring "Artist Name" (YouTube-made playlists) */}
+          {featuringPlaylists.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">
+                Featuring {displayedArtist.name}
+              </h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {featuringPlaylists.map((playlist) => (
+                  <AlbumCard
+                    key={playlist.id}
+                    artworkUrl={playlist.artworkUrl}
+                    title={playlist.title}
+                    subtitle={playlist.owner || "YouTube Music"}
+                    onClick={() => onOpenPlaylist(playlist)}
+                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 3. About Section (Card + Modal with Spotify Stats) */}
+          <section className="flex flex-col gap-4">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
+            <div
+              onClick={() => setIsAboutModalOpen(true)}
+              className="group relative h-80 w-full max-w-2xl cursor-pointer overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-2xl hover:ring-1 hover:ring-white/20"
+            >
+              <img
+                src={
+                  spotifyOverview?.headerUrl ||
+                  spotifyOverview?.galleryUrls?.[0] ||
+                  spotifyOverview?.avatarUrl ||
+                  displayedArtist.artworkUrl
+                }
+                alt={displayedArtist.name}
+                className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+
+              <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-2">
+                {spotifyOverview?.monthlyListeners && (
+                  <span className="text-base font-bold text-white/95">
+                    {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
+                  </span>
+                )}
+                {spotifyOverview?.bio && (
+                  <p className="line-clamp-3 text-sm text-white/80 leading-relaxed max-w-xl">
+                    {spotifyOverview.bio}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* 4. Discovered on (Mix of fanmade + YT music playlists) */}
+          {discoveredOnPlaylists.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Discovered on</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {discoveredOnPlaylists.map((playlist) => (
+                  <AlbumCard
+                    key={playlist.id}
+                    artworkUrl={playlist.artworkUrl}
+                    title={playlist.title}
+                    subtitle={playlist.owner || "Playlist"}
+                    onClick={() => onOpenPlaylist(playlist)}
+                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 5. Fans also like */}
+          {page?.fansAlsoLike && page.fansAlsoLike.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Fans also like</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {page.fansAlsoLike.map((similarArtist) => (
                   <div
@@ -581,8 +720,9 @@ export function ArtistView({
             </section>
           )}
 
-          {page.appearsOn && page.appearsOn.length > 0 && (
-            <section className="flex flex-col gap-3">
+          {/* 6. Appears on (Features with other artists) */}
+          {page?.appearsOn && page.appearsOn.length > 0 && (
+            <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Appears on</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {page.appearsOn.map((album) => (
@@ -598,46 +738,147 @@ export function ArtistView({
               </div>
             </section>
           )}
-
-          {page.discoveredOn && page.discoveredOn.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xl font-bold tracking-tight text-foreground">Discovered on</h2>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.discoveredOn.map((playlist) => (
-                  <AlbumCard
-                    key={playlist.id}
-                    artworkUrl={playlist.artworkUrl}
-                    title={playlist.title}
-                    subtitle={playlist.owner || "Playlist • YouTube Music"}
-                    onClick={() => onOpenPlaylist(playlist)}
-                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {page.playlists.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2>Playlists</h2>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.playlists.map((playlist) => (
-                  <AlbumCard
-                    key={playlist.id}
-                    artworkUrl={playlist.artworkUrl}
-                    title={playlist.title}
-                    subtitle={playlist.owner}
-                    onClick={() => onOpenPlaylist(playlist)}
-                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
         </>
       )}
+
+      {/* About Modal */}
+      {isAboutModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          onClick={() => setIsAboutModalOpen(false)}
+        >
+          <div
+            className="relative flex flex-col max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-2xl text-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Close Button */}
+            <button
+              onClick={() => setIsAboutModalOpen(false)}
+              className="absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-black/90 transition-colors cursor-pointer"
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
+
+            {/* Hero Image */}
+            <div className="relative h-64 w-full shrink-0 overflow-hidden bg-zinc-950">
+              <img
+                src={
+                  spotifyOverview?.headerUrl ||
+                  spotifyOverview?.galleryUrls?.[0] ||
+                  spotifyOverview?.avatarUrl ||
+                  displayedArtist.artworkUrl
+                }
+                alt={displayedArtist.name}
+                className="h-full w-full object-cover object-center"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+            </div>
+
+            {/* Scrollable Content Body */}
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+                {/* Left Column: Stats & Cities & Socials */}
+                <div className="md:col-span-2 flex flex-col gap-6">
+                  {/* Monthly Listeners */}
+                  <div>
+                    <div className="text-3xl font-extrabold text-white tracking-tight">
+                      {spotifyOverview?.monthlyListeners
+                        ? spotifyOverview.monthlyListeners.toLocaleString()
+                        : subCount || "—"}
+                    </div>
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-1">
+                      Monthly Listeners
+                    </div>
+                  </div>
+
+                  {/* Followers */}
+                  {spotifyOverview?.followers ? (
+                    <div>
+                      <div className="text-2xl font-bold text-white/90">
+                        {spotifyOverview.followers.toLocaleString()}
+                      </div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-1">
+                        Followers
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* World Rank */}
+                  {spotifyOverview?.worldRank ? (
+                    <div className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+                      #{spotifyOverview.worldRank} in the world
+                    </div>
+                  ) : null}
+
+                  {/* Top Cities */}
+                  {spotifyOverview?.topCities && spotifyOverview.topCities.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Top Cities
+                      </div>
+                      <div className="flex flex-col gap-2.5">
+                        {spotifyOverview.topCities.map((city, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-white/90">
+                              {city.city}, {city.country}
+                            </span>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {city.numberOfListeners.toLocaleString()} listeners
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Instagram Social Link */}
+                  {spotifyOverview?.instagramUrl && (
+                    <a
+                      href={spotifyOverview.instagramUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 self-start text-xs font-semibold text-muted-foreground hover:text-white transition-colors"
+                    >
+                      <span>Instagram</span>
+                      <span className="text-xs">↗</span>
+                    </a>
+                  )}
+                </div>
+
+                {/* Right Column: Bio & Posted By Avatar */}
+                <div className="md:col-span-3 flex flex-col justify-between gap-6">
+                  <div className="space-y-4">
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
+                      {spotifyOverview?.bio || "No biography available for this artist."}
+                    </p>
+                  </div>
+
+                  {/* "Posted by [Artist Name]" */}
+                  <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                    <img
+                      src={spotifyOverview?.avatarUrl || displayedArtist.artworkUrl}
+                      alt={displayedArtist.name}
+                      className="size-10 rounded-full object-cover ring-1 ring-white/20"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">Posted By</span>
+                      <span className="text-sm font-semibold text-white">{displayedArtist.name}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {toast && createPortal(
-        <div className="fixed bottom-28 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full bg-popover/95 px-4 py-2 text-sm text-foreground shadow-2xl backdrop-blur" role="status">
+        <div
+          className="fixed bottom-28 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full bg-popover/95 px-4 py-2 text-sm text-foreground shadow-2xl backdrop-blur"
+          role="status"
+        >
           {toast === "Url copied to clipboard" && (
             <CheckIcon size={18} aria-hidden="true" />
           )}

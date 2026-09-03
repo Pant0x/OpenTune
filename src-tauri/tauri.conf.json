@@ -15,8 +15,8 @@
       {
         "title": "Amber",
         "decorations": false,
-        "transparent": true,
-        "shadow": false,
+        "transparent": false,
+        "shadow": true,
         "width": 1280,
         "height": 720,
         "minWidth": 960,

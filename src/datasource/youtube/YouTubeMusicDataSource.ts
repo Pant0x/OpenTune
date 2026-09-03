@@ -3742,14 +3742,8 @@ export class YouTubeMusicDataSource extends DataSource {
   ): Promise<ArtistPage> {
     const cacheKey = this.getArtistCacheKey(artistId);
     const cached = await getCachedJson<ArtistPage>(cacheKey);
-    const hasFullSections = Boolean(
-      cached &&
-      Array.isArray(cached.appearsOn) &&
-      Array.isArray(cached.discoveredOn) &&
-      (cached.appearsOn.length > 0 || cached.discoveredOn.length > 0)
-    );
 
-    if (cached && hasFullSections) {
+    if (cached && cached.artist) {
       const refreshedAt = this.artistRefreshedAt.get(artistId) ?? 0;
       if (Date.now() - refreshedAt >= ARTIST_REFRESH_COOLDOWN_MS) {
         globalThis.setTimeout(() => {
@@ -4144,104 +4138,97 @@ export class YouTubeMusicDataSource extends DataSource {
           .filter((item): item is Track => Boolean(item)),
       );
     }
-    if (artistPage.getAlbums) {
-      try {
-        let fullAlbums = await artistPage.getAlbums();
-        let albumPageCount = 0;
-        while (fullAlbums && albumPageCount < 10) {
-          if (fullAlbums?.contents) {
-            releases.push(
-              ...(fullAlbums.contents as MusicItem[])
-                .map((item) => this.toAlbum(item))
-                .filter((item): item is Album => Boolean(item))
-                .map((a) => ({ ...a, releaseType: "album" as const })),
-            );
+    // Run album, single, and all-songs continuations concurrently with bounded limits
+    const [albumsResult, singlesResult, allSongsResult] = await Promise.allSettled([
+      (async () => {
+        if (!artistPage.getAlbums) return [];
+        const result: Album[] = [];
+        try {
+          let fullAlbums = await artistPage.getAlbums();
+          let count = 0;
+          while (fullAlbums && count < 3) {
+            if (fullAlbums?.contents) {
+              result.push(
+                ...(fullAlbums.contents as MusicItem[])
+                  .map((item) => this.toAlbum(item))
+                  .filter((item): item is Album => Boolean(item))
+                  .map((a) => ({ ...a, releaseType: "album" as const })),
+              );
+            }
+            if (fullAlbums.has_continuation && typeof fullAlbums.getContinuation === "function" && count < 2) {
+              fullAlbums = await fullAlbums.getContinuation();
+              count++;
+            } else {
+              break;
+            }
           }
-          if (fullAlbums.has_continuation && typeof fullAlbums.getContinuation === "function") {
-            fullAlbums = await fullAlbums.getContinuation();
-            albumPageCount++;
-          } else {
-            break;
-          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
-    }
-    if (artistPage.getSingles) {
-      try {
-        let fullSingles = await artistPage.getSingles();
-        let singlePageCount = 0;
-        while (fullSingles && singlePageCount < 10) {
-          if (fullSingles?.contents) {
-            releases.push(
-              ...(fullSingles.contents as MusicItem[])
-                .map((item) => this.toAlbum(item))
-                .filter((item): item is Album => Boolean(item))
-                .map((a) => ({ ...a, releaseType: "single" as const })),
-            );
+        return result;
+      })(),
+      (async () => {
+        if (!artistPage.getSingles) return [];
+        const result: Album[] = [];
+        try {
+          let fullSingles = await artistPage.getSingles();
+          let count = 0;
+          while (fullSingles && count < 3) {
+            if (fullSingles?.contents) {
+              result.push(
+                ...(fullSingles.contents as MusicItem[])
+                  .map((item) => this.toAlbum(item))
+                  .filter((item): item is Album => Boolean(item))
+                  .map((a) => ({ ...a, releaseType: "single" as const })),
+              );
+            }
+            if (fullSingles.has_continuation && typeof fullSingles.getContinuation === "function" && count < 2) {
+              fullSingles = await fullSingles.getContinuation();
+              count++;
+            } else {
+              break;
+            }
           }
-          if (fullSingles.has_continuation && typeof fullSingles.getContinuation === "function") {
-            fullSingles = await fullSingles.getContinuation();
-            singlePageCount++;
-          } else {
-            break;
-          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
-    }
-    if (releases.length === 0) {
-      releases.push(
-        ...responseItems
-          .filter((item) => item.item_type === "album")
-          .map((item) => this.toAlbum(item))
-          .filter((item): item is Album => Boolean(item))
-          .map((album) => ({ ...album, releaseType: "album" as const })),
-      );
-    }
-    if (playlists.length === 0) {
-      playlists.push(
-        ...responseItems
-          .filter((item) => item.item_type === "playlist")
-          .map((item) => this.toPlaylist(item))
-          .filter((item): item is Playlist => Boolean(item)),
-      );
-    }
-    if (fansAlsoLike.length === 0) {
-      fansAlsoLike.push(
-        ...responseItems
-          .filter((item) => item.item_type === "artist")
-          .map((item) => this.toArtist(item))
-          .filter((item): item is Artist => Boolean(item && item.id !== artistId)),
-      );
-    }
+        return result;
+      })(),
+      (async () => {
+        if (!artistPage.getAllSongs) return [];
+        const result: Track[] = [];
+        try {
+          let allSongShelf = await artistPage.getAllSongs();
+          let count = 0;
+          while (allSongShelf && result.length < 100 && count < 5) {
+            if (allSongShelf.contents) {
+              const batch = (allSongShelf.contents as unknown as MusicItem[])
+                .map((item) => this.toTrack(item))
+                .filter((item): item is Track => Boolean(item));
+              result.push(...batch);
+            }
+            if (result.length >= 100) break;
+            if (allSongShelf.has_continuation && typeof allSongShelf.getContinuation === "function") {
+              allSongShelf = await allSongShelf.getContinuation();
+              count++;
+            } else {
+              break;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return result;
+      })(),
+    ]);
 
-    let allSongsList: Track[] = [];
-    try {
-      let allSongShelf = await artistPage.getAllSongs();
-      let songPageCount = 0;
-      while (allSongShelf && songPageCount < 15) {
-        if (allSongShelf.contents) {
-          const batch = (allSongShelf.contents as unknown as MusicItem[])
-            .map((item) => this.toTrack(item))
-            .filter((item): item is Track => Boolean(item));
-          allSongsList.push(...batch);
-        }
-        if (allSongShelf.has_continuation && typeof allSongShelf.getContinuation === "function") {
-          allSongShelf = await allSongShelf.getContinuation();
-          songPageCount++;
-        } else {
-          break;
-        }
-      }
-    } catch (error) {
-      logInternalWarn("YouTubeMusicDataSource.fetchArtistFresh all songs unavailable", {
-        artistId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (albumsResult.status === "fulfilled" && albumsResult.value.length > 0) {
+      releases.push(...albumsResult.value);
     }
+    if (singlesResult.status === "fulfilled" && singlesResult.value.length > 0) {
+      releases.push(...singlesResult.value);
+    }
+    let allSongsList: Track[] = allSongsResult.status === "fulfilled" ? allSongsResult.value : [];
     let allSongs = allSongsList.length > 0 ? allSongsList : popularSongs;
 
     let isCreator = false;

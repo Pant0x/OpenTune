@@ -16,7 +16,6 @@ import { hydrateTraySettings } from "./ui/settings/tray";
 import { hydrateMediaSessionSettings } from "./ui/settings/mediaSession";
 import { hydrateAudioQualitySettings } from "./internal/audioQuality";
 import { hydrateAudioEngineMode } from "./ui/settings/audioEngine";
-import { hydrateEqualizer } from "./ui/settings/equalizer";
 import { hydrateHiddenPlaylists } from "./ui/settings/hiddenPlaylists";
 import { hydrateOutputDevice } from "./ui/settings/audioOutputDevice";
 import { hydrateYouTubeAccountSettings } from "./ui/settings/youtubeAccount";
@@ -70,8 +69,6 @@ void Promise.all([
   hydrateTraySettings(),
   hydrateAudioQualitySettings(),
   hydrateAudioEngineMode(),
-  // Rust starts flat every launch, so the stored curve has to be pushed back down.
-  hydrateEqualizer(),
   hydrateHiddenPlaylists(),
   // Same reason: a fresh Rust process opens the OS default device until told otherwise.
   hydrateOutputDevice(),

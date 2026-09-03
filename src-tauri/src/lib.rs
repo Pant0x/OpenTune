@@ -48,7 +48,6 @@ mod linux_media;
 mod audio;
 mod process_memory;
 mod discord_rpc;
-mod equalizer;
 mod opus_source;
 
 // Keep the legacy service name so existing sign-in credentials survive the product rename.
@@ -3228,7 +3227,6 @@ const AUDIO_MIN_CHUNK_BYTES: u64 = 512 * 1024;
  * so whatever the first chunk weighs is exactly how long a click waits for sound. Sizing it
  * like the others meant ~700 KB before the first note; this is enough to decode a header.
  */
-const AUDIO_HEAD_CHUNK_BYTES: usize = 128 * 1024;
 
 /**
  * The two ranges a *playback* body is fetched in: a small head, then all the rest.
@@ -3247,10 +3245,13 @@ fn playback_ranges(total: usize) -> Vec<(usize, usize)> {
     if total == 0 {
         return Vec::new();
     }
-    let head = AUDIO_HEAD_CHUNK_BYTES.min(total);
-    let mut ranges = vec![(0, head - 1)];
-    if head < total {
-        ranges.push((head, total - 1));
+    const PLAYBACK_CHUNK_SIZE: usize = 512 * 1024;
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start < total {
+        let end = (start + PLAYBACK_CHUNK_SIZE - 1).min(total - 1);
+        ranges.push((start, end));
+        start = end + 1;
     }
     ranges
 }
@@ -4213,10 +4214,10 @@ async fn native_audio_load(
          * most of playback rather than an edge case.
          */
         if opus_source::is_opus(&mime_type) {
-            return opus_source::OpusSource::new(reader, &mime_type).map(equalized);
+            return opus_source::OpusSource::new(reader, &mime_type).map(wrap_source);
         }
         rodio::Decoder::new(reader)
-            .map(equalized)
+            .map(wrap_source)
             .map_err(|error| format!("audio decode failed: {error}"))
     })
     .await
@@ -4301,31 +4302,12 @@ async fn native_audio_load(
  * The duration is read *before* wrapping: it is what the caller reports back to the frontend,
  * and reading it through two adapters is one more place for it to go missing.
  */
-fn equalized<S>(source: S) -> (audio::BoxedSource, Option<f64>)
+fn wrap_source<S>(source: S) -> (audio::BoxedSource, Option<f64>)
 where
     S: rodio::Source + Send + 'static,
 {
-    use rodio::Source as _;
     let duration = source.total_duration().map(|value| value.as_secs_f64());
-    let shaped = equalizer::EqualizedSource::new(source).limit(rodio::source::LimitSettings::new());
-    (Box::new(shaped) as audio::BoxedSource, duration)
-}
-
-/// The ten band gains and the preamp, in dB. Applies to whatever is playing, immediately.
-#[tauri::command]
-fn native_audio_set_equalizer(preamp_db: f32, bands_db: Vec<f32>) -> Result<(), CommandError> {
-    if bands_db.len() != equalizer::BAND_COUNT {
-        return Err(cache_error(format!(
-            "equaliser expects {} bands, got {}",
-            equalizer::BAND_COUNT,
-            bands_db.len()
-        )));
-    }
-    let mut values =
-        equalizer::EqualizerValues { preamp_db, bands_db: [0.0; equalizer::BAND_COUNT] };
-    values.bands_db.copy_from_slice(&bands_db);
-    equalizer::set_values(values);
-    Ok(())
+    (Box::new(source) as audio::BoxedSource, duration)
 }
 
 #[tauri::command]
@@ -5458,7 +5440,6 @@ pub fn run() {
             native_audio_has_standby,
             native_audio_drop_standby,
             native_audio_drop_active,
-            native_audio_set_equalizer,
             native_audio_list_output_devices,
             native_audio_set_output_device,
             media_server_release,
