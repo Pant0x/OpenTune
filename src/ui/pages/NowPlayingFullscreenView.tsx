@@ -12,6 +12,7 @@ import {
   PlayActiveIcon,
   QueuePanelIcon,
   QuitFullScreenIcon,
+  RefreshIcon,
   RepeatActiveIcon,
   RepeatIcon,
   RepeatOneActiveIcon,
@@ -107,9 +108,14 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
+  const [isLyricsSyncLocked, setIsLyricsSyncLocked] = useState(true);
   const lyricsScrollerRef = useRef<HTMLDivElement>(null);
   const lyricsLineRefs = useRef<Array<HTMLElement | null>>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsLyricsSyncLocked(true);
+  }, [track?.id]);
 
   // Check initial OS fullscreen
   useEffect(() => {
@@ -242,13 +248,24 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     const index = findActiveLineIndex(lines, currentTime);
     setActiveLyricIndex(index);
 
-    if (index >= 0 && lyricsLineRefs.current[index]) {
+    // Only auto-scroll when user has not manually scrolled away
+    if (isLyricsSyncLocked && index >= 0 && lyricsLineRefs.current[index]) {
       lyricsLineRefs.current[index]?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
     }
-  }, [viewMode, lyrics, currentTime]);
+  }, [viewMode, lyrics, currentTime, isLyricsSyncLocked]);
+
+  const handleResyncLyrics = () => {
+    setIsLyricsSyncLocked(true);
+    if (activeLyricIndex >= 0 && lyricsLineRefs.current[activeLyricIndex]) {
+      lyricsLineRefs.current[activeLyricIndex]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  };
 
   const displayedTime = isSeeking ? seekTime : currentTime;
   const duration = track?.durationSec || 100;
@@ -430,6 +447,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                 className="relative h-full w-full overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 ref={lyricsScrollerRef}
                 onWheel={(e) => {
+                  setIsLyricsSyncLocked(false);
                   const el = e.currentTarget;
                   if (e.deltaY > 0 && el.scrollHeight - el.scrollTop - el.clientHeight < 20) {
                     containerRef.current?.scrollBy({ top: e.deltaY, behavior: "auto" });
@@ -499,6 +517,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                 className="relative h-full lg:col-span-7 overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 ref={lyricsScrollerRef}
                 onWheel={(e) => {
+                  setIsLyricsSyncLocked(false);
                   const el = e.currentTarget;
                   if (e.deltaY > 0 && el.scrollHeight - el.scrollTop - el.clientHeight < 20) {
                     containerRef.current?.scrollBy({ top: e.deltaY, behavior: "auto" });
@@ -546,6 +565,19 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
             </div>
           )}
         </main>
+
+        {/* Floating Re-sync Lyrics Button */}
+        {!isLyricsSyncLocked && lyrics && isSyncedLyrics(lyrics) && (
+          <button
+            type="button"
+            onClick={handleResyncLyrics}
+            className="fixed bottom-28 right-8 z-50 flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 text-xs font-bold text-black shadow-2xl backdrop-blur-md transition-all hover:scale-105 hover:bg-white active:scale-95 cursor-pointer select-none"
+            aria-label="Re-sync lyrics"
+          >
+            <RefreshIcon size={14} className="text-black shrink-0" />
+            <span>Sync lyrics</span>
+          </button>
+        )}
 
         {/* Clean Bottom-Left Floating Song Title & Artist (Matching Image 3) - Visible ONLY when isIdle */}
         <div
@@ -671,19 +703,22 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               </button>
             </div>
 
-            {/* Seek Bar Row */}
+            {/* Seek Bar Row with Red Accent Progress Path */}
             <div className="flex items-center gap-2.5 w-full text-[11px] text-white/60 font-medium tabular-nums">
               <span>{formatMinutesSeconds(displayedTime)}</span>
               <input
                 type="range"
                 min={0}
-                max={duration}
+                max={duration || 100}
                 step="any"
                 value={displayedTime}
                 onPointerDown={() => setIsSeeking(true)}
                 onChange={(e) => handleSeekChange(parseFloat(e.target.value))}
                 onPointerUp={(e) => handleSeekCommit(parseFloat((e.target as HTMLInputElement).value))}
-                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-white transition-all"
+                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-transparent disabled:cursor-default disabled:opacity-50 focus-visible:outline-none [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,var(--color-primary)_var(--slider-progress),rgba(255,255,255,0.2)_var(--slider-progress))] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-white/20 [&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-full [&::-moz-range-progress]:bg-primary [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white"
+                style={{
+                  "--slider-progress": `${duration > 0 ? (displayedTime / duration) * 100 : 0}%`,
+                } as React.CSSProperties}
                 aria-label="Seek track"
               />
               <span>{formatMinutesSeconds(duration)}</span>

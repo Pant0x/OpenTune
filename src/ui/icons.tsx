@@ -144,7 +144,14 @@ export const VolumeMutedActiveIcon: Icon = VolumeMutedIcon;
 
 /* ── Spotify Heart / Like / Save ──────────────────────────────────── */
 export const HeartIcon: Icon = createSpotifyIcon(() => (
-  <path d="M12 4.248c-3.148-5.402-12-3.825-12 2.94 0 4.661 5.571 9.427 12 15.808 6.43-6.381 12-11.147 12-15.808 0-6.792-8.875-8.306-12-2.94zm0 18.069C5.485 16.033 2 11.83 2 7.188c0-4.053 5.372-5.434 8.28-1.503l1.72 2.32 1.72-2.32C16.628 1.754 22 3.135 22 7.188c0 4.642-3.485 8.845-10 15.129z" />
+  <path
+    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />
 ));
 
 export const HeartActiveIcon: Icon = createSpotifyIcon(() => (
@@ -153,8 +160,26 @@ export const HeartActiveIcon: Icon = createSpotifyIcon(() => (
 
 export const ThumbsUpIcon: Icon = HeartIcon;
 export const ThumbsUpActiveIcon: Icon = HeartActiveIcon;
-export const BookmarkIcon: Icon = HeartIcon;
-export const BookmarkActiveIcon: Icon = HeartActiveIcon;
+
+/* ── Instagram Save / Ribbon Bookmark ──────────────────────────────── */
+export const BookmarkIcon: Icon = createSpotifyIcon(() => (
+  <path
+    d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />
+));
+
+export const BookmarkActiveIcon: Icon = createSpotifyIcon(() => (
+  <path
+    d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+    fill="currentColor"
+  />
+));
+
 export const StarIcon: Icon = HeartIcon;
 export const StarActiveIcon: Icon = HeartActiveIcon;
 

@@ -7,7 +7,7 @@ import { TrackArtwork } from "./TrackArtwork";
 import { ArtworkLightboxModal } from "./ArtworkLightboxModal";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
 
-function parseTrackDurationToSeconds(track: { durationSec?: number; duration?: string }): number {
+export function parseTrackDurationToSeconds(track: { durationSec?: number; duration?: string }): number {
   if (typeof track.durationSec === "number" && track.durationSec > 0) {
     return track.durationSec;
   }

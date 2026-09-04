@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from "motion/react";
 import type { Album, Artist, Playlist, SearchResults, Track } from "../../datasource/types";
 import { useArtistNavigation, useAlbumNavigation } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
+import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 6;
@@ -51,6 +52,43 @@ interface SearchBarProps {
   onBack: () => void;
   onForward: () => void;
   onNavigatePlaylist?: (playlist: Playlist) => void;
+}
+
+function SearchTopArtistRow({
+  artist,
+  onSelect,
+}: {
+  artist: Artist;
+  onSelect: (artist: Artist) => void;
+}) {
+  const spotifyAvatar = useSpotifyArtistAvatar(artist.name, artist.artworkUrl);
+  return (
+    <div className="pt-1">
+      <div className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        Top Artist
+      </div>
+      <button
+        type="button"
+        onClick={() => onSelect(artist)}
+        className="group flex items-center gap-3.5 w-full rounded-xl p-2.5 text-left transition-colors hover:bg-white/[0.07] focus-visible:outline-none"
+      >
+        <div className="size-12 shrink-0 overflow-hidden rounded-full bg-muted/40 ring-1 ring-border/20 shadow-md">
+          <TrackArtwork
+            artworkUrl={spotifyAvatar || artist.artworkUrl}
+            size={48}
+            className="size-full object-cover"
+            iconSize={22}
+          />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-base font-bold text-foreground group-hover:text-primary transition-colors">
+            {artist.name}
+          </span>
+          <span className="text-xs text-muted-foreground">Artist</span>
+        </div>
+      </button>
+    </div>
+  );
 }
 
 export function SearchBar({
@@ -352,31 +390,10 @@ export function SearchBar({
 
                   {/* 2. Closest Matching Artist (Spotify style) */}
                   {matchingArtist && (
-                    <div className="pt-1">
-                      <div className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                        Top Artist
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectArtist(matchingArtist)}
-                        className="group flex items-center gap-3.5 w-full rounded-xl p-2.5 text-left transition-colors hover:bg-white/[0.07] focus-visible:outline-none"
-                      >
-                        <div className="size-12 shrink-0 overflow-hidden rounded-full bg-muted/40 ring-1 ring-border/20 shadow-md">
-                          <TrackArtwork
-                            artworkUrl={matchingArtist.artworkUrl}
-                            size={48}
-                            className="size-full object-cover"
-                            iconSize={22}
-                          />
-                        </div>
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-base font-bold text-foreground group-hover:text-primary transition-colors">
-                            {matchingArtist.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">Artist</span>
-                        </div>
-                      </button>
-                    </div>
+                    <SearchTopArtistRow
+                      artist={matchingArtist}
+                      onSelect={handleSelectArtist}
+                    />
                   )}
 
                   {/* 3. Related Albums & Playlists */}

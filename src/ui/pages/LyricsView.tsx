@@ -8,7 +8,6 @@ import {
   useState,
 } from "react";
 import { useReduceMotion } from "../settings/renderEffects";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
   CloseIcon,
@@ -119,30 +118,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       return next;
     });
   };
-  const [isOsFullscreen, setIsOsFullscreen] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
 
-  useEffect(() => {
-    try {
-      void getCurrentWindow().isFullscreen().then(setIsOsFullscreen);
-    } catch {}
-  }, []);
-
-  const toggleOsFullscreen = async () => {
-    try {
-      const next = !isOsFullscreen;
-      await getCurrentWindow().setFullscreen(next);
-      setIsOsFullscreen(next);
-    } catch {}
-  };
-
-  const handleClose = async () => {
-    if (isOsFullscreen) {
-      try {
-        await getCurrentWindow().setFullscreen(false);
-      } catch {}
-    }
+  const handleClose = () => {
     playerUIStore.setLyricsFullscreen(false);
+    playerUIStore.setLyricsOpen(false);
     onClose();
   };
 
@@ -560,21 +540,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           title="Now Playing full screen"
         >
           <FullScreenIcon size={18} />
-        </button>
-
-        {/* Real OS Fullscreen Toggle */}
-        <button
-          type="button"
-          className={cn(
-            "flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md",
-            isOsFullscreen && "bg-white/20 text-white",
-          )}
-          onClick={() => void toggleOsFullscreen()}
-          aria-pressed={isOsFullscreen}
-          aria-label={isOsFullscreen ? "Exit real fullscreen" : "Real fullscreen"}
-          title={isOsFullscreen ? "Exit real fullscreen" : "Real fullscreen"}
-        >
-          <span className="text-xs font-bold font-mono">⛶</span>
         </button>
 
         {/* Close Button */}

@@ -16,18 +16,23 @@ import { SelectionBar } from "../components/SelectionBar";
 import { useTrackSelection } from "../hooks/useTrackSelection";
 import { queueDownloads, useOfflineState } from "../../player/offlineStore";
 import { ArtistLinks } from "../components/ArtistLinks";
-import { formatCollectionMeta, MediaHeader } from "../components/MediaHeader";
+import { formatCollectionMeta, MediaHeader, parseTrackDurationToSeconds } from "../components/MediaHeader";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { AlbumCard } from "../components/AlbumCard";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { SpotifyService, useSpotifyArtistAvatar } from "../../services/SpotifyService";
 
-function formatDuration(totalSec?: number): string {
-  if (!totalSec || isNaN(totalSec) || totalSec < 0) return "";
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = Math.floor(totalSec % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+function formatDuration(totalSec?: number, fallbackDuration?: string): string {
+  if (typeof totalSec === "number" && !isNaN(totalSec) && totalSec > 0) {
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = Math.floor(totalSec % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+  if (fallbackDuration && typeof fallbackDuration === "string" && fallbackDuration.trim()) {
+    return fallbackDuration.trim();
+  }
+  return "";
 }
 
 const SEARCH_FIELD =
@@ -216,7 +221,24 @@ export function AlbumView({
         showedTracks = true;
         setTracks(applyAlbumMeta(items));
       })
-      .catch(() => {
+      .catch(async () => {
+        if (!active || showedTracks) return;
+        // Fallback search for single release or unmatched album
+        try {
+          const query = [album.title, resolvedArtistName || album.artist].filter(Boolean).join(" ");
+          const searchRes = await searchController.search(query);
+          if (!active) return;
+          if (searchRes.tracks?.length) {
+            const matched = searchRes.tracks.find(
+              (t) => t.title.toLowerCase() === album.title.toLowerCase()
+            ) || searchRes.tracks[0];
+            if (matched) {
+              setTracks(applyAlbumMeta([matched]));
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch {}
         if (active && !showedTracks) setError("Unable to load this album.");
       })
       .finally(() => {
@@ -547,7 +569,7 @@ export function AlbumView({
                           {viewFormatted || "—"}
                         </span>
                         <span className="w-12 text-right">
-                          {formatDuration(track.durationSec)}
+                          {formatDuration(track.durationSec || parseTrackDurationToSeconds(track), track.duration)}
                         </span>
                       </div>
                     }

@@ -3686,54 +3686,100 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchAlbumTracksFresh(album: Album): Promise<Track[]> {
     const client = await this.getMusicClient();
-    const albumPage = await client.music.getAlbum(album.id);
-    const header = albumPage.header as any;
+    let albumPage: any = null;
+    let albumFetchError: unknown = null;
 
-    const headerArtists: ArtistReference[] = [];
-    if (Array.isArray(header?.artists)) {
-      for (const a of header.artists) {
-        if (a?.name && typeof a.name === "string" && this.isValidArtistString(a.name)) {
-          headerArtists.push({ id: a.id || a.browse_id || a.channel_id || "", name: a.name });
-        }
+    if (!album.id.startsWith("spotify:")) {
+      try {
+        albumPage = await client.music.getAlbum(album.id);
+      } catch (error) {
+        albumFetchError = error;
       }
     }
-    const headerAuthorName = header?.author?.name
-      || headerArtists[0]?.name
-      || header?.strapline_text_one?.text;
-    const headerAuthorId = header?.author?.id
-      || header?.author?.browse_id
-      || headerArtists[0]?.id;
 
-    const resolvedAlbumArtist = (album.artist && this.isValidArtistString(album.artist) && album.artist !== "Unknown artist")
-      ? album.artist
-      : (headerAuthorName && this.isValidArtistString(headerAuthorName))
-        ? headerAuthorName
-        : undefined;
+    if (albumPage && albumPage.contents) {
+      const header = albumPage.header as any;
+      const headerArtists: ArtistReference[] = [];
+      if (Array.isArray(header?.artists)) {
+        for (const a of header.artists) {
+          if (a?.name && typeof a.name === "string" && this.isValidArtistString(a.name)) {
+            headerArtists.push({ id: a.id || a.browse_id || a.channel_id || "", name: a.name });
+          }
+        }
+      }
+      const headerAuthorName = header?.author?.name
+        || headerArtists[0]?.name
+        || header?.strapline_text_one?.text;
+      const headerAuthorId = header?.author?.id
+        || header?.author?.browse_id
+        || headerArtists[0]?.id;
 
-    const resolvedAlbumArtists = album.artists?.length
-      ? album.artists
-      : headerArtists.length
-        ? headerArtists
-        : (resolvedAlbumArtist ? [{ id: headerAuthorId || "", name: resolvedAlbumArtist }] : undefined);
+      const resolvedAlbumArtist = (album.artist && this.isValidArtistString(album.artist) && album.artist !== "Unknown artist")
+        ? album.artist
+        : (headerAuthorName && this.isValidArtistString(headerAuthorName))
+          ? headerAuthorName
+          : undefined;
 
-    const enrichedAlbum: Album = {
-      ...album,
-      artist: resolvedAlbumArtist || album.artist,
-      artists: resolvedAlbumArtists,
-    };
+      const resolvedAlbumArtists = album.artists?.length
+        ? album.artists
+        : headerArtists.length
+          ? headerArtists
+          : (resolvedAlbumArtist ? [{ id: headerAuthorId || "", name: resolvedAlbumArtist }] : undefined);
 
-    const initialItems = (albumPage.contents as unknown as MusicItem[]) ?? [];
-    const continuedTracks = await this.collectAllAlbumTracks(client, albumPage.page, enrichedAlbum);
-    const tracks = this.uniqueById([
-      ...initialItems
-        .map((item) => this.toAlbumTrack(item, enrichedAlbum))
-        .filter((item): item is Track => Boolean(item)),
-      ...continuedTracks,
-    ]);
-    if (tracks.length === 0) {
-      throw new Error(`YouTube Music returned no tracks for album ${album.id}.`);
+      const enrichedAlbum: Album = {
+        ...album,
+        artist: resolvedAlbumArtist || album.artist,
+        artists: resolvedAlbumArtists,
+      };
+
+      const initialItems = (albumPage.contents as unknown as MusicItem[]) ?? [];
+      const continuedTracks = await this.collectAllAlbumTracks(client, albumPage.page, enrichedAlbum);
+      const tracks = this.uniqueById([
+        ...initialItems
+          .map((item) => this.toAlbumTrack(item, enrichedAlbum))
+          .filter((item): item is Track => Boolean(item)),
+        ...continuedTracks,
+      ]);
+      if (tracks.length > 0) {
+        return tracks;
+      }
     }
-    return tracks;
+
+    // Fallback: search for album or single track by title and artist
+    const searchTerms = [
+      album.artist ? `${album.title} ${album.artist}` : album.title,
+      album.title,
+    ];
+    for (const term of searchTerms) {
+      try {
+        const searchRes = await client.music.search(term, { type: "album" });
+        const candidate = (searchRes?.albums?.contents as any[])?.[0];
+        if (candidate?.id && candidate.id !== album.id) {
+          return await this.fetchAlbumTracksFresh({ ...album, id: candidate.id });
+        }
+      } catch {}
+      try {
+        const songRes = await client.music.search(term, { type: "song" });
+        const songs = (songRes?.songs?.contents as any[]) ?? [];
+        if (songs.length > 0) {
+          const matchedSong = songs[0];
+          const track = this.toTrack(matchedSong);
+          if (track) {
+            return [{
+              ...track,
+              album: album.title,
+              albumId: album.id,
+              artworkUrl: album.artworkUrl || track.artworkUrl,
+            }];
+          }
+        }
+      } catch {}
+    }
+
+    if (albumFetchError) {
+      throw albumFetchError;
+    }
+    throw new Error(`YouTube Music returned no tracks for album ${album.id}.`);
   }
 
   async getArtist(

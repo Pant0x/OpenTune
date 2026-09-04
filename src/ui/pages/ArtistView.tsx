@@ -481,19 +481,42 @@ export function ArtistView({
 
   const discoveredOnPlaylists = useMemo(() => {
     const featSet = new Set(featuringPlaylists.map((p) => p.id));
+    const releaseTitles = new Set(mergedReleases.map((r) => r.title.toLowerCase().trim()));
+    const releaseIds = new Set(mergedReleases.map((r) => r.id));
+    const artistNameLower = (displayedArtist?.name || "").toLowerCase().trim();
     const pool = [...(page?.discoveredOn ?? []), ...extraDiscoveredOnPlaylists, ...(page?.playlists ?? [])];
     const seen = new Set<string>();
     const result: Playlist[] = [];
 
     for (const p of pool) {
       if (!p || !p.title || featSet.has(p.id) || seen.has(p.id) || p.id.startsWith("spotify:")) continue;
-      const lower = p.title.toLowerCase();
+      const lower = p.title.toLowerCase().trim();
+      const ownerLower = (p.owner || "").toLowerCase().trim();
       if (lower.includes("unknown")) continue;
+
+      // Filter out artist's own albums or releases
+      if (releaseTitles.has(lower) || releaseIds.has(p.id)) continue;
+
+      // Filter out if owner is the artist (an album release or official upload)
+      if (ownerLower === artistNameLower) continue;
+
+      // Filter out official YouTube Music playlists (those belong in Featuring / official)
+      const isOfficial =
+        ownerLower.includes("youtube") ||
+        ownerLower.includes("yt") ||
+        lower.startsWith("featuring") ||
+        lower.startsWith("presenting") ||
+        lower.startsWith("this is") ||
+        lower.includes("hits") ||
+        lower.includes("best of") ||
+        lower.includes("essential");
+      if (isOfficial) continue;
+
       seen.add(p.id);
       result.push(p);
     }
     return result;
-  }, [page?.discoveredOn, page?.playlists, featuringPlaylists, extraDiscoveredOnPlaylists]);
+  }, [page?.discoveredOn, page?.playlists, featuringPlaylists, extraDiscoveredOnPlaylists, mergedReleases, displayedArtist?.name]);
 
   // Popular song items based on authentic YouTube Music tracks, enriched with Spotify plays
   const popularItems: PopularSongItem[] = useMemo(() => {
@@ -617,9 +640,9 @@ export function ArtistView({
       </div>
 
       {/* Spotify Panoramic Hero Header */}
-      <div className="relative -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
+      <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
         {/* Hero Background Image with Gradient Overlay & Blurred PFP */}
-        <div className="absolute inset-0 -z-10 bg-zinc-950 overflow-hidden">
+        <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
           {/* Blurred Artist PFP Background as requested */}
           <img
             src={artistAvatar || artistHeaderBg}
@@ -660,11 +683,13 @@ export function ArtistView({
           {/* Artist Name and Listeners */}
           <div className="flex flex-col gap-2 min-w-0 flex-1 pb-1">
             {/* Spotify Verified Artist Badge */}
-            <div className="flex items-center gap-2 text-white select-none">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-sm">
+            <div className="flex items-center text-white select-none">
+              <span
+                className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-sm"
+                title="Verified Artist"
+              >
                 <CheckIcon size={14} className="text-white stroke-[3]" />
               </span>
-              <span className="text-sm font-semibold text-white/95 tracking-wide">Verified Artist</span>
             </div>
 
             <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
@@ -1120,16 +1145,16 @@ export function ArtistView({
               <img
                 src={artistHeaderBg}
                 alt=""
-                className="absolute inset-0 size-full object-cover scale-110 blur-2xl opacity-40"
+                className="absolute inset-0 size-full object-cover scale-125 blur-2xl opacity-50"
               />
               {/* Main Photo with Better Framing */}
               <img
                 src={artistHeaderBg}
                 alt={displayedArtist.name}
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 h-full w-full object-cover object-center sm:object-[center_20%] transition-transform duration-500 group-hover:scale-105"
+                className="absolute inset-0 h-full w-full object-cover object-center sm:object-[center_55%] transition-transform duration-500 group-hover:scale-105"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
 
               {/* Top-Right Spotify World Rank Badge (Matches Image 5) */}
               {spotifyOverview?.worldRank ? (

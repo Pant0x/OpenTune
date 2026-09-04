@@ -3267,11 +3267,13 @@ fn playback_ranges(total: usize) -> Vec<(usize, usize)> {
     if total == 0 {
         return Vec::new();
     }
-    const PLAYBACK_CHUNK_SIZE: usize = 1536 * 1024;
+    const HEAD_CHUNK_SIZE: usize = 384 * 1024;
+    const BODY_CHUNK_SIZE: usize = 1536 * 1024;
     let mut ranges = Vec::new();
     let mut start = 0;
     while start < total {
-        let end = (start + PLAYBACK_CHUNK_SIZE - 1).min(total - 1);
+        let chunk_size = if start == 0 { HEAD_CHUNK_SIZE } else { BODY_CHUNK_SIZE };
+        let end = (start + chunk_size - 1).min(total - 1);
         ranges.push((start, end));
         start = end + 1;
     }
