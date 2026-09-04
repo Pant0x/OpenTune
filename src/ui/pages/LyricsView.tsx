@@ -103,7 +103,23 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const [isFollowPaused, setIsFollowPaused] = useState(false);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-  const [showPlaybackCard, setShowPlaybackCard] = useState(true);
+  const [showPlaybackCard, setShowPlaybackCard] = useState(() => {
+    try {
+      return localStorage.getItem("lyrics_fullscreen_split") !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSplitMode = () => {
+    setShowPlaybackCard((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("lyrics_fullscreen_split", String(next));
+      } catch {}
+      return next;
+    });
+  };
   const [isOsFullscreen, setIsOsFullscreen] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
 
@@ -465,7 +481,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 z-50 bg-black/95",
+        isFullscreen && "fixed inset-0 z-50 bg-black",
       )}
       aria-label="Lyrics"
     >
@@ -515,32 +531,21 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       </p>
 
       <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
-        {/* Playback Card Switch: Split / Lyrics only */}
+        {/* Split Mode Toggle Button */}
         {isFullscreen && (
-          <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md p-0.5 border border-white/10 text-xs font-semibold text-white/80 shadow-md">
-            <button
-              type="button"
-              onClick={() => setShowPlaybackCard(true)}
-              className={cn(
-                "rounded-full px-3 py-1 transition-all cursor-pointer",
-                showPlaybackCard ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
-              )}
-              title="Split view with player card"
-            >
-              Split
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowPlaybackCard(false)}
-              className={cn(
-                "rounded-full px-3 py-1 transition-all cursor-pointer",
-                !showPlaybackCard ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
-              )}
-              title="Lyrics only full width"
-            >
-              Lyrics only
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={toggleSplitMode}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold backdrop-blur-md transition-all cursor-pointer shadow-md",
+              showPlaybackCard
+                ? "bg-white/25 text-white font-bold border border-white/30"
+                : "bg-black/50 text-white/75 hover:text-white border border-white/10 hover:bg-white/15",
+            )}
+            title={showPlaybackCard ? "Hide split mode" : "Show split mode"}
+          >
+            <span>Split</span>
+          </button>
         )}
 
         {/* In-App Fullscreen Toggle (Split View) */}

@@ -1681,8 +1681,8 @@ const backOnboardingStep = () => {
     <PlaylistContextMenuProvider libraryController={libraryController}>
     <VolumeSyncBridge />
     <div
-      className={`relative flex h-full w-full flex-col overflow-hidden ${
-        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen
+      className={`relative flex h-full w-full flex-col overflow-hidden bg-black ${
+        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
       }`}
@@ -1767,7 +1767,7 @@ const backOnboardingStep = () => {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen && activeTab?.view !== "settings" ? (
+          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen && activeTab?.view !== "settings" ? (
             <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
           ) : (
           <div key={activeViewKey} className="min-h-0 flex-1">
@@ -1996,6 +1996,12 @@ const backOnboardingStep = () => {
           )}
           {showOnboardingComplete && <OnboardingCompleteToast />}
         </>
+      )}
+
+      {playerUIState.isLyricsOpen && playerUIState.isLyricsFullscreen && (
+        <Suspense fallback={null}>
+          <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
+        </Suspense>
       )}
 
       {playerUIState.isNowPlayingFullscreen && (
