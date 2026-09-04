@@ -21,6 +21,7 @@ interface AlbumCardProps {
   subtitleContent?: ReactNode;
   /** Override when the card is laid out at a materially different width. */
   size?: number;
+  isOfficialYouTube?: boolean;
   onClick?: () => void;
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
 }
@@ -42,6 +43,7 @@ export const AlbumCard = memo(function AlbumCard({
   subtitle,
   subtitleContent,
   size = DEFAULT_CARD_SIZE,
+  isOfficialYouTube,
   onClick,
   onContextMenu,
 }: AlbumCardProps) {
@@ -85,6 +87,14 @@ export const AlbumCard = memo(function AlbumCard({
             size={size}
             variant="album"
           />
+          {isOfficialYouTube && (
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md bg-black/80 px-1.5 py-0.5 backdrop-blur-md border border-white/10 shadow-md">
+              <svg viewBox="0 0 24 24" className="size-3.5 fill-red-600">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              <span className="text-[10px] font-bold tracking-tight text-white/90">YT Music</span>
+            </div>
+          )}
           {/* Play affordance fades in on hover rather than sitting permanently on the art. */}
           <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/50 opacity-0 transition-opacity group-hover/card:opacity-100">
             <span className="grid size-12 place-items-center rounded-full bg-red-600 text-white shadow-xl transition-transform duration-200 group-hover/card:scale-105">

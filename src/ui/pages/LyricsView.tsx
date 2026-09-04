@@ -32,7 +32,7 @@ import { OFFSET_STEP_SEC, setLyricsOffset, useLyricsOffset } from "../settings/l
 import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
 import { translateLines } from "../../datasource/translate";
-import { findActiveLineIndex, getLineProgress, isSyncedLyrics } from "./lyricsTiming";
+import { findActiveLineIndex, getLineProgress, isRtlText, isSyncedLyrics } from "./lyricsTiming";
 
 /** How long a manual scroll keeps the auto-follow parked. */
 const AUTO_SCROLL_RESUME_MS = 4500;
@@ -709,7 +709,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                           <p
                             key={`${index}:${line.text}`}
                             ref={(element) => registerLine(index, element)}
-                            className="text-pretty py-1 leading-relaxed text-foreground/85"
+                            dir={isRtlText(line.text) ? "rtl" : "ltr"}
+                            className={cn(
+                              "text-pretty py-1 leading-relaxed text-foreground/85",
+                              isRtlText(line.text) && "text-start font-sans font-medium",
+                            )}
                           >
                             {line.text}
                             {translations?.[index] && (
@@ -832,7 +836,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         <p
                           key={`${index}:${line.text}`}
                           ref={(element) => registerLine(index, element)}
-                          className="text-pretty py-1 leading-relaxed text-foreground/85"
+                          dir={isRtlText(line.text) ? "rtl" : "ltr"}
+                          className={cn(
+                            "text-pretty py-1 leading-relaxed text-foreground/85",
+                            isRtlText(line.text) && "text-start font-sans font-medium",
+                          )}
                         >
                           {line.text}
                           {translations?.[index] && (
@@ -911,8 +919,8 @@ const SyncedLine = memo(function SyncedLine({
     [index, register],
   );
 
-  // Check if there's letters
-  const isArabic = /[\u0600-\u06FF]/.test(text);
+  // Check if there's RTL characters (Arabic, Hebrew, etc.)
+  const isArabic = isRtlText(text);
 
   // An empty LRC line is a real instrumental beat, not junk. It keeps its slot so the timing
   // stays honest, and announces itself when it comes up.

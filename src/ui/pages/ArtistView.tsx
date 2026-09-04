@@ -408,8 +408,57 @@ export function ArtistView({
       }
     }
 
+    // 3. For YouTube creators, beatmakers, and remixers: include their channel playlists
+    for (const p of page?.playlists ?? []) {
+      if (!p || !p.title) continue;
+      const clean = p.title.toLowerCase().trim();
+      const ownerLower = (p.owner || "").toLowerCase().trim();
+      // Exclude official YouTube Music compilations
+      const isOfficial =
+        ownerLower.includes("youtube") ||
+        ownerLower.includes("yt") ||
+        clean.startsWith("featuring") ||
+        clean.startsWith("presenting") ||
+        clean.startsWith("this is") ||
+        clean.includes("hits") ||
+        clean.includes("best of") ||
+        clean.includes("essential");
+      if (isOfficial) continue;
+
+      if (!seenTitles.has(clean)) {
+        seenTitles.add(clean);
+        combined.push({
+          id: p.id,
+          title: p.title,
+          artist: displayedArtist?.name || p.owner || "",
+          artworkUrl: p.artworkUrl,
+          releaseType: "album",
+        });
+      }
+    }
+
+    // 4. If an artist has few or no album releases (e.g. YT users dropping singles/freetype beats),
+    // include their video/song uploads as singles so their discography is fully populated
+    if (combined.length < 5 && (page?.allSongs?.length || page?.popularSongs?.length)) {
+      const songs = page?.allSongs && page.allSongs.length > 0 ? page.allSongs : (page?.popularSongs ?? []);
+      for (const s of songs) {
+        if (!s || !s.title) continue;
+        const clean = s.title.toLowerCase().trim();
+        if (!seenTitles.has(clean)) {
+          seenTitles.add(clean);
+          combined.push({
+            id: s.albumId || s.id,
+            title: s.title,
+            artist: s.artist || displayedArtist?.name || "",
+            artworkUrl: s.artworkUrl,
+            releaseType: "single",
+          });
+        }
+      }
+    }
+
     return combined;
-  }, [page?.releases, spotifyReleases, displayedArtist?.name]);
+  }, [page?.releases, page?.playlists, page?.allSongs, page?.popularSongs, spotifyReleases, displayedArtist?.name]);
 
   const releaseFilters = useMemo(
     () => [
@@ -534,6 +583,15 @@ export function ArtistView({
         return c1.includes(c2) || c2.includes(c1);
       });
 
+      let durationStr = "";
+      if (yt.durationSec && yt.durationSec > 0) {
+        durationStr = formatDuration(yt.durationSec);
+      } else if (matchedSpotify?.durationMs && matchedSpotify.durationMs > 0) {
+        durationStr = formatDuration(Math.round(matchedSpotify.durationMs / 1000));
+      } else if (yt.duration && yt.duration.trim().length > 0) {
+        durationStr = yt.duration;
+      }
+
       return {
         id: yt.id,
         spotifyTrackId: matchedSpotify?.id,
@@ -541,7 +599,7 @@ export function ArtistView({
         artist: yt.artist || displayedArtist?.name || "",
         isExplicit: Boolean(yt.isExplicit || matchedSpotify?.isExplicit),
         plays: matchedSpotify?.playcount || (yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt)),
-        duration: yt.durationSec ? formatDuration(yt.durationSec) : (yt.duration || ""),
+        duration: durationStr,
         coverUrl: yt.artworkUrl || matchedSpotify?.coverUrl,
         rawTrack: yt,
         albumName: yt.album,
@@ -631,11 +689,11 @@ export function ArtistView({
   return (
     <div className="relative flex flex-col gap-10 pb-20">
       {/* Ambient Blurred Background Glow */}
-      <div className="pointer-events-none absolute -top-8 -left-6 -right-6 h-[650px] overflow-hidden -z-10 opacity-35 blur-[90px] saturate-200">
+      <div className="pointer-events-none absolute -top-8 -left-6 -right-6 h-[650px] overflow-hidden -z-10 opacity-40 blur-[100px] saturate-200">
         <img
-          src={artistHeaderBg}
+          src={artistAvatar || artistHeaderBg}
           alt=""
-          className="w-full h-full object-cover scale-110"
+          className="w-full h-full object-cover scale-125"
         />
       </div>
 
@@ -643,23 +701,15 @@ export function ArtistView({
       <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
         {/* Hero Background Image with Gradient Overlay & Blurred PFP */}
         <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
-          {/* Blurred Artist PFP Background as requested */}
+          {/* Ambient Blurred Artist PFP Theme */}
           <img
             src={artistAvatar || artistHeaderBg}
             alt=""
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center scale-125 blur-3xl opacity-60"
+            className="w-full h-full object-cover object-center scale-125 blur-3xl opacity-65 saturate-150"
           />
-          {artistHeaderBg && artistHeaderBg !== artistAvatar && (
-            <img
-              src={artistHeaderBg}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="absolute inset-0 w-full h-full object-cover object-center sm:object-top opacity-70"
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/40" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
         </div>
 
         {/* Hero Content with Circular PFP beside Name */}
@@ -925,7 +975,7 @@ export function ArtistView({
                               e.stopPropagation();
                               onOpenArtist?.({ id: "", name: item.artist });
                             }}
-                            className="truncate text-xs text-muted-foreground hover:underline hover:text-foreground cursor-pointer inline-block mt-0.5 w-fit"
+                            className="truncate text-xs text-muted-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] cursor-pointer inline-block mt-0.5 w-fit transition-all"
                           >
                             {item.artist}
                           </span>
@@ -1113,11 +1163,11 @@ export function ArtistView({
             </section>
           )}
 
-          {/* 3. Featuring "Artist Name" (YouTube-made playlists) */}
+          {/* 3. Featured on (YouTube-made official playlists) */}
           {featuringPlaylists.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">
-                Featuring {displayedArtist.name}
+                Featured on
               </h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {featuringPlaylists.map((playlist) => (
@@ -1126,6 +1176,7 @@ export function ArtistView({
                     artworkUrl={playlist.artworkUrl}
                     title={playlist.title}
                     subtitle={playlist.owner || "YouTube Music"}
+                    isOfficialYouTube={true}
                     onClick={() => onOpenPlaylist(playlist)}
                     onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                   />
@@ -1143,16 +1194,16 @@ export function ArtistView({
             >
               {/* Blurred Backdrop */}
               <img
-                src={artistHeaderBg}
+                src={artistAvatar || artistHeaderBg}
                 alt=""
                 className="absolute inset-0 size-full object-cover scale-125 blur-2xl opacity-50"
               />
-              {/* Main Photo with Better Framing */}
+              {/* Main Photo with Centered / Maximized Framing */}
               <img
-                src={artistHeaderBg}
+                src={artistHeaderBg || artistAvatar}
                 alt={displayedArtist.name}
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 h-full w-full object-cover object-center sm:object-[center_55%] transition-transform duration-500 group-hover:scale-105"
+                className="absolute inset-0 h-full w-full object-contain sm:object-cover object-center transition-transform duration-500 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
 
@@ -1221,7 +1272,7 @@ export function ArtistView({
                         />
                       </div>
                       <div className="flex flex-col w-full min-w-0 mt-0.5">
-                        <span className="truncate w-full text-sm font-semibold text-white group-hover:underline">
+                        <span className="truncate w-full text-sm font-semibold text-white group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
                           {similarArtist.name}
                         </span>
                         <span className="text-xs text-muted-foreground truncate w-full mt-0.5">

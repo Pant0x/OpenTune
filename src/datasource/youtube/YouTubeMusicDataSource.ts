@@ -3762,7 +3762,21 @@ export class YouTubeMusicDataSource extends DataSource {
         const songRes = await client.music.search(term, { type: "song" });
         const songs = (songRes?.songs?.contents as any[]) ?? [];
         if (songs.length > 0) {
-          const matchedSong = songs[0];
+          const cleanTerm = term.toLowerCase();
+          const isRemix = cleanTerm.includes("remix");
+          const isSlowed = cleanTerm.includes("slowed") || cleanTerm.includes("reverb");
+          const isSpedUp = cleanTerm.includes("sped up") || cleanTerm.includes("speed up");
+
+          const filteredSongs = songs.filter((s: any) => {
+            const title = (s.title?.toString() || "").toLowerCase();
+            if (!isRemix && title.includes("remix")) return false;
+            if (!isSlowed && (title.includes("slowed") || title.includes("reverb"))) return false;
+            if (!isSpedUp && (title.includes("sped up") || title.includes("speed up") || title.includes("nightcore"))) return false;
+            if (title.includes("1 hour") || title.includes("loop") || title.includes("instrumental")) return false;
+            return true;
+          });
+
+          const matchedSong = filteredSongs[0] || songs[0];
           const track = this.toTrack(matchedSong);
           if (track) {
             return [{

@@ -268,38 +268,63 @@ export function HomePage({
         const homePage = await libraryController.getBrowsePage("home").catch(() => null);
         const ytShelves = homePage ? splitMixedShelves(homePage.shelves) : [];
 
+function sortHomeShelvesPinned(shelves: BrowseShelf[], quickPicksFallback: Track[]): BrowseShelf[] {
+  let quickPicksShelf: BrowseShelf | undefined;
+  const otherShelves: BrowseShelf[] = [];
+
+  for (const s of shelves) {
+    const lower = s.title.toLowerCase();
+    if (!quickPicksShelf && (lower.includes("quick pick") || lower.includes("picks for you"))) {
+      quickPicksShelf = {
+        title: "Quick picks",
+        tracks: s.tracks.length >= 4 ? s.tracks : quickPicksFallback.slice(0, 20),
+        albums: [],
+        playlists: [],
+        artists: [],
+        links: s.links,
+      };
+    } else {
+      otherShelves.push(s);
+    }
+  }
+
+  if (!quickPicksShelf) {
+    quickPicksShelf = {
+      title: "Quick picks",
+      tracks: quickPicksFallback.slice(0, 20),
+      albums: [],
+      playlists: [],
+      artists: [],
+      links: [],
+    };
+  }
+
+  const getShelfRank = (title: string): number => {
+    const t = title.toLowerCase();
+    if (t.includes("mixed for you") || t.includes("listen again") || t.includes("my mix")) return 1;
+    if (t.includes("new release")) return 2;
+    if (t.includes("albums for you") || t.includes("recommended album") || t.includes("album")) return 3;
+    if (t.includes("featured playlist") || t.includes("today's hit")) return 4;
+    if (t.includes("trending") || t.includes("popular")) return 5;
+    if (t.includes("discover") || t.includes("daily")) return 6;
+    if (t.includes("from your library") || t.includes("library")) return 7;
+    if (t.includes("cover") || t.includes("remix")) return 8;
+    if (t.includes("heard in shorts") || t.includes("shorts")) return 9;
+    if (t.includes("long listens")) return 10;
+    if (t.includes("fresh finds")) return 11;
+    if (t.includes("recap")) return 12;
+    if (t.includes("take it easy")) return 13;
+    return 20;
+  };
+
+  otherShelves.sort((a, b) => getShelfRank(a.title) - getShelfRank(b.title));
+
+  return [quickPicksShelf, ...otherShelves];
+}
+
         if (ytShelves.length > 0) {
           const quickPicksTracks = suggestions.length > 0 ? suggestions : recentPlays;
-          const enhancedShelves = ytShelves.map((s) => {
-            if (
-              (s.title.toLowerCase().includes("quick pick") ||
-                s.title.toLowerCase().includes("picks for you")) &&
-              s.tracks.length < 4 &&
-              quickPicksTracks.length > 0
-            ) {
-              return { ...s, tracks: quickPicksTracks.slice(0, 20) };
-            }
-            return s;
-          });
-
-          const hasQuickPicks = enhancedShelves.some(
-            (s) =>
-              s.title.toLowerCase().includes("quick pick") ||
-              s.title.toLowerCase().includes("picks for you"),
-          );
-          const finalShelves = hasQuickPicks
-            ? enhancedShelves
-            : [
-                {
-                  title: "Quick picks",
-                  tracks: quickPicksTracks.slice(0, 20),
-                  albums: [],
-                  playlists: [],
-                  artists: [],
-                  links: [],
-                },
-                ...enhancedShelves,
-              ];
+          const finalShelves = sortHomeShelvesPinned(ytShelves, quickPicksTracks);
 
           cachedRealHomeShelves = finalShelves;
           if (active) {

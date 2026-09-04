@@ -449,12 +449,70 @@ export class PlayerController {
        *
        * Only a track we know nothing about still has to wait.
        */
+function findBestTrackMatch(
+  results: Track[],
+  originalTitle: string,
+  originalArtist: string,
+  targetDurationSec?: number,
+): Track | undefined {
+  if (results.length === 0) return undefined;
+
+  const cleanOrigTitle = originalTitle.toLowerCase();
+  const isOrigRemix = cleanOrigTitle.includes("remix");
+  const isOrigSlowed = cleanOrigTitle.includes("slowed") || cleanOrigTitle.includes("reverb");
+  const isOrigSpedUp = cleanOrigTitle.includes("sped up") || cleanOrigTitle.includes("speed up") || cleanOrigTitle.includes("nightcore");
+  const isOrigInstrumental = cleanOrigTitle.includes("instrumental");
+  const isOrigLive = cleanOrigTitle.includes("live");
+
+  const scoreCandidate = (candidate: Track): number => {
+    let score = 100;
+    const candTitle = candidate.title.toLowerCase();
+    const candArtist = (candidate.artist || "").toLowerCase();
+    const origArtist = originalArtist.toLowerCase();
+
+    // Heavy penalty for unwanted variants
+    if (!isOrigRemix && candTitle.includes("remix")) score -= 50;
+    if (!isOrigSlowed && (candTitle.includes("slowed") || candTitle.includes("reverb"))) score -= 60;
+    if (!isOrigSpedUp && (candTitle.includes("sped up") || candTitle.includes("speed up") || candTitle.includes("nightcore"))) score -= 60;
+    if (!isOrigInstrumental && candTitle.includes("instrumental")) score -= 50;
+    if (candTitle.includes("1 hour") || candTitle.includes("10 hours") || candTitle.includes("loop")) score -= 70;
+    if (candTitle.includes("bass boosted") || candTitle.includes("8d audio")) score -= 50;
+    if (candTitle.includes("karaoke") || candTitle.includes("tribute") || candTitle.includes("parody")) score -= 60;
+    if (!isOrigLive && (candTitle.includes("live at") || candTitle.includes("live from") || candTitle.includes("live performance"))) score -= 30;
+
+    // Bonus if candidate artist matches original artist
+    if (candArtist && origArtist && (candArtist.includes(origArtist) || origArtist.includes(candArtist))) {
+      score += 25;
+    }
+
+    // Bonus for matching duration closely
+    if (targetDurationSec && candidate.durationSec && candidate.durationSec > 0) {
+      const diff = Math.abs(candidate.durationSec - targetDurationSec);
+      if (diff <= 3) score += 30;
+      else if (diff <= 8) score += 15;
+      else if (diff > 30) score -= 30;
+    }
+
+    return score;
+  };
+
+  const scored = results.map((track) => ({ track, score: scoreCandidate(track) }));
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0]?.track ?? results[0];
+}
+
       let track: Track;
       if (videoId.startsWith("spotify:") && knownTrack) {
         try {
           const query = `${knownTrack.artist} ${knownTrack.title}`.trim();
           const results = await this.dataSource.searchTracks?.(query) ?? [];
-          const bestMatch = results[0];
+          const bestMatch = findBestTrackMatch(
+            results,
+            knownTrack.title,
+            knownTrack.artist,
+            knownTrack.durationSec,
+          );
           if (bestMatch) {
             track = {
               ...bestMatch,

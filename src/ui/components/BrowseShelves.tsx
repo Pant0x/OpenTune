@@ -200,23 +200,31 @@ function BrowseShelfSection({
                   title={album.title}
                   subtitleContent={
                     album.artist ? (
-                      <span className="flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 flex-wrap">
                         <span>{releaseLabel}</span>
                         <span>•</span>
-                        <span
-                          role="link"
-                          tabIndex={0}
-                          className="cursor-pointer hover:underline hover:text-foreground transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenArtist({
-                              id: album.artists?.[0]?.id ?? "",
-                              name: album.artist,
-                            });
-                          }}
-                        >
-                          {album.artist}
-                        </span>
+                        {(album.artists && album.artists.length > 0
+                          ? album.artists
+                          : album.artist.split(",").map((n) => ({ id: "", name: n.trim() })).filter((a) => a.name.length > 0)
+                        ).map((art, idx, arr) => (
+                          <span key={`${art.name}:${idx}`} className="inline-flex items-center">
+                            <span
+                              role="link"
+                              tabIndex={0}
+                              className="cursor-pointer hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenArtist({
+                                  id: art.id ?? "",
+                                  name: art.name,
+                                });
+                              }}
+                            >
+                              {art.name}
+                            </span>
+                            {idx < arr.length - 1 && <span className="mr-1">,</span>}
+                          </span>
+                        ))}
                       </span>
                     ) : undefined
                   }

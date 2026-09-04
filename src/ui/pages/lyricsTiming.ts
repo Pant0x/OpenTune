@@ -64,3 +64,10 @@ export function findActiveLineIndex(lines: LyricLine[], timeSec: number): number
   return active;
 }
 
+/**
+ * Detects if a string contains RTL scripts (Arabic, Hebrew, Persian, Urdu, etc.)
+ */
+export function isRtlText(text: string): boolean {
+  return /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/.test(text);
+}
+

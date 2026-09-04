@@ -1476,7 +1476,7 @@ const backOnboardingStep = () => {
       if (isTextEntry(event.target)) return;
 
       const now = Date.now();
-      if (now - lastNavTime < 180) return;
+      if (now - lastNavTime < 350) return;
       lastNavTime = now;
 
       if (event.button === MOUSE_BACK_BUTTON) {
@@ -1517,11 +1517,9 @@ const backOnboardingStep = () => {
       }
     };
 
-    window.addEventListener("mousedown", handleMouseNavigation);
     window.addEventListener("mouseup", handleMouseNavigation);
     window.addEventListener("auxclick", preventAuxNavigation);
     return () => {
-      window.removeEventListener("mousedown", handleMouseNavigation);
       window.removeEventListener("mouseup", handleMouseNavigation);
       window.removeEventListener("auxclick", preventAuxNavigation);
     };

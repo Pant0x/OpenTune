@@ -233,7 +233,7 @@ export function ArtistLinks({
           </span>
         ) : (
           <span
-            className="cursor-pointer rounded-sm text-inherit underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="cursor-pointer rounded-sm text-inherit transition-all hover:text-foreground hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             role="link"
             tabIndex={0}
             onPointerDown={(event) => event.stopPropagation()}
