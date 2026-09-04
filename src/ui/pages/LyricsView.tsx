@@ -10,7 +10,6 @@ import {
 import { useReduceMotion } from "../settings/renderEffects";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
-import { SpotifyService } from "../../services/SpotifyService";
 import {
   CloseIcon,
   FullScreenIcon,
@@ -104,8 +103,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const [isFollowPaused, setIsFollowPaused] = useState(false);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-  const [bgMode, setBgMode] = useState<"artwork" | "artist">("artwork");
-  const [artistPhotoUrl, setArtistPhotoUrl] = useState<string | null>(null);
+  const [showPlaybackCard, setShowPlaybackCard] = useState(true);
   const [isOsFullscreen, setIsOsFullscreen] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
 
@@ -123,22 +121,17 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     } catch {}
   };
 
-  useEffect(() => {
-    if (!track?.artist) {
-      setArtistPhotoUrl(null);
-      return;
+  const handleClose = async () => {
+    if (isOsFullscreen) {
+      try {
+        await getCurrentWindow().setFullscreen(false);
+      } catch {}
     }
-    let active = true;
-    void SpotifyService.getArtistAvatar(track.artist).then((url) => {
-      if (active && url) setArtistPhotoUrl(url);
-    });
-    return () => {
-      active = false;
-    };
-  }, [track?.artist]);
+    playerUIStore.setLyricsFullscreen(false);
+    onClose();
+  };
 
-  const activeBackgroundUrl =
-    bgMode === "artist" && artistPhotoUrl ? artistPhotoUrl : track?.artworkUrl;
+  const activeBackgroundUrl = track?.artworkUrl;
 
   useEffect(() => {
     const updateTime = () => {
@@ -470,7 +463,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
   return (
     <section
-      className="@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden"
+      className={cn(
+        "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
+        isFullscreen && "fixed inset-0 z-50 bg-black/95",
+      )}
       aria-label="Lyrics"
     >
       {/*
@@ -519,31 +515,33 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       </p>
 
       <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
-        {/* Background Visual Switch: Artwork / Artist */}
-        <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md p-0.5 border border-white/10 text-xs font-semibold text-white/80 shadow-md">
-          <button
-            type="button"
-            onClick={() => setBgMode("artwork")}
-            className={cn(
-              "rounded-full px-3 py-1 transition-all cursor-pointer",
-              bgMode === "artwork" ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
-            )}
-            title="Show album artwork"
-          >
-            Artwork
-          </button>
-          <button
-            type="button"
-            onClick={() => setBgMode("artist")}
-            className={cn(
-              "rounded-full px-3 py-1 transition-all cursor-pointer",
-              bgMode === "artist" ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
-            )}
-            title="Show artist image"
-          >
-            Artist
-          </button>
-        </div>
+        {/* Playback Card Switch: Split / Lyrics only */}
+        {isFullscreen && (
+          <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md p-0.5 border border-white/10 text-xs font-semibold text-white/80 shadow-md">
+            <button
+              type="button"
+              onClick={() => setShowPlaybackCard(true)}
+              className={cn(
+                "rounded-full px-3 py-1 transition-all cursor-pointer",
+                showPlaybackCard ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
+              )}
+              title="Split view with player card"
+            >
+              Split
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPlaybackCard(false)}
+              className={cn(
+                "rounded-full px-3 py-1 transition-all cursor-pointer",
+                !showPlaybackCard ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
+              )}
+              title="Lyrics only full width"
+            >
+              Lyrics only
+            </button>
+          </div>
+        )}
 
         {/* In-App Fullscreen Toggle (Split View) */}
         <button
@@ -579,7 +577,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         <button
           type="button"
           className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
-          onClick={onClose}
+          onClick={() => void handleClose()}
           aria-label="Close lyrics"
           title="Close lyrics (Esc)"
         >
@@ -590,86 +588,97 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       {isFullscreen ? (
         /* Split Screen Fullscreen View (Matches media_1788521601006.png) */
         <div className="relative min-h-0 flex-1 flex flex-col justify-center">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden">
-            {/* Left Column: Artwork Card + Mini Transport Player */}
-            <div className="lg:col-span-5 flex flex-col items-center justify-center">
-              <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
-                <TrackArtwork
-                  artworkUrl={track?.artworkUrl}
-                  size={420}
-                  className="size-full object-cover"
-                  iconSize={64}
-                  loading="eager"
-                />
-              </div>
-
-              {/* Mini Player Under Artwork */}
-              {track && (
-                <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
-                  <div className="flex min-w-0 flex-col mb-1 text-center lg:text-left">
-                    <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
-                    <span className="truncate text-sm text-white/70">
-                      <ArtistLinks artists={track.artists} fallback={track.artist} />
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
-                    <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
-                    <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min={0}
-                    max={track.durationSec || 100}
-                    step="any"
-                    value={currentPlaybackTime}
-                    onChange={(e) => {
-                      const t = parseFloat(e.target.value);
-                      setCurrentPlaybackTime(t);
-                      void playerController.seekTo(t);
-                    }}
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
-                    aria-label="Seek track"
+          <div className={cn(
+            "grid gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden",
+            showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-4xl",
+          )}>
+            {/* Left Column: Artwork Card + Mini Transport Player (Only when showPlaybackCard is true) */}
+            {showPlaybackCard && (
+              <div className="lg:col-span-5 flex flex-col items-center justify-center">
+                <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
+                  <TrackArtwork
+                    artworkUrl={track?.artworkUrl}
+                    size={420}
+                    className="size-full object-cover"
+                    iconSize={64}
+                    loading="eager"
                   />
-
-                  <div className="flex items-center justify-center gap-5 mt-2 text-white">
-                    <button
-                      type="button"
-                      onClick={() => void playerController.skipToPrevious()}
-                      className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                      aria-label="Previous track"
-                    >
-                      <SkipPreviousIcon size={22} />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void playerController.togglePlayPause()}
-                      className="flex size-11 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-                      aria-label={isPlaying ? "Pause" : "Play"}
-                    >
-                      {isPlaying ? <PauseActiveIcon size={20} fill="currentColor" /> : <PlayActiveIcon size={20} fill="currentColor" className="ml-0.5" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void playerController.skipToNext()}
-                      className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                      aria-label="Next track"
-                    >
-                      <SkipNextIcon size={22} />
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* Mini Player Under Artwork */}
+                {track && (
+                  <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
+                    <div className="flex min-w-0 flex-col mb-1 text-center lg:text-left">
+                      <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
+                      <span className="truncate text-sm text-white/70">
+                        <ArtistLinks artists={track.artists} fallback={track.artist} />
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
+                      <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
+                      <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min={0}
+                      max={track.durationSec || 100}
+                      step="any"
+                      value={currentPlaybackTime}
+                      onChange={(e) => {
+                        const t = parseFloat(e.target.value);
+                        setCurrentPlaybackTime(t);
+                        void playerController.seekTo(t);
+                      }}
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
+                      aria-label="Seek track"
+                    />
+
+                    <div className="flex items-center justify-center gap-5 mt-2 text-white">
+                      <button
+                        type="button"
+                        onClick={() => void playerController.skipToPrevious()}
+                        className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        aria-label="Previous track"
+                      >
+                        <SkipPreviousIcon size={22} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void playerController.togglePlayPause()}
+                        className="flex size-11 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                        aria-label={isPlaying ? "Pause" : "Play"}
+                      >
+                        {isPlaying ? <PauseActiveIcon size={20} fill="currentColor" /> : <PlayActiveIcon size={20} fill="currentColor" className="ml-0.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void playerController.skipToNext()}
+                        className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        aria-label="Next track"
+                      >
+                        <SkipNextIcon size={22} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Right Column: Synced Lyrics */}
-            <div className="lg:col-span-7 h-[70vh] lg:h-[80vh] relative">
+            <div className={cn(
+              "h-[70vh] lg:h-[80vh] relative",
+              showPlaybackCard ? "lg:col-span-7" : "lg:col-span-12 flex justify-center w-full",
+            )}>
               <div
                 ref={scrollerRef}
-                className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className={cn(
+                  "relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  !showPlaybackCard && "w-full max-w-3xl",
+                )}
                 onWheel={pauseFollow}
                 onPointerDown={pauseFollow}
                 onTouchMove={pauseFollow}
@@ -746,9 +755,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                   )}
                 </div>
               </div>
-
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/40 to-transparent" aria-hidden="true" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" aria-hidden="true" />
 
               {isFollowPaused && activeIndex >= 0 && (
                 <button
@@ -873,15 +879,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               </div>
             </div>
 
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-background/40 to-transparent"
-              aria-hidden="true"
-            />
-            <div
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/40 to-transparent"
-              aria-hidden="true"
-            />
-
             {isFollowPaused && activeIndex >= 0 && (
               <button
                 type="button"
@@ -1001,18 +998,6 @@ const SyncedLine = memo(function SyncedLine({
       }}
       onClick={() => onSeek(index)}
     >
-      {/* The one piece of brand colour on the screen, and the only thing marking which line
-          is playing when the sweep is at either end. */}
-      
-      {/* Posistion the highlight indicator on the right for Arabic (RTL), and on the left for (LTR) Languages */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute top-[0.28em] h-[0.72em] w-[3px] rounded-full bg-primary transition-opacity duration-300",
-          isArabic ? "-right-5" : "-left-5",
-          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-40",
-        )}
-      />
       {text}
       {/* Sized in `em` so it tracks the line it belongs to, and deliberately quieter: it is
           a gloss on the lyric, not a second lyric competing with it. */}

@@ -1323,6 +1323,7 @@ export class AudioEngine {
             logInternalError("AudioEngine YouTube player error", error, {
               videoId: this.currentVideoId,
             });
+            this.emitEnded();
           },
         },
       });

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { FullScreenIcon, InAppFullscreenIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { TrackInfo } from "./TrackInfo";
 import { PlaybackControls } from "./PlaybackControls";
@@ -34,6 +36,7 @@ const CONNECTION_CHECK_URLS = [
 ];
 
 export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnectionRestored,handlePlayerBarClick }: PlayerBarProps) {
+  const uiState = usePlayerUIState();
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
  
@@ -220,14 +223,51 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
 
             <DownloadButton />
             <VolumeControl />
+
+            {/* Left Fullscreen: Fullscreen Lyrics & Player */}
             <button
               type="button"
-              className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-              onClick={onToggleLyrics}
-              aria-label="Toggle lyrics / fullscreen"
-              title="Toggle lyrics / fullscreen"
+              className={cn(
+                "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                uiState.isLyricsOpen && uiState.isLyricsFullscreen
+                  ? "bg-card text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={async () => {
+                if (uiState.isLyricsOpen && uiState.isLyricsFullscreen) {
+                  playerUIStore.setLyricsFullscreen(false);
+                  playerUIStore.setLyricsOpen(false);
+                  try {
+                    await getCurrentWindow().setFullscreen(false);
+                  } catch {}
+                } else {
+                  playerUIStore.setLyricsFullscreen(true);
+                  playerUIStore.setLyricsOpen(true);
+                  try {
+                    await getCurrentWindow().setFullscreen(true);
+                  } catch {}
+                }
+              }}
+              aria-label="Fullscreen lyrics & player"
+              title="Fullscreen lyrics & player"
             >
               <FullScreenIcon size={16} />
+            </button>
+
+            {/* Right Fullscreen: Spotify In-App Fullscreen Now Playing */}
+            <button
+              type="button"
+              className={cn(
+                "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                uiState.isNowPlayingFullscreen
+                  ? "bg-card text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => playerUIStore.toggleNowPlayingFullscreen()}
+              aria-label="Now Playing full screen"
+              title="Now Playing full screen"
+            >
+              <InAppFullscreenIcon size={16} />
             </button>
           </div>
         </div>

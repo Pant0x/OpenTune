@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlbumIcon,
+  ArrowUpRightIcon,
   CheckIcon,
   ClockIcon,
   CloseIcon,
@@ -34,6 +35,7 @@ import { shuffleTracks } from "../../player/shuffleTracks";
 import { AlbumCard } from "../components/AlbumCard";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
+import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { cn, formatCompactNumber } from "@/lib/utils";
@@ -42,7 +44,6 @@ import {
   getSpotifyShareUrl,
   sanitizeSpotifyBio,
   type SpotifyArtistOverview,
-  type SpotifyPlaylist,
   type SpotifyRelease,
 } from "../../services/SpotifyService";
 import { logInternalError } from "../../internal/logging";
@@ -146,8 +147,8 @@ export function ArtistView({
   // Spotify data
   const [spotifyOverview, setSpotifyOverview] = useState<SpotifyArtistOverview | null>(null);
   const [spotifyReleases, setSpotifyReleases] = useState<SpotifyRelease[]>([]);
-  const [spotifyPlaylists, setSpotifyPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   // Extra playlists for Featuring and Discovered on fallback
   const [extraFeaturingPlaylists, setExtraFeaturingPlaylists] = useState<Playlist[]>([]);
@@ -181,7 +182,6 @@ export function ArtistView({
     setShowAllReleases(false);
     setExtraFeaturingPlaylists([]);
     setExtraDiscoveredOnPlaylists([]);
-    setSpotifyPlaylists([]);
 
     // Fetch YouTube Music artist page
     void libraryController.getArtist(artist.id, (updated) => {
@@ -221,16 +221,6 @@ export function ArtistView({
       })
       .catch((err) => {
         logInternalError("Spotify discography fetch failed", err);
-      });
-
-    void SpotifyService.getArtistPlaylists(artistName)
-      .then((playlists) => {
-        if (active && playlists.length > 0) {
-          setSpotifyPlaylists(playlists);
-        }
-      })
-      .catch((err) => {
-        logInternalError("Spotify artist playlists fetch failed", err);
       });
 
     // Search for official playlists and community playlists
@@ -281,10 +271,15 @@ export function ArtistView({
 
   const displayedArtist = page?.artist ?? artist;
 
-  // Consistent Spotify-first picture
-  const artistAvatar = spotifyOverview?.avatarUrl || displayedArtist?.artworkUrl;
+  // Consistent Spotify-first picture with YouTube fallback
+  const artistAvatar =
+    spotifyOverview?.avatarUrl ||
+    (displayedArtist?.id ? fansSpotifyAvatars[displayedArtist.id] : undefined) ||
+    displayedArtist?.artworkUrl;
   const artistHeaderBg =
-    spotifyOverview?.headerUrl || spotifyOverview?.galleryUrls?.[0] || artistAvatar;
+    spotifyOverview?.headerUrl ||
+    spotifyOverview?.galleryUrls?.[0] ||
+    artistAvatar;
 
   const isBlockedArtist = displayedArtist?.name
     ? blockedArtists.includes(displayedArtist.name.toLowerCase())
@@ -380,23 +375,6 @@ export function ArtistView({
         }
       }).catch(() => {});
     }
-  };
-
-  const handleOpenSpotifyPlaylist = async (pl: SpotifyPlaylist) => {
-    if (!displayedArtist) return;
-    try {
-      const res = await searchController.search(`${pl.name} ${displayedArtist.name}`);
-      if (res.playlists && res.playlists.length > 0) {
-        onOpenPlaylist(res.playlists[0]);
-        return;
-      }
-    } catch {}
-    onOpenPlaylist({
-      id: `spotify:${pl.id}`,
-      title: pl.name,
-      artworkUrl: pl.coverUrl,
-      owner: pl.ownerName || "Spotify",
-    });
   };
 
   // Merge YouTube Music releases with Spotify discography
@@ -500,50 +478,37 @@ export function ArtistView({
     return result;
   }, [page?.discoveredOn, page?.playlists, featuringPlaylists, extraDiscoveredOnPlaylists]);
 
-  // Popular song items structured for Spotify-style table with cover art
+  // Popular song items based on authentic YouTube Music tracks, enriched with Spotify plays
   const popularItems: PopularSongItem[] = useMemo(() => {
-    if (spotifyOverview?.topTracks && spotifyOverview.topTracks.length > 0) {
-      return spotifyOverview.topTracks.map((st) => {
-        const matched = page?.allSongs.find((yt) => {
-          const c1 = yt.title.toLowerCase().replace(/[^a-z0-9]/g, "");
-          const c2 = st.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-          return c1.includes(c2) || c2.includes(c1);
-        });
-        const minutes = Math.floor(st.durationMs / 60000);
-        const seconds = Math.floor((st.durationMs % 60000) / 1000);
-        const durStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-        return {
-          id: matched?.id || `spotify:${st.id}`,
-          spotifyTrackId: st.id,
-          name: st.name,
-          artist: st.artists.join(", ") || displayedArtist?.name || "",
-          isExplicit: st.isExplicit,
-          plays: st.playcount,
-          duration: durStr,
-          coverUrl: st.coverUrl || matched?.artworkUrl,
-          rawTrack: matched,
-          albumName: matched?.album,
-          albumId: matched?.albumId,
-        };
-      });
-    }
-
     const allSongs = page?.allSongs ?? [];
-    const sourceSongs = page?.popularSongs && page.popularSongs.length > 0 ? page.popularSongs : allSongs;
-    return sourceSongs.map((yt) => ({
-      id: yt.id,
-      spotifyTrackId: undefined,
-      name: yt.title,
-      artist: yt.artist || displayedArtist?.name || "",
-      isExplicit: Boolean(yt.isExplicit),
-      plays: yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt),
-      duration: yt.durationSec ? formatDuration(yt.durationSec) : (yt.duration || ""),
-      coverUrl: yt.artworkUrl,
-      rawTrack: yt,
-      albumName: yt.album,
-      albumId: yt.albumId,
-    }));
-  }, [spotifyOverview?.topTracks, page?.allSongs, page?.popularSongs, displayedArtist?.name]);
+    const sourceSongs =
+      page?.popularSongs && page.popularSongs.length > 0
+        ? page.popularSongs
+        : allSongs;
+
+    return sourceSongs.map((yt) => {
+      // Fuzzy-match with Spotify top tracks to grab authentic playcount and cover art
+      const matchedSpotify = spotifyOverview?.topTracks?.find((st) => {
+        const c1 = yt.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const c2 = st.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return c1.includes(c2) || c2.includes(c1);
+      });
+
+      return {
+        id: yt.id,
+        spotifyTrackId: matchedSpotify?.id,
+        name: yt.title,
+        artist: yt.artist || displayedArtist?.name || "",
+        isExplicit: Boolean(yt.isExplicit || matchedSpotify?.isExplicit),
+        plays: matchedSpotify?.playcount || (yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt)),
+        duration: yt.durationSec ? formatDuration(yt.durationSec) : (yt.duration || ""),
+        coverUrl: yt.artworkUrl || matchedSpotify?.coverUrl,
+        rawTrack: yt,
+        albumName: yt.album,
+        albumId: yt.albumId,
+      };
+    });
+  }, [page?.popularSongs, page?.allSongs, spotifyOverview?.topTracks, displayedArtist?.name]);
 
   const displayedPopularItems = showAllSongs ? popularItems : popularItems.slice(0, 5);
 
@@ -579,20 +544,9 @@ export function ArtistView({
   };
 
   const handlePlaySongItem = async (item: PopularSongItem) => {
-    if (item.rawTrack) {
-      void playerController.playTrackById(item.rawTrack.id, page?.allSongs ?? [item.rawTrack]);
-      return;
-    }
-    // Search YouTube Music for this track and play
-    try {
-      const searchRes = await searchController.search(`${item.name} ${displayedArtist.name}`);
-      const song = searchRes.tracks?.[0];
-      if (song) {
-        void playerController.playTrackById(song.id, [song]);
-      }
-    } catch (err) {
-      logInternalError("Failed to play song item", err);
-    }
+    const trackId = item.rawTrack ? item.rawTrack.id : item.id;
+    const queue = page?.allSongs ?? (item.rawTrack ? [item.rawTrack] : []);
+    void playerController.playTrackById(trackId, queue);
   };
 
   const toggleArtistSubscription = async () => {
@@ -631,43 +585,54 @@ export function ArtistView({
         <div className="absolute inset-0 -z-10 bg-zinc-900">
           <img
             src={artistHeaderBg}
-            alt={displayedArtist.name}
+            alt=""
+            referrerPolicy="no-referrer"
             className="w-full h-full object-cover object-center sm:object-top"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-black/30" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
         </div>
 
-        {/* Hero Content */}
-        <div className="relative z-10 flex flex-col gap-2.5 max-w-4xl">
-          {/* Verified Badge */}
-          <div className="flex items-center gap-2 text-sm font-semibold text-white/90 drop-shadow-md">
-            <span className="flex size-5 items-center justify-center rounded-full bg-[#0D72EC] text-white">
-              <CheckIcon size={12} strokeWidth={3} />
-            </span>
-            <span>Verified Artist</span>
-          </div>
+        {/* Hero Content with Circular PFP beside Name */}
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-end gap-6 max-w-5xl">
+          {/* Circular PFP that opens Lightbox on click */}
+          <button
+            type="button"
+            onClick={() => setIsLightboxOpen(true)}
+            className="group relative size-36 sm:size-44 md:size-48 shrink-0 rounded-full overflow-hidden shadow-2xl ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            title="Click to view artist photo"
+          >
+            <TrackArtwork
+              className="size-full object-cover"
+              artworkUrl={artistAvatar}
+              iconSize={72}
+              loading="eager"
+              variant="artist"
+            />
+          </button>
 
-          {/* Artist Name */}
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
-            {displayedArtist.name}
-          </h1>
+          {/* Artist Name and Listeners */}
+          <div className="flex flex-col gap-2.5 min-w-0 flex-1 pb-1">
+            <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
+              {displayedArtist.name}
+            </h1>
 
-          {/* Monthly Listeners / Subscribers */}
-          <div className="flex items-center gap-2 text-sm md:text-base font-semibold text-white/90 drop-shadow-md mt-1">
-            {spotifyOverview?.monthlyListeners ? (
-              <span>
-                {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
-              </span>
-            ) : formattedSubCount ? (
-              <span>{formattedSubCount}</span>
-            ) : null}
-            {spotifyOverview?.monthlyListeners && formattedSubCount && (
-              <>
-                <span className="opacity-60">•</span>
-                <span className="opacity-80 font-normal">{formattedSubCount}</span>
-              </>
-            )}
+            {/* Monthly Listeners / Subscribers */}
+            <div className="flex items-center gap-2 text-sm md:text-base font-semibold text-white/90 drop-shadow-md">
+              {spotifyOverview?.monthlyListeners ? (
+                <span>
+                  {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
+                </span>
+              ) : formattedSubCount ? (
+                <span>{formattedSubCount}</span>
+              ) : null}
+              {spotifyOverview?.monthlyListeners && formattedSubCount && (
+                <>
+                  <span className="opacity-60">•</span>
+                  <span className="opacity-80 font-normal">{formattedSubCount}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1039,7 +1004,9 @@ export function ArtistView({
                         : release.releaseType === "single"
                           ? "Single"
                           : "Album";
-                  const subtitle = `${releaseTypeLabel} • ${release.artist || displayedArtist.name}`;
+                  const subtitle = release.year
+                    ? `${release.year} • ${releaseTypeLabel}`
+                    : releaseTypeLabel;
 
                   return (
                     <AlbumCard
@@ -1098,9 +1065,18 @@ export function ArtistView({
               <img
                 src={artistHeaderBg}
                 alt={displayedArtist.name}
+                referrerPolicy="no-referrer"
                 className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+
+              {/* Top-Right Spotify World Rank Badge (Matches Image 5) */}
+              {spotifyOverview?.worldRank ? (
+                <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-10 flex size-16 sm:size-20 shrink-0 flex-col items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-xl shadow-[#0D72EC]/40 select-none">
+                  <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">#{spotifyOverview.worldRank}</span>
+                  <span className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white/95 leading-tight mt-0.5">in the world</span>
+                </div>
+              ) : null}
 
               <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col gap-2">
                 {spotifyOverview?.monthlyListeners ? (
@@ -1130,26 +1106,6 @@ export function ArtistView({
                     subtitle={playlist.owner || "Playlist"}
                     onClick={() => onOpenPlaylist(playlist)}
                     onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* 6. Artist Playlists (Curated Spotify Playlists - directly above Fans also like) */}
-          {spotifyPlaylists.length > 0 && (
-            <section className="flex flex-col gap-4">
-              <h2 className="text-xl font-bold tracking-tight text-foreground">
-                Artist Playlists
-              </h2>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {spotifyPlaylists.map((playlist) => (
-                  <AlbumCard
-                    key={playlist.id}
-                    artworkUrl={playlist.coverUrl}
-                    title={playlist.name}
-                    subtitle={playlist.ownerName || `By ${displayedArtist.name}`}
-                    onClick={() => void handleOpenSpotifyPlaylist(playlist)}
                   />
                 ))}
               </div>
@@ -1323,7 +1279,7 @@ export function ArtistView({
                           >
                             {getSocialIcon(link.name)}
                             <span>{formatSocialName(link.name)}</span>
-                            <span className="text-[10px] text-muted-foreground">↗</span>
+                            <ArrowUpRightIcon size={12} className="text-white/70 shrink-0" />
                           </a>
                         ))
                       ) : spotifyOverview?.instagramUrl ? (
@@ -1335,7 +1291,7 @@ export function ArtistView({
                         >
                           <InstagramIcon size={16} className="text-white shrink-0" />
                           <span>Instagram</span>
-                          <span className="text-[10px] text-muted-foreground">↗</span>
+                          <ArrowUpRightIcon size={12} className="text-white/70 shrink-0" />
                         </a>
                       ) : (
                         <span className="text-xs text-muted-foreground">No external links</span>
@@ -1384,6 +1340,13 @@ export function ArtistView({
         </div>,
         document.body,
       )}
+
+      <ArtworkLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        artworkUrl={artistAvatar}
+        title={displayedArtist.name}
+      />
     </div>
   );
 }

@@ -522,13 +522,11 @@ export class PlayerController {
       await this.ensureTrackLoaded(track);
       if (requestId !== this.playTrackRequestId) return false;
 
-      if (this.isTabActive) {
-        const playbackStarted = await this.playLoadedTrack();
-        if (!playbackStarted) {
-          this.setState({ status: "paused", error: null });
-          return false;
-        }
-      } else {
+      if (!this.isTabActive) {
+        this.isTabActive = true;
+      }
+      const playbackStarted = await this.playLoadedTrack();
+      if (!playbackStarted) {
         this.setState({ status: "paused", error: null });
         return false;
       }

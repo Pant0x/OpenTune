@@ -41,6 +41,7 @@ const LocalFilesPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
+const NowPlayingFullscreenView = lazy(() => import("./pages/NowPlayingFullscreenView").then((m) => ({ default: m.NowPlayingFullscreenView })));
 const ReleasesPage = lazy(() => import("./pages/ReleasesPage").then((m) => ({ default: m.ReleasesPage })));
 const SongPage = lazy(() => import("./pages/SongPage").then((m) => ({ default: m.SongPage })));
 import { TrackContextMenuProvider } from "./components/TrackContextMenu";
@@ -791,10 +792,14 @@ useMediaSession(playerState, playerController);
     if (!playerState.currentTrack && playerUIState.isLyricsOpen) {
       playerUIStore.setLyricsOpen(false);
     }
-  }, [playerState.currentTrack, playerUIState.isLyricsOpen]);
+    if (!playerState.currentTrack && playerUIState.isNowPlayingFullscreen) {
+      playerUIStore.setNowPlayingFullscreen(false);
+    }
+  }, [playerState.currentTrack, playerUIState.isLyricsOpen, playerUIState.isNowPlayingFullscreen]);
 
   const handleNavigateAlbum = (album: Album) => {
     playerUIStore.setLyricsOpen(false);
+    playerUIStore.setNowPlayingFullscreen(false);
     navigateTab(activeTabId, {
       title: activeTab?.title,
       view: "album",
@@ -804,6 +809,7 @@ useMediaSession(playerState, playerController);
 
   const handleNavigateSong = (song: Track, openInNewTab = false) => {
     playerUIStore.setLyricsOpen(false);
+    playerUIStore.setNowPlayingFullscreen(false);
     if (openInNewTab) {
       const newId = nextTabId.toString();
       tabManager.createTab(newId);
@@ -872,6 +878,7 @@ useMediaSession(playerState, playerController);
 
   const handleNavigateArtist = (artist: Artist, openInNewTab = false) => {
     playerUIStore.setLyricsOpen(false);
+    playerUIStore.setNowPlayingFullscreen(false);
     if (!artist.id) {
       const fallbackToSearch = () => handleSearch(artist.name, openInNewTab);
       void searchController.search(artist.name)
@@ -1456,6 +1463,11 @@ const backOnboardingStep = () => {
       if (isTextEntry(event.target)) return;
 
       if (event.button === MOUSE_BACK_BUTTON) {
+        if (playerUIState.isNowPlayingFullscreen) {
+          event.preventDefault();
+          playerUIStore.setNowPlayingFullscreen(false);
+          return;
+        }
         if (playerUIState.isLyricsOpen) {
           event.preventDefault();
           playerUIStore.setLyricsOpen(false);
@@ -1984,6 +1996,12 @@ const backOnboardingStep = () => {
           )}
           {showOnboardingComplete && <OnboardingCompleteToast />}
         </>
+      )}
+
+      {playerUIState.isNowPlayingFullscreen && (
+        <Suspense fallback={null}>
+          <NowPlayingFullscreenView onClose={() => playerUIStore.setNowPlayingFullscreen(false)} />
+        </Suspense>
       )}
 
 {/* <ReleaseNoteDialog

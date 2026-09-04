@@ -8,6 +8,7 @@ export interface PlayerUIState {
   showAlbumArt: boolean;
   isLyricsOpen: boolean;
   isLyricsFullscreen: boolean;
+  isNowPlayingFullscreen: boolean;
   isQueueOpen: boolean;
   rightPanelTab: RightPanelTab;
 }
@@ -21,6 +22,7 @@ class PlayerUIStore {
     showAlbumArt: true,
     isLyricsOpen: false,
     isLyricsFullscreen: false,
+    isNowPlayingFullscreen: false,
     isQueueOpen: false,
     rightPanelTab: "nowplaying",
   };
@@ -70,6 +72,14 @@ class PlayerUIStore {
 
   setLyricsFullscreen(isLyricsFullscreen: boolean) {
     this.setState({ isLyricsFullscreen });
+  }
+
+  setNowPlayingFullscreen(isNowPlayingFullscreen: boolean) {
+    this.setState({ isNowPlayingFullscreen });
+  }
+
+  toggleNowPlayingFullscreen() {
+    this.setState({ isNowPlayingFullscreen: !this.state.isNowPlayingFullscreen });
   }
 
   setQueueOpen(isQueueOpen: boolean) {

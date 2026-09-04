@@ -344,3 +344,12 @@ export const GlobalIcon: Icon = createSpotifyIcon(() => (
   </g>
 ));
 export const GlobeIcon: Icon = GlobalIcon;
+
+export const ArrowUpRightIcon: Icon = createSpotifyIcon(() => (
+  <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M17 7H7M17 7v10" />
+));
+
+export const InAppFullscreenIcon: Icon = createSpotifyIcon(() => (
+  <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+));
+
