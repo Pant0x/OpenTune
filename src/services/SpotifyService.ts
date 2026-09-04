@@ -18,17 +18,34 @@ export interface SpotifyTrack {
   uri: string;
 }
 
+export interface SpotifyExternalLink {
+  name: string;
+  url: string;
+}
+
+export interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  description?: string;
+  coverUrl?: string;
+  uri: string;
+  ownerName?: string;
+}
+
 export interface SpotifyArtistOverview {
   uri: string;
+  spotifyId: string;
   name: string;
   monthlyListeners: number;
   followers: number;
   worldRank?: number;
   bio?: string;
+  cleanBio?: string;
   avatarUrl?: string;
   headerUrl?: string;
   galleryUrls: string[];
   instagramUrl?: string;
+  externalLinks: SpotifyExternalLink[];
   topCities: SpotifyTopCity[];
   topTracks: SpotifyTrack[];
 }
@@ -41,6 +58,32 @@ export interface SpotifyRelease {
   coverUrl?: string;
   trackCount: number;
   uri: string;
+}
+
+/**
+ * Sanitizes Spotify's raw biography text, stripping <a href="spotify:..."> tags
+ * while preserving clean artist names and removing raw HTML.
+ */
+export function sanitizeSpotifyBio(rawHtml?: string): string {
+  if (!rawHtml) return "";
+  return rawHtml
+    .replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>(.*?)<\/a>/gi, "$1")
+    .replace(/<[^>]+>/gi, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+/**
+ * Generates open.spotify.com URLs for tracks, artists, albums, or playlists
+ * that automatically generate rich playable embed cards in Discord/WhatsApp/Telegram.
+ */
+export function getSpotifyShareUrl(type: "track" | "artist" | "album" | "playlist", idOrUri: string): string {
+  const cleanId = idOrUri.replace(/^spotify:(track|artist|album|playlist):/, "");
+  return `https://open.spotify.com/${type}/${cleanId}`;
 }
 
 const SPOTIFY_PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v1/query";
@@ -66,6 +109,7 @@ class SpotifyServiceManager {
 
   private artistOverviewCache = new Map<string, { data: SpotifyArtistOverview; timestamp: number }>();
   private discographyCache = new Map<string, { data: SpotifyRelease[]; timestamp: number }>();
+  private playlistCache = new Map<string, { data: SpotifyPlaylist[]; timestamp: number }>();
 
   /**
    * Fetches an anonymous client access token from open.spotify.com embed page.
@@ -244,19 +288,34 @@ class SpotifyServiceManager {
         })
       : [];
 
-    const instagramItem = profile.externalLinks?.items?.find((link: any) => link?.name?.toUpperCase() === "INSTAGRAM");
+    const externalLinks: SpotifyExternalLink[] = Array.isArray(profile.externalLinks?.items)
+      ? profile.externalLinks.items
+          .map((item: any) => ({
+            name: (item.name || "").trim().toUpperCase(),
+            url: item.url || "",
+          }))
+          .filter((link: any) => link.url && link.name)
+      : [];
+
+    const instagramItem = externalLinks.find((link) => link.name === "INSTAGRAM");
+    const rawBio = profile.biography?.text;
+    const cleanBio = sanitizeSpotifyBio(rawBio);
+    const spotifyId = uri.replace("spotify:artist:", "");
 
     const overview: SpotifyArtistOverview = {
       uri,
+      spotifyId,
       name: profile.name || "",
       monthlyListeners: Number(stats.monthlyListeners) || 0,
       followers: Number(stats.followers) || 0,
       worldRank: Number(stats.worldRank) || undefined,
-      bio: profile.biography?.text || undefined,
+      bio: rawBio || undefined,
+      cleanBio: cleanBio || undefined,
       avatarUrl: visuals.avatarImage?.sources?.[0]?.url || undefined,
       headerUrl: visuals.headerImage?.sources?.[0]?.url || undefined,
       galleryUrls,
       instagramUrl: instagramItem?.url || undefined,
+      externalLinks,
       topCities,
       topTracks,
     };
@@ -264,6 +323,55 @@ class SpotifyServiceManager {
     this.artistOverviewCache.set(artistNameOrUri.toLowerCase(), { data: overview, timestamp: Date.now() });
     this.artistOverviewCache.set(uri.toLowerCase(), { data: overview, timestamp: Date.now() });
     return overview;
+  }
+
+  /**
+   * Fetches official artist playlists (e.g. "This Is [Artist]", "[Artist] Radio") from Spotify.
+   */
+  async getArtistPlaylists(artistName: string): Promise<SpotifyPlaylist[]> {
+    const cleanName = artistName.trim();
+    if (!cleanName) return [];
+    const cached = this.playlistCache.get(cleanName.toLowerCase());
+    if (cached && Date.now() - cached.timestamp < 3600_000) {
+      return cached.data;
+    }
+
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `This Is ${cleanName}`,
+        offset: 0,
+        limit: 8,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+
+      const playlistItems = result?.data?.searchV2?.playlists?.items;
+      if (!Array.isArray(playlistItems)) return [];
+
+      const playlists: SpotifyPlaylist[] = [];
+      for (const item of playlistItems) {
+        const data = item?.data;
+        if (!data) continue;
+        const name = data.name || "";
+        const uri = data.uri || "";
+        const id = uri.replace("spotify:playlist:", "");
+        const coverUrl = data.images?.items?.[0]?.sources?.[0]?.url;
+        playlists.push({
+          id: id || uri,
+          name,
+          description: data.description || "",
+          coverUrl,
+          uri: uri || `spotify:playlist:${id}`,
+          ownerName: data.ownerV2?.data?.name || "Spotify",
+        });
+      }
+
+      this.playlistCache.set(cleanName.toLowerCase(), { data: playlists, timestamp: Date.now() });
+      return playlists;
+    } catch (err) {
+      logInternalError("SpotifyService.getArtistPlaylists failed", err);
+      return [];
+    }
   }
 
   /**

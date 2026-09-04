@@ -60,7 +60,7 @@ export function formatCollectionMeta(
 
 interface MediaHeaderProps {
   /** Small uppercase kicker: PLAYLIST, ALBUM, ARTIST. */
-  eyebrow: string;
+  eyebrow?: string;
   /** ReactNode so a page can make the title interactive — the artist page's copies its URL. */
   title: ReactNode;
   /** Owner, artist links — the line directly under the title. */
@@ -217,9 +217,11 @@ export function MediaHeader({
         )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {eyebrow}
-        </span>
+        {eyebrow ? (
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {eyebrow}
+          </span>
+        ) : null}
         {/* Long album titles otherwise push the actions off the row entirely. */}
         <h1 className="line-clamp-2 text-4xl font-bold tracking-[-0.03em] text-foreground">
           {title}

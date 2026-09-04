@@ -76,7 +76,7 @@ export const AlbumCard = memo(function AlbumCard({
       role="button"
       tabIndex={0}
     >
-      <TiltCard max={9} className="aspect-square w-full overflow-hidden rounded-none">
+      <TiltCard max={9} className="aspect-square w-full overflow-hidden rounded-lg shadow-sm">
         <div className="relative size-full" style={{ backgroundColor: color }}>
           <TrackArtwork
             className="size-full object-cover"
@@ -87,7 +87,7 @@ export const AlbumCard = memo(function AlbumCard({
           />
           {/* Play affordance fades in on hover rather than sitting permanently on the art. */}
           <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/50 opacity-0 transition-opacity group-hover/card:opacity-100">
-            <span className="grid size-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg">
+            <span className="grid size-12 place-items-center rounded-full bg-red-600 text-white shadow-xl transition-transform duration-200 group-hover/card:scale-105">
               <PlayActiveIcon size={26} />
             </span>
           </div>
