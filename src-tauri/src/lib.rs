@@ -3081,26 +3081,48 @@ async fn fetch_audio_bytes(
         Some(total) if total > 0 => audio_url_with_range(&url, 0, total - 1),
         _ => url.clone(),
     };
-    let response = send_audio_request(&client, &ranged_url, cookie.as_deref(), &track_id).await?;
 
-    let body = response.bytes().await.map_err(|error| {
-        eprintln!(
-            "[internal][tauri][error] fetch_audio_bytes body read failed url={} error={}",
-            url, error
-        );
-        CommandError {
-            message: format!("read body failed: {error}"),
+    let mut last_error: Option<CommandError> = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(350 * (attempt as u64))).await;
         }
-    })?;
+        match send_audio_request(&client, &ranged_url, cookie.as_deref(), &track_id).await {
+            Ok(response) => {
+                match response.bytes().await {
+                    Ok(body) => {
+                        eprintln!(
+                            "[internal][tauri][info] fetch_audio_bytes success url={} bytes={} duration_ms={}",
+                            url,
+                            body.len(),
+                            started_at.elapsed().as_millis()
+                        );
+                        return Ok(body.to_vec());
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[internal][tauri][warn] fetch_audio_bytes body read failed attempt={} url={} error={}",
+                            attempt, url, error
+                        );
+                        last_error = Some(CommandError {
+                            message: format!("read body failed: {error}"),
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "[internal][tauri][warn] fetch_audio_bytes request failed attempt={} url={} error={}",
+                    attempt, url, error.message
+                );
+                last_error = Some(error);
+            }
+        }
+    }
 
-    eprintln!(
-        "[internal][tauri][info] fetch_audio_bytes success url={} bytes={} duration_ms={}",
-        url,
-        body.len(),
-        started_at.elapsed().as_millis()
-    );
-
-    Ok(body.to_vec())
+    Err(last_error.unwrap_or_else(|| CommandError {
+        message: "fetch_audio_bytes failed all attempts".into(),
+    }))
 }
 
 /// Where downloaded audio lives. Separate from the metadata cache on purpose: that one is
@@ -3245,7 +3267,7 @@ fn playback_ranges(total: usize) -> Vec<(usize, usize)> {
     if total == 0 {
         return Vec::new();
     }
-    const PLAYBACK_CHUNK_SIZE: usize = 512 * 1024;
+    const PLAYBACK_CHUNK_SIZE: usize = 1536 * 1024;
     let mut ranges = Vec::new();
     let mut start = 0;
     while start < total {

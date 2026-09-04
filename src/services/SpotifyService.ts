@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../internal/logging";
 import { tauriFetch } from "../datasource/youtube/tauriFetch";
 
@@ -55,6 +56,7 @@ export interface SpotifyRelease {
   name: string;
   type: "album" | "single" | "ep";
   year?: number;
+  date?: string;
   coverUrl?: string;
   trackCount: number;
   uri: string;
@@ -465,7 +467,7 @@ class SpotifyServiceManager {
    */
   async getArtistDiscography(artistNameOrUri: string): Promise<SpotifyRelease[]> {
     const cached = this.discographyCache.get(artistNameOrUri.toLowerCase());
-    if (cached && Date.now() - cached.timestamp < 3600_000) {
+    if (cached && Date.now() - cached.timestamp < 30_000) {
       return cached.data;
     }
 
@@ -498,16 +500,29 @@ class SpotifyServiceManager {
         type = "ep";
       }
 
+      const year = release.date?.year || undefined;
+      const month = release.date?.month ? String(release.date.month).padStart(2, "0") : "01";
+      const day = release.date?.day ? String(release.date.day).padStart(2, "0") : "01";
+      const date = year ? `${year}-${month}-${day}` : undefined;
+
       releases.push({
         id: release.id || "",
         name: release.name || "",
         type,
-        year: release.date?.year || undefined,
+        year,
+        date,
         coverUrl: release.coverArt?.sources?.[0]?.url || undefined,
         trackCount: release.tracks?.totalCount || 1,
         uri: release.uri || "",
       });
     }
+
+    // Sort by latest release date descending (new drops like Yeat appear at the top)
+    releases.sort((a, b) => {
+      const da = a.date || (a.year ? `${a.year}-01-01` : "");
+      const db = b.date || (b.year ? `${b.year}-01-01` : "");
+      return db.localeCompare(da);
+    });
 
     this.discographyCache.set(artistNameOrUri.toLowerCase(), { data: releases, timestamp: Date.now() });
     return releases;
@@ -515,3 +530,44 @@ class SpotifyServiceManager {
 }
 
 export const SpotifyService = new SpotifyServiceManager();
+
+const spotifyAvatarMemory = new Map<string, string>();
+
+/**
+ * Resolves artist avatar prioritizing Spotify, with instant memory caching
+ * and automatic fallback to YouTube Music artwork.
+ */
+export function useSpotifyArtistAvatar(artistName?: string, fallbackUrl?: string): string | undefined {
+  const [avatar, setAvatar] = useState<string | undefined>(() => {
+    if (!artistName) return fallbackUrl;
+    return spotifyAvatarMemory.get(artistName.trim().toLowerCase()) || fallbackUrl;
+  });
+
+  useEffect(() => {
+    if (!artistName?.trim()) {
+      setAvatar(fallbackUrl);
+      return;
+    }
+    const key = artistName.trim().toLowerCase();
+    const cached = spotifyAvatarMemory.get(key);
+    if (cached) {
+      setAvatar(cached);
+      return;
+    }
+    let active = true;
+    void SpotifyService.getArtistAvatar(artistName).then((url) => {
+      if (!active) return;
+      if (url) {
+        spotifyAvatarMemory.set(key, url);
+        setAvatar(url);
+      } else {
+        setAvatar(fallbackUrl);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [artistName, fallbackUrl]);
+
+  return avatar;
+}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn, formatCompactNumber } from "@/lib/utils";
-import { ClockIcon, CloseIcon, HeartActiveIcon, HeartIcon, MenuDotsIcon, SearchIcon, ShareIcon } from "@/ui/icons";
+import { ClockIcon, CloseIcon, HeartActiveIcon, MenuDotsIcon, SearchIcon, ShareIcon } from "@/ui/icons";
 import { Tooltip } from "@/components/motion/tooltip";
 import { TrackRow } from "../components/TrackRow";
 import { TrackListSkeleton } from "../components/Skeleton";
@@ -21,7 +21,7 @@ import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { AlbumCard } from "../components/AlbumCard";
 import { TrackArtwork } from "../components/TrackArtwork";
-import { SpotifyService } from "../../services/SpotifyService";
+import { SpotifyService, useSpotifyArtistAvatar } from "../../services/SpotifyService";
 
 function formatDuration(totalSec?: number): string {
   if (!totalSec || isNaN(totalSec) || totalSec < 0) return "";
@@ -136,6 +136,8 @@ export function AlbumView({
     : (resolvedArtistName && !isInvalidArtist(resolvedArtistName))
       ? resolvedArtistName
       : undefined;
+
+  const artistProfileAvatar = useSpotifyArtistAvatar(displayArtistName, artistDetails?.artworkUrl);
 
   // Reset album state when navigating between albums
   useEffect(() => {
@@ -343,11 +345,21 @@ export function AlbumView({
     if (!album) return;
     try {
       let shareUrl: string | null = null;
-      if (album.artist && album.title) {
+      if (album.id.startsWith("spotify:album:")) {
+        shareUrl = `https://open.spotify.com/album/${album.id.replace("spotify:album:", "")}`;
+      } else if (album.id.startsWith("spotify:")) {
+        shareUrl = `https://open.spotify.com/album/${album.id.replace("spotify:", "")}`;
+      }
+      if (!shareUrl && album.artist && album.title) {
         shareUrl = await SpotifyService.searchAlbumUrl(album.title, album.artist).catch(() => null);
       }
       if (!shareUrl) {
-        shareUrl = `https://music.youtube.com/playlist?list=${encodeURIComponent(album.playlistId || album.id)}`;
+        const id = album.playlistId || album.id;
+        if (id.startsWith("MPREb_") || id.startsWith("FEmusic_library_album_")) {
+          shareUrl = `https://music.youtube.com/browse/${encodeURIComponent(id)}`;
+        } else {
+          shareUrl = `https://music.youtube.com/playlist?list=${encodeURIComponent(id)}`;
+        }
       }
       await navigator.clipboard.writeText(shareUrl);
       setToast("Album link copied to clipboard");
@@ -398,12 +410,15 @@ export function AlbumView({
                 className={cn(
                   "flex size-11 items-center justify-center rounded-full bg-card transition-all hover:bg-muted border border-border/40 active:scale-95",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                  isSaved
-                    ? "text-primary hover:text-primary"
-                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {isSaved ? <HeartActiveIcon size={20} /> : <HeartIcon size={20} />}
+                <HeartActiveIcon
+                  size={20}
+                  className={cn(
+                    "transition-transform active:scale-90",
+                    isSaved ? "text-red-500 fill-red-500" : "text-white/60 hover:text-white/90",
+                  )}
+                />
               </button>
             </Tooltip>
 
@@ -578,7 +593,7 @@ export function AlbumView({
           className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
         >
           <TrackArtwork
-            artworkUrl={artistDetails?.artworkUrl}
+            artworkUrl={artistProfileAvatar}
             variant="artist"
             size={400}
             preferProxy

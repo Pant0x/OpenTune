@@ -51,6 +51,7 @@ import { TrackArtwork } from "./TrackArtwork";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 import { Button } from "@/components/motion/button";
 import { AddCircleIcon } from "@solar-icons/react/bold-duotone";
+import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
  
 const PLAYLIST_ORDER_KEY = "ytc-sidebar-playlist-order";
 const ALBUM_ORDER_KEY = "ytc-sidebar-album-order";
@@ -532,6 +533,44 @@ function SidebarPlaylistArtwork({ playlist }: { playlist: Playlist }) {
     />
   );
 }
+
+function SidebarArtistRow({
+  artist,
+  shouldHideText,
+  className,
+  onClick,
+}: {
+  artist: Artist;
+  shouldHideText: boolean;
+  className: string;
+  onClick: () => void;
+}) {
+  const avatarUrl = useSpotifyArtistAvatar(artist.name, artist.artworkUrl);
+  return (
+    <button
+      type="button"
+      data-sidebar-item-id={artist.id}
+      data-sidebar-item-type="artists"
+      className={className}
+      onClick={onClick}
+    >
+      <TrackArtwork
+        className="size-10 shrink-0 rounded-full object-cover"
+        size={40}
+        artworkUrl={avatarUrl}
+        iconSize={20}
+        variant="artist"
+      />
+      {!shouldHideText && (
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm text-foreground">{artist.name}</span>
+          <span className="truncate text-xs text-muted-foreground">{artist.subscriberCount || "Artist"}</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
 
 export function Sidebar({
   width,
@@ -1431,27 +1470,12 @@ export function Sidebar({
                   title={artist.name}
                   subtitle={artist.subscriberCount || "Artist"}
                 >
-                  <button
-                    type="button"
-                    data-sidebar-item-id={artist.id}
-                    data-sidebar-item-type="artists"
+                  <SidebarArtistRow
+                    artist={artist}
+                    shouldHideText={shouldHideText}
                     className={itemClasses(artist.id, "artists")}
                     onClick={() => handleSidebarItemClick(() => onNavigateArtist?.(artist))}
-                  >
-                    <TrackArtwork
-                      className="size-10 shrink-0 rounded-full object-cover"
-                      size={40}
-                      artworkUrl={artist.artworkUrl}
-                      iconSize={20}
-                      variant="artist"
-                    />
-                    {!shouldHideText && (
-                      <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm text-foreground">{artist.name}</span>
-                        <span className="truncate text-xs text-muted-foreground">{artist.subscriberCount || "Artist"}</span>
-                      </div>
-                    )}
-                  </button>
+                  />
                 </SidebarItemTooltip>
               ))
             ) : libraryFilter.trim() ? (

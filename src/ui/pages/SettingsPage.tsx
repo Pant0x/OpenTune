@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/motion/select";
 import {
+  ArrowUpRightIcon,
   BugIcon,
   CheckIcon,
   CloseIcon,
@@ -35,6 +36,7 @@ import {
   DownloadIcon,
   FolderIcon,
   FolderOpenIcon,
+  GitHubIcon,
   GoogleIcon,
   ImageIcon,
   KeyIcon,
@@ -173,8 +175,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useLocalMusicFolder, setLocalMusicFolder } from "../../player/localFilesManager";
 import { DiscordRpcService } from "../../player/DiscordRPC";
 import { useDiscordPresenceEnabled } from "../settings/discord";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { isLinux, isTilingWindowManager, subscribeTilingWindowManager } from "../platform";
-import { GITHUB_NEW_ISSUE_URL, GITHUB_REPOSITORY_URL } from "../links";
+import { DISCORD_COMMUNITY_URL, GITHUB_NEW_ISSUE_URL, GITHUB_REPOSITORY_URL } from "../links";
 import { AccountAvatar, AccountSwitcher, AddGoogleAccountButton, GoogleAccountSwitcher } from "../components/AccountSwitcher";
 import {
   AUDIO_QUALITY_LABELS,
@@ -1259,32 +1262,87 @@ export function SettingsPage({
                 )}
               </div>
 
-              {/* Discord Rich Presence (RPC) Row */}
-              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
-                <div className="flex items-center gap-3">
-                  <span className="grid size-10 place-items-center rounded-xl bg-card">
-                    <DiscordIcon size={22} />
-                  </span>
-                  <div className="flex flex-col">
-                    <strong className="text-sm font-semibold text-foreground">Discord Rich Presence (RPC)</strong>
-                    <span className="text-xs text-muted-foreground">
-                      Display what you are listening to on your Discord profile status
+              {/* Preferences Box under Discord RPC */}
+              <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4">
+                <strong className="text-sm font-semibold text-foreground">Preferences</strong>
+
+                {/* Discord Rich Presence (RPC) Row */}
+                <div className="flex items-center justify-between gap-4 pt-1">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-card">
+                      <DiscordIcon size={22} className="text-[#5865F2]" />
                     </span>
+                    <div className="flex flex-col">
+                      <strong className="text-sm font-semibold text-foreground">Discord Rich Presence (RPC)</strong>
+                      <span className="text-xs text-muted-foreground">
+                        Display what you are listening to on your Discord profile status
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className={cn(
+                      "text-xs font-medium",
+                      discordPresenceEnabled ? "text-primary" : "text-muted-foreground"
+                    )}>
+                      {discordPresenceEnabled ? "Enabled" : "Disabled"}
+                    </span>
+                    <Switch
+                      checked={discordPresenceEnabled}
+                      onCheckedChange={(enabled) => void DiscordRpcService.setEnabled(enabled)}
+                      aria-label="Discord Rich Presence"
+                    />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span className={cn(
-                    "text-xs font-medium",
-                    discordPresenceEnabled ? "text-primary" : "text-muted-foreground"
-                  )}>
-                    {discordPresenceEnabled ? "Enabled" : "Disabled"}
-                  </span>
-                  <Switch
-                    checked={discordPresenceEnabled}
-                    onCheckedChange={(enabled) => void DiscordRpcService.setEnabled(enabled)}
-                    aria-label="Discord Rich Presence"
-                  />
+                <div className="h-px bg-border/40 my-1" />
+
+                {/* Discord Community Link */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-card">
+                      <DiscordIcon size={22} className="text-[#5865F2]" />
+                    </span>
+                    <div className="flex flex-col">
+                      <strong className="text-sm font-semibold text-foreground">Discord Community</strong>
+                      <span className="text-xs text-muted-foreground">
+                        Join our Discord server to get updates and chat with the community
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openUrl(DISCORD_COMMUNITY_URL)}
+                    className="flex items-center gap-1.5 rounded-full bg-card hover:bg-card/80 border border-border/50 px-4 py-1.5 text-xs font-semibold text-foreground transition-colors cursor-pointer"
+                  >
+                    <span>Join Server</span>
+                    <ArrowUpRightIcon size={12} className="text-muted-foreground" />
+                  </button>
+                </div>
+
+                <div className="h-px bg-border/40 my-1" />
+
+                {/* GitHub Repository Link */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-card">
+                      <GitHubIcon size={20} className="text-foreground" />
+                    </span>
+                    <div className="flex flex-col">
+                      <strong className="text-sm font-semibold text-foreground">GitHub Repository</strong>
+                      <span className="text-xs text-muted-foreground">
+                        View source code, report issues, and star Amber on GitHub
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openUrl(GITHUB_REPOSITORY_URL)}
+                    className="flex items-center gap-1.5 rounded-full bg-card hover:bg-card/80 border border-border/50 px-4 py-1.5 text-xs font-semibold text-foreground transition-colors cursor-pointer"
+                  >
+                    <span>View GitHub</span>
+                    <ArrowUpRightIcon size={12} className="text-muted-foreground" />
+                  </button>
                 </div>
               </div>
             </div>

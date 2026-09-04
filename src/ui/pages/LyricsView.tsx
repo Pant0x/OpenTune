@@ -16,7 +16,6 @@ import {
   LyricsIcon,
   PauseActiveIcon,
   PlayActiveIcon,
-  QuitFullScreenIcon,
   RefreshIcon,
   SkipNextIcon,
   SkipPreviousIcon,
@@ -548,19 +547,19 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           </button>
         )}
 
-        {/* In-App Fullscreen Toggle (Split View) */}
+        {/* Fullscreen Now Playing Toggle */}
         <button
           type="button"
-          className={cn(
-            "flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md",
-            isFullscreen && "bg-white/20 text-white",
-          )}
-          onClick={() => playerUIStore.setLyricsFullscreen(!isFullscreen)}
-          aria-pressed={isFullscreen}
-          aria-label={isFullscreen ? "Exit split fullscreen" : "Split fullscreen"}
-          title={isFullscreen ? "Collapse to single view" : "Split fullscreen view"}
+          className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
+          onClick={() => {
+            playerUIStore.setLyricsOpen(false);
+            playerUIStore.setLyricsFullscreen(false);
+            playerUIStore.setNowPlayingFullscreen(true);
+          }}
+          aria-label="Now Playing full screen"
+          title="Now Playing full screen"
         >
-          {isFullscreen ? <QuitFullScreenIcon size={18} /> : <FullScreenIcon size={18} />}
+          <FullScreenIcon size={18} />
         </button>
 
         {/* Real OS Fullscreen Toggle */}

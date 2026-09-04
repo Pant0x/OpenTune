@@ -705,6 +705,18 @@ useMediaSession(playerState, playerController);
   }, [persistAppSession]);
 
   useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void getCurrentWindow().onCloseRequested(() => {
+      persistAppSession();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [persistAppSession]);
+
+  useEffect(() => {
     sleepRecoveryLastTickRef.current = Date.now();
 
     const resetSleepTimerOnVisible = () => {
@@ -1453,6 +1465,7 @@ const backOnboardingStep = () => {
         ) !== null;
     };
 
+    let lastNavTime = 0;
     const handleMouseNavigation = (event: MouseEvent) => {
       if (
         event.button !== MOUSE_BACK_BUTTON
@@ -1461,6 +1474,10 @@ const backOnboardingStep = () => {
         return;
       }
       if (isTextEntry(event.target)) return;
+
+      const now = Date.now();
+      if (now - lastNavTime < 180) return;
+      lastNavTime = now;
 
       if (event.button === MOUSE_BACK_BUTTON) {
         if (playerUIState.isNowPlayingFullscreen) {
@@ -1501,9 +1518,11 @@ const backOnboardingStep = () => {
     };
 
     window.addEventListener("mousedown", handleMouseNavigation);
+    window.addEventListener("mouseup", handleMouseNavigation);
     window.addEventListener("auxclick", preventAuxNavigation);
     return () => {
       window.removeEventListener("mousedown", handleMouseNavigation);
+      window.removeEventListener("mouseup", handleMouseNavigation);
       window.removeEventListener("auxclick", preventAuxNavigation);
     };
   }, [

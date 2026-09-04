@@ -82,9 +82,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const nextTrack: Track | undefined =
     queueIndex >= 0 && queueIndex + 1 < queue.length ? queue[queueIndex + 1] : undefined;
 
-  // View mode: "artwork" or "lyrics"
-  const [viewMode, setViewMode] = useState<"artwork" | "lyrics">("artwork");
-  const [showSplit, setShowSplit] = useState(true);
+  // View mode: "artwork" | "lyrics" | "split"
+  const [viewMode, setViewMode] = useState<"artwork" | "lyrics" | "split">("split");
   const [isIdle, setIsIdle] = useState(false);
   const idleTimerRef = useRef<number | null>(null);
 
@@ -213,9 +212,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     };
   }, [track?.artist]);
 
-  // Fetch Lyrics when viewMode is "lyrics"
+  // Fetch Lyrics when viewMode is "lyrics" or "split"
   useEffect(() => {
-    if (viewMode !== "lyrics" || !track) return;
+    if (viewMode === "artwork" || !track) return;
     let cancelled = false;
     setIsLoadingLyrics(true);
     setLyrics(null);
@@ -238,7 +237,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   // Update active lyrics line
   useEffect(() => {
-    if (viewMode !== "lyrics" || !lyrics || !isSyncedLyrics(lyrics)) return;
+    if (viewMode === "artwork" || !lyrics || !isSyncedLyrics(lyrics)) return;
     const lines = lyrics.lines;
     const index = findActiveLineIndex(lines, currentTime);
     setActiveLyricIndex(index);
@@ -307,7 +306,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
-        "fixed inset-0 z-50 overflow-y-auto bg-black text-white selection:bg-white/20 select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "fixed inset-0 z-[100] overflow-y-auto bg-black text-white selection:bg-white/20 select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         isIdle && "cursor-none",
       )}
     >
@@ -327,7 +326,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       </div>
 
       {/* Screen 1: 100vh Full Viewport */}
-      <div className="relative min-h-screen flex flex-col justify-between p-6 sm:p-10">
+      <div className="relative min-h-screen flex flex-col justify-between p-6 sm:p-10 pb-24">
         {/* Top Header Bar (Hides when isIdle is true) */}
         <header
           className={cn(
@@ -344,51 +343,44 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
             <span>Back</span>
           </button>
 
-          {/* View Switcher Pill: Artwork / Lyrics + Split button */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-full bg-black/50 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg">
-              <button
-                type="button"
-                onClick={() => setViewMode("artwork")}
-                className={cn(
-                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-                  viewMode === "artwork"
-                    ? "bg-white/20 text-white shadow-sm font-bold"
-                    : "hover:text-white",
-                )}
-              >
-                Artwork
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("lyrics")}
-                className={cn(
-                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-                  viewMode === "lyrics"
-                    ? "bg-white/20 text-white shadow-sm font-bold"
-                    : "hover:text-white",
-                )}
-              >
-                Lyrics
-              </button>
-            </div>
-
-            {/* Split toggle button (visible when lyrics mode is active) */}
-            {viewMode === "lyrics" && (
-              <button
-                type="button"
-                onClick={() => setShowSplit(!showSplit)}
-                className={cn(
-                  "rounded-full px-3.5 py-1.5 text-xs font-semibold backdrop-blur-md transition-all cursor-pointer shadow-md",
-                  showSplit
-                    ? "bg-white/25 text-white font-bold border border-white/30"
-                    : "bg-black/50 text-white/75 hover:text-white border border-white/10 hover:bg-white/15",
-                )}
-                title={showSplit ? "Hide split mode" : "Show split mode"}
-              >
-                <span>Split</span>
-              </button>
-            )}
+          {/* View Switcher Pill: Artwork / Lyrics / Split */}
+          <div className="flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setViewMode("artwork")}
+              className={cn(
+                "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                viewMode === "artwork"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white",
+              )}
+            >
+              Artwork
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("lyrics")}
+              className={cn(
+                "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                viewMode === "lyrics"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white",
+              )}
+            >
+              Lyrics
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("split")}
+              className={cn(
+                "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                viewMode === "split"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white",
+              )}
+            >
+              Split
+            </button>
           </div>
 
           {/* Right Action Icons: OS Fullscreen & Exit */}
@@ -418,9 +410,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           </div>
         </header>
 
-        {/* Center Display: Album Art OR Lyrics */}
+        {/* Center Display: Album Art, Lyrics, or Split */}
         <main className="relative my-auto flex-1 flex items-center justify-center py-6">
-          {viewMode === "artwork" ? (
+          {viewMode === "artwork" && (
             <div className="relative size-64 sm:size-80 md:size-96 lg:size-[440px] xl:size-[500px] rounded-2xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] ring-1 ring-white/15 transition-transform duration-500 hover:scale-[1.01]">
               <TrackArtwork
                 artworkUrl={track?.artworkUrl}
@@ -430,35 +422,88 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                 loading="eager"
               />
             </div>
-          ) : (
-            <div
-              className={cn(
-                "relative w-full h-[65vh] flex items-center justify-center px-4",
-                showSplit ? "max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center" : "max-w-3xl",
-              )}
-            >
-              {showSplit && (
-                <div className="lg:col-span-5 flex flex-col items-center justify-center">
-                  <div className="relative size-60 sm:size-72 md:size-80 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15">
-                    <TrackArtwork
-                      artworkUrl={track?.artworkUrl}
-                      size={400}
-                      className="size-full object-cover"
-                    />
-                  </div>
-                  <div className="mt-4 text-center">
-                    <h3 className="text-xl font-bold text-white tracking-tight">{track?.title}</h3>
-                    <p className="text-sm text-white/70 mt-0.5">{track?.artist}</p>
-                  </div>
-                </div>
-              )}
+          )}
 
+          {viewMode === "lyrics" && (
+            <div className="relative w-full max-w-3xl h-[65vh] flex items-center justify-center px-4">
               <div
-                className={cn(
-                  "relative h-full overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                  showSplit ? "lg:col-span-7" : "w-full",
-                )}
+                className="relative h-full w-full overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 ref={lyricsScrollerRef}
+                onWheel={(e) => {
+                  const el = e.currentTarget;
+                  if (e.deltaY > 0 && el.scrollHeight - el.scrollTop - el.clientHeight < 20) {
+                    containerRef.current?.scrollBy({ top: e.deltaY, behavior: "auto" });
+                  }
+                }}
+              >
+                {isLoadingLyrics ? (
+                  <div className="flex h-full items-center justify-center text-white/50 text-base">
+                    Loading lyrics...
+                  </div>
+                ) : !lyrics?.lines?.length ? (
+                  <div className="flex h-full items-center justify-center text-white/50 text-base">
+                    No lyrics available for this track.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-6 py-32">
+                    {lyrics.lines.map((line, idx) => {
+                      const isActive = idx === activeLyricIndex;
+                      return (
+                        <button
+                          key={`${idx}:${line.text}`}
+                          ref={(el) => {
+                            lyricsLineRefs.current[idx] = el;
+                          }}
+                          type="button"
+                          onClick={() => {
+                            if (line.startTimeSec !== undefined) {
+                              void playerController.seekTo(line.startTimeSec);
+                            }
+                          }}
+                          className={cn(
+                            "cursor-pointer font-bold leading-tight tracking-tight transition-all duration-300 select-text",
+                            isActive
+                              ? "text-white text-2xl sm:text-3xl lg:text-4xl scale-105"
+                              : "text-white/40 text-lg sm:text-xl lg:text-2xl hover:text-white/80",
+                          )}
+                        >
+                          {line.text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {viewMode === "split" && (
+            <div className="relative w-full max-w-6xl h-[65vh] grid grid-cols-1 lg:grid-cols-12 gap-8 items-center px-4">
+              {/* Left Column: Artwork Card */}
+              <div className="lg:col-span-5 flex flex-col items-center justify-center">
+                <div className="relative size-60 sm:size-72 md:size-80 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15">
+                  <TrackArtwork
+                    artworkUrl={track?.artworkUrl}
+                    size={400}
+                    className="size-full object-cover"
+                  />
+                </div>
+                <div className="mt-4 text-center">
+                  <h3 className="text-xl font-bold text-white tracking-tight">{track?.title}</h3>
+                  <p className="text-sm text-white/70 mt-0.5">{track?.artist}</p>
+                </div>
+              </div>
+
+              {/* Right Column: Synced Lyrics */}
+              <div
+                className="relative h-full lg:col-span-7 overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                ref={lyricsScrollerRef}
+                onWheel={(e) => {
+                  const el = e.currentTarget;
+                  if (e.deltaY > 0 && el.scrollHeight - el.scrollTop - el.clientHeight < 20) {
+                    containerRef.current?.scrollBy({ top: e.deltaY, behavior: "auto" });
+                  }
+                }}
               >
                 {isLoadingLyrics ? (
                   <div className="flex h-full items-center justify-center text-white/50 text-base">
@@ -638,7 +683,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                 onPointerDown={() => setIsSeeking(true)}
                 onChange={(e) => handleSeekChange(parseFloat(e.target.value))}
                 onPointerUp={(e) => handleSeekCommit(parseFloat((e.target as HTMLInputElement).value))}
-                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
+                className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-white transition-all"
                 aria-label="Seek track"
               />
               <span>{formatMinutesSeconds(duration)}</span>
@@ -650,15 +695,15 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
             {/* Lyrics toggle button */}
             <button
               type="button"
-              onClick={() => setViewMode(viewMode === "lyrics" ? "artwork" : "lyrics")}
+              onClick={() => setViewMode(viewMode === "artwork" ? "split" : "artwork")}
               className={cn(
                 "flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer",
-                viewMode === "lyrics" ? "text-primary" : "text-white/70 hover:text-white",
+                viewMode !== "artwork" ? "text-primary" : "text-white/70 hover:text-white",
               )}
               aria-label="Toggle lyrics"
               title="Toggle lyrics"
             >
-              {viewMode === "lyrics" ? <LyricsActiveIcon size={18} /> : <LyricsIcon size={18} />}
+              {viewMode !== "artwork" ? <LyricsActiveIcon size={18} /> : <LyricsIcon size={18} />}
             </button>
 
             {/* Queue Button */}

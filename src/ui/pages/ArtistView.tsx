@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlbumIcon,
-  ArrowUpRightIcon,
   CheckIcon,
   ClockIcon,
   CloseIcon,
@@ -377,17 +377,18 @@ export function ArtistView({
     }
   };
 
-  // Merge YouTube Music releases with Spotify discography
+  // Merge YouTube Music releases with Spotify discography, prioritizing Spotify for instant newest drops & accurate dates
   const mergedReleases = useMemo(() => {
     const ytReleases = page?.releases ?? [];
-    const existingTitles = new Set(ytReleases.map((r) => r.title.toLowerCase().trim()));
+    const seenTitles = new Set<string>();
+    const combined: Album[] = [];
 
-    const extraSpotify: Album[] = [];
+    // 1. Add Spotify releases first (already sorted by release date descending)
     for (const sr of spotifyReleases) {
       const clean = sr.name.toLowerCase().trim();
-      if (!existingTitles.has(clean)) {
-        existingTitles.add(clean);
-        extraSpotify.push({
+      if (!seenTitles.has(clean)) {
+        seenTitles.add(clean);
+        combined.push({
           id: `spotify:${sr.id}`,
           title: sr.name,
           artist: displayedArtist?.name || "",
@@ -398,7 +399,16 @@ export function ArtistView({
       }
     }
 
-    return [...ytReleases, ...extraSpotify];
+    // 2. Add YouTube Music releases if not already present
+    for (const yr of ytReleases) {
+      const clean = yr.title.toLowerCase().trim();
+      if (!seenTitles.has(clean)) {
+        seenTitles.add(clean);
+        combined.push(yr);
+      }
+    }
+
+    return combined;
   }, [page?.releases, spotifyReleases, displayedArtist?.name]);
 
   const releaseFilters = useMemo(
@@ -433,7 +443,7 @@ export function ArtistView({
     return cleaned.toLowerCase().includes("subscriber") ? cleaned : `${cleaned} subscribers`;
   }, [subCount]);
 
-  // Separate Featuring playlists and Discovered On playlists
+  // Separate Featuring playlists (Official YT / curated) and Discovered On playlists (community / fanmade)
   const featuringPlaylists = useMemo(() => {
     const list = [...(page?.playlists ?? []), ...extraFeaturingPlaylists];
     const artistNameLower = (displayedArtist?.name || "").toLowerCase();
@@ -441,27 +451,32 @@ export function ArtistView({
     const officialMatches: Playlist[] = [];
 
     for (const p of list) {
-      if (seen.has(p.id)) continue;
+      if (!p || !p.title || seen.has(p.id) || p.id.startsWith("spotify:")) continue;
       const lower = p.title.toLowerCase();
+      if (lower.includes("unknown")) continue;
       const ownerLower = (p.owner || "").toLowerCase();
       const isOfficial =
         ownerLower.includes("youtube") ||
+        ownerLower.includes("yt") ||
         lower.startsWith("featuring") ||
         lower.startsWith("presenting") ||
         lower.startsWith("this is") ||
         lower.includes("hits") ||
         lower.includes("best of") ||
         lower.includes("essential");
-      
-      const containsArtist = lower.includes(artistNameLower) || (p.owner && p.owner.toLowerCase().includes(artistNameLower));
+
+      const containsArtist = lower.includes(artistNameLower) || ownerLower.includes(artistNameLower);
       if (isOfficial && containsArtist) {
         seen.add(p.id);
-        officialMatches.push(p);
+        officialMatches.push({
+          ...p,
+          owner: p.owner || "YouTube Music",
+        });
       }
     }
 
     if (officialMatches.length > 0) return officialMatches;
-    return extraFeaturingPlaylists;
+    return extraFeaturingPlaylists.filter((p) => !p.id.startsWith("spotify:") && !p.title.toLowerCase().includes("unknown"));
   }, [page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
 
   const discoveredOnPlaylists = useMemo(() => {
@@ -471,7 +486,9 @@ export function ArtistView({
     const result: Playlist[] = [];
 
     for (const p of pool) {
-      if (featSet.has(p.id) || seen.has(p.id)) continue;
+      if (!p || !p.title || featSet.has(p.id) || seen.has(p.id) || p.id.startsWith("spotify:")) continue;
+      const lower = p.title.toLowerCase();
+      if (lower.includes("unknown")) continue;
       seen.add(p.id);
       result.push(p);
     }
@@ -544,9 +561,29 @@ export function ArtistView({
   };
 
   const handlePlaySongItem = async (item: PopularSongItem) => {
+    // If clicking current track, toggle play/pause immediately
+    if (item.rawTrack?.id === currentTrackId || item.id === currentTrackId) {
+      if (!isPlaying) {
+        void playerController.play();
+      } else {
+        playerController.togglePlayPause();
+      }
+      return;
+    }
+
+    const popularTracks = popularItems.map((p) => p.rawTrack).filter((t): t is Track => Boolean(t));
+    const allTracks = page?.allSongs ?? [];
+    let queue = popularTracks;
+    if (!queue.some((t) => t.id === item.id)) {
+      queue = allTracks;
+    }
+    if (item.rawTrack && !queue.some((t) => t.id === item.rawTrack!.id)) {
+      queue = [item.rawTrack, ...queue];
+    }
+
     const trackId = item.rawTrack ? item.rawTrack.id : item.id;
-    const queue = page?.allSongs ?? (item.rawTrack ? [item.rawTrack] : []);
-    void playerController.playTrackById(trackId, queue);
+    await playerController.playTrackById(trackId, queue);
+    void playerController.play();
   };
 
   const toggleArtistSubscription = async () => {
@@ -581,16 +618,25 @@ export function ArtistView({
 
       {/* Spotify Panoramic Hero Header */}
       <div className="relative -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
-        {/* Hero Background Image with Gradient Overlay */}
-        <div className="absolute inset-0 -z-10 bg-zinc-900">
+        {/* Hero Background Image with Gradient Overlay & Blurred PFP */}
+        <div className="absolute inset-0 -z-10 bg-zinc-950 overflow-hidden">
+          {/* Blurred Artist PFP Background as requested */}
           <img
-            src={artistHeaderBg}
+            src={artistAvatar || artistHeaderBg}
             alt=""
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center sm:object-top"
+            className="w-full h-full object-cover object-center scale-125 blur-3xl opacity-60"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/30" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+          {artistHeaderBg && artistHeaderBg !== artistAvatar && (
+            <img
+              src={artistHeaderBg}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="absolute inset-0 w-full h-full object-cover object-center sm:object-top opacity-70"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
         </div>
 
         {/* Hero Content with Circular PFP beside Name */}
@@ -612,7 +658,15 @@ export function ArtistView({
           </button>
 
           {/* Artist Name and Listeners */}
-          <div className="flex flex-col gap-2.5 min-w-0 flex-1 pb-1">
+          <div className="flex flex-col gap-2 min-w-0 flex-1 pb-1">
+            {/* Spotify Verified Artist Badge */}
+            <div className="flex items-center gap-2 text-white select-none">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-sm">
+                <CheckIcon size={14} className="text-white stroke-[3]" />
+              </span>
+              <span className="text-sm font-semibold text-white/95 tracking-wide">Verified Artist</span>
+            </div>
+
             <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
               {displayedArtist.name}
             </h1>
@@ -1060,13 +1114,20 @@ export function ArtistView({
             <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
             <div
               onClick={() => setIsAboutModalOpen(true)}
-              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-2xl hover:ring-1 hover:ring-white/20"
+              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-zinc-950 border border-white/10 transition-all duration-300 hover:shadow-2xl hover:border-white/30"
             >
+              {/* Blurred Backdrop */}
+              <img
+                src={artistHeaderBg}
+                alt=""
+                className="absolute inset-0 size-full object-cover scale-110 blur-2xl opacity-40"
+              />
+              {/* Main Photo with Better Framing */}
               <img
                 src={artistHeaderBg}
                 alt={displayedArtist.name}
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                className="absolute inset-0 h-full w-full object-cover object-center sm:object-[center_20%] transition-transform duration-500 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
 
@@ -1270,29 +1331,25 @@ export function ArtistView({
                     <div className="flex flex-wrap items-center gap-2">
                       {spotifyOverview?.externalLinks && spotifyOverview.externalLinks.length > 0 ? (
                         spotifyOverview.externalLinks.map((link) => (
-                          <a
+                          <button
                             key={link.url}
-                            href={link.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.16] px-3.5 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer"
+                            type="button"
+                            onClick={() => void openUrl(link.url)}
+                            className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.18] active:scale-95 px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer shadow-sm"
                           >
                             {getSocialIcon(link.name)}
                             <span>{formatSocialName(link.name)}</span>
-                            <ArrowUpRightIcon size={12} className="text-white/70 shrink-0" />
-                          </a>
+                          </button>
                         ))
                       ) : spotifyOverview?.instagramUrl ? (
-                        <a
-                          href={spotifyOverview.instagramUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.16] px-3.5 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer"
+                        <button
+                          type="button"
+                          onClick={() => void openUrl(spotifyOverview.instagramUrl!)}
+                          className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.18] active:scale-95 px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer shadow-sm"
                         >
                           <InstagramIcon size={16} className="text-white shrink-0" />
                           <span>Instagram</span>
-                          <ArrowUpRightIcon size={12} className="text-white/70 shrink-0" />
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-muted-foreground">No external links</span>
                       )}

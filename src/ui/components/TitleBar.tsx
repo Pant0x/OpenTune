@@ -1,12 +1,9 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { DiscordIcon, GitHubIcon, LoginIcon, SettingsIcon } from "@/ui/icons";
-import { useDiscordPresenceEnabled, setDiscordPresenceEnabled } from "../settings/discord";
-import { GITHUB_REPOSITORY_URL } from "../links";
+import { LoginIcon, SettingsIcon } from "@/ui/icons";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
   isLinux,
@@ -103,8 +100,6 @@ export function TitleBar({
     && (!isLinux || !tilingWindowManager || forceWindowControls);
   const notificationsVisible = useToolbarItemVisible("notifications");
   const downloadsVisible = useToolbarItemVisible("downloads");
-  const githubVisible = useToolbarItemVisible("github");
-  const discordPresenceEnabled = useDiscordPresenceEnabled();
   const homePointerRef = useRef<{
     pointerId: number;
     startX: number;
@@ -259,34 +254,6 @@ export function TitleBar({
         )}
         {downloadsVisible && <DownloadsPanel onOpenDownloads={onOpenDownloads} />}
 
-
-        {githubVisible && (
-        <Tooltip side="bottom" content="Source on GitHub">
-          <Button
-            variant='ghost'
-          size='icon'
-            onClick={() => void openUrl(GITHUB_REPOSITORY_URL)}
-            aria-label="Open the project on GitHub"
-          >
-            <GitHubIcon size={16} aria-hidden="true"  />
-          </Button>
-        </Tooltip>
-        )}
-
-        <Tooltip side="bottom" content={discordPresenceEnabled ? "Discord Presence: Active" : "Discord Presence: Disabled"}>
-          <Button
-            variant='ghost'
-            size='icon'
-            onClick={() => setDiscordPresenceEnabled(!discordPresenceEnabled)}
-            aria-label={discordPresenceEnabled ? "Disable Discord Rich Presence" : "Enable Discord Rich Presence"}
-            className={cn(
-              "transition-colors",
-              discordPresenceEnabled ? "text-[#5865F2]" : "text-muted-foreground/40 hover:text-muted-foreground",
-            )}
-          >
-            <DiscordIcon size={16} aria-hidden="true" />
-          </Button>
-        </Tooltip>
 
         <Tooltip side="bottom" content="Settings">
         <Button
@@ -476,6 +443,9 @@ export function TitleBar({
             )}
             onClick={() => {
               logInternalInfo("TitleBar.close clicked");
+              try {
+                window.dispatchEvent(new Event("beforeunload"));
+              } catch {}
               void invoke("quit_app")
                 .then(() => {
                   logInternalInfo("TitleBar.close quit_app invoked");
