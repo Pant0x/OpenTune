@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SpinnerSteps } from "@/components/motion/loader";
 import {
   AlbumIcon,
   CheckIcon,
@@ -8,14 +7,16 @@ import {
   CloseIcon,
   CopyIcon,
   FacebookIcon,
-  GlobeIcon,
   InstagramIcon,
   ListIcon,
   MenuDotsIcon,
   MusicNoteIcon,
+  PauseIcon,
+  PlayIcon,
   PlayActiveIcon,
   RadioIcon,
   ShareIcon,
+  ShuffleIcon,
   TwitterIcon,
   UserPlusIcon,
   WikipediaIcon,
@@ -31,7 +32,6 @@ import type { LibraryController } from "../../player/LibraryController";
 import { searchController, type PlayerControllerActions } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { AlbumCard } from "../components/AlbumCard";
-import { MediaHeader } from "../components/MediaHeader";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useNowPlaying } from "../hooks/useNowPlaying";
@@ -66,7 +66,7 @@ function getSocialIcon(name: string) {
   if (n.includes("TWITTER") || n === "X") return <TwitterIcon size={15} className="text-white shrink-0" />;
   if (n.includes("FACEBOOK")) return <FacebookIcon size={16} className="text-white shrink-0" />;
   if (n.includes("WIKIPEDIA")) return <WikipediaIcon size={16} className="text-white shrink-0" />;
-  return <GlobeIcon size={16} className="text-white shrink-0" />;
+  return null;
 }
 
 function formatSocialName(name: string): string {
@@ -109,7 +109,7 @@ export function ArtistView({
   onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
 }) {
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
-  const { currentTrackId, isPlaying, isLoading: isPlayerLoading } = useNowPlaying();
+  const { currentTrackId, isPlaying } = useNowPlaying();
 
   const [page, setPage] = useState<ArtistPage | null>(
     () => (artist ? artistPageMemory.get(artist.id) ?? null : null),
@@ -152,6 +152,7 @@ export function ArtistView({
   // Extra playlists for Featuring and Discovered on fallback
   const [extraFeaturingPlaylists, setExtraFeaturingPlaylists] = useState<Playlist[]>([]);
   const [extraDiscoveredOnPlaylists, setExtraDiscoveredOnPlaylists] = useState<Playlist[]>([]);
+  const [fansSpotifyAvatars, setFansSpotifyAvatars] = useState<Record<string, string>>({});
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -232,16 +233,28 @@ export function ArtistView({
         logInternalError("Spotify artist playlists fetch failed", err);
       });
 
-    // Fallback search for Featuring and Discovered on playlists
+    // Search for official playlists and community playlists
     searchController.search(`Featuring ${artistName}`).then((res) => {
       if (active && res.playlists?.length) {
-        setExtraFeaturingPlaylists(res.playlists.slice(0, 10));
+        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
+      }
+    }).catch(() => {});
+
+    searchController.search(`Presenting ${artistName}`).then((res) => {
+      if (active && res.playlists?.length) {
+        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
+      }
+    }).catch(() => {});
+
+    searchController.search(`${artistName} Hits`).then((res) => {
+      if (active && res.playlists?.length) {
+        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
       }
     }).catch(() => {});
 
     searchController.search(`${artistName} playlist`).then((res) => {
       if (active && res.playlists?.length) {
-        setExtraDiscoveredOnPlaylists(res.playlists.slice(0, 10));
+        setExtraDiscoveredOnPlaylists((prev) => [...prev, ...res.playlists]);
       }
     }).catch(() => {});
 
@@ -249,6 +262,22 @@ export function ArtistView({
       active = false;
     };
   }, [artist, libraryController]);
+
+  // Pre-fetch Spotify avatars for "Fans also like" artists
+  useEffect(() => {
+    if (!page?.fansAlsoLike?.length) return;
+    let active = true;
+    for (const similar of page.fansAlsoLike) {
+      void SpotifyService.getArtistAvatar(similar.name).then((avatar) => {
+        if (active && avatar) {
+          setFansSpotifyAvatars((prev) => ({ ...prev, [similar.id]: avatar }));
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [page?.fansAlsoLike]);
 
   const displayedArtist = page?.artist ?? artist;
 
@@ -284,24 +313,17 @@ export function ArtistView({
     } catch {}
   };
 
-  const startArtistRadio = () => {
-    if (!displayedArtist) return;
-    const firstSong = page?.allSongs?.[0];
-    if (firstSong) {
-      void playerController.playTrackById(firstSong.id, [firstSong], true);
-      showToast(`Starting ${displayedArtist.name} radio`);
-    } else if (popularItems[0]) {
-      void handlePlaySongItem(popularItems[0]);
-      showToast(`Starting ${displayedArtist.name} radio`);
-    } else {
-      showToast("No songs available to start radio.");
-    }
-  };
-
   const copyArtistShareLink = async () => {
     if (!displayedArtist) return;
-    const spotifyId = spotifyOverview?.spotifyId;
-    const shareUrl = getSpotifyShareUrl("artist", spotifyId || displayedArtist.name);
+    let shareUrl = spotifyOverview?.spotifyId
+      ? getSpotifyShareUrl("artist", spotifyOverview.spotifyId)
+      : null;
+    if (!shareUrl) {
+      shareUrl = await SpotifyService.searchArtistUrl(displayedArtist.name).catch(() => null);
+    }
+    if (!shareUrl) {
+      shareUrl = `https://music.youtube.com/channel/${displayedArtist.id}`;
+    }
     try {
       await navigator.clipboard.writeText(shareUrl);
       showToast("Artist link copied to clipboard");
@@ -435,31 +457,47 @@ export function ArtistView({
 
   // Separate Featuring playlists and Discovered On playlists
   const featuringPlaylists = useMemo(() => {
-    const list = page?.playlists ?? [];
+    const list = [...(page?.playlists ?? []), ...extraFeaturingPlaylists];
     const artistNameLower = (displayedArtist?.name || "").toLowerCase();
-    const matches = list.filter((p) => {
+    const seen = new Set<string>();
+    const officialMatches: Playlist[] = [];
+
+    for (const p of list) {
+      if (seen.has(p.id)) continue;
       const lower = p.title.toLowerCase();
       const ownerLower = (p.owner || "").toLowerCase();
-      return (
-        lower.includes("featuring") ||
-        lower.includes("this is") ||
+      const isOfficial =
+        ownerLower.includes("youtube") ||
+        lower.startsWith("featuring") ||
+        lower.startsWith("presenting") ||
+        lower.startsWith("this is") ||
+        lower.includes("hits") ||
         lower.includes("best of") ||
-        lower.includes(artistNameLower) ||
-        ownerLower.includes("youtube")
-      );
-    });
-    if (matches.length > 0) return matches;
+        lower.includes("essential");
+      
+      const containsArtist = lower.includes(artistNameLower) || (p.owner && p.owner.toLowerCase().includes(artistNameLower));
+      if (isOfficial && containsArtist) {
+        seen.add(p.id);
+        officialMatches.push(p);
+      }
+    }
+
+    if (officialMatches.length > 0) return officialMatches;
     return extraFeaturingPlaylists;
   }, [page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
 
   const discoveredOnPlaylists = useMemo(() => {
-    const base = page?.discoveredOn ?? [];
-    if (base.length > 0) return base;
-    const list = page?.playlists ?? [];
     const featSet = new Set(featuringPlaylists.map((p) => p.id));
-    const remaining = list.filter((p) => !featSet.has(p.id));
-    if (remaining.length > 0) return remaining;
-    return extraDiscoveredOnPlaylists;
+    const pool = [...(page?.discoveredOn ?? []), ...extraDiscoveredOnPlaylists, ...(page?.playlists ?? [])];
+    const seen = new Set<string>();
+    const result: Playlist[] = [];
+
+    for (const p of pool) {
+      if (featSet.has(p.id) || seen.has(p.id)) continue;
+      seen.add(p.id);
+      result.push(p);
+    }
+    return result;
   }, [page?.discoveredOn, page?.playlists, featuringPlaylists, extraDiscoveredOnPlaylists]);
 
   // Popular song items structured for Spotify-style table with cover art
@@ -577,29 +615,48 @@ export function ArtistView({
   };
 
   return (
-    <div className="flex flex-col gap-10 pb-20">
-      {/* Header Section */}
-      <MediaHeader
-        eyebrow={undefined}
-        title={
-          <button
-            type="button"
-            className="group/title flex items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-            onClick={() => void copyArtistShareLink()}
-            aria-label={`Copy ${displayedArtist.name} link`}
-          >
-            <span>{displayedArtist.name}</span>
-            <CopyIcon
-              className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/title:opacity-100"
-              size={22}
-              aria-hidden="true"
-            />
-          </button>
-        }
-        meta={
-          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground mt-1">
+    <div className="relative flex flex-col gap-10 pb-20">
+      {/* Ambient Blurred Background Glow */}
+      <div className="pointer-events-none absolute -top-8 -left-6 -right-6 h-[650px] overflow-hidden -z-10 opacity-35 blur-[90px] saturate-200">
+        <img
+          src={artistHeaderBg}
+          alt=""
+          className="w-full h-full object-cover scale-110"
+        />
+      </div>
+
+      {/* Spotify Panoramic Hero Header */}
+      <div className="relative -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
+        {/* Hero Background Image with Gradient Overlay */}
+        <div className="absolute inset-0 -z-10 bg-zinc-900">
+          <img
+            src={artistHeaderBg}
+            alt={displayedArtist.name}
+            className="w-full h-full object-cover object-center sm:object-top"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-black/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/20 to-transparent" />
+        </div>
+
+        {/* Hero Content */}
+        <div className="relative z-10 flex flex-col gap-2.5 max-w-4xl">
+          {/* Verified Badge */}
+          <div className="flex items-center gap-2 text-sm font-semibold text-white/90 drop-shadow-md">
+            <span className="flex size-5 items-center justify-center rounded-full bg-[#0D72EC] text-white">
+              <CheckIcon size={12} strokeWidth={3} />
+            </span>
+            <span>Verified Artist</span>
+          </div>
+
+          {/* Artist Name */}
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
+            {displayedArtist.name}
+          </h1>
+
+          {/* Monthly Listeners / Subscribers */}
+          <div className="flex items-center gap-2 text-sm md:text-base font-semibold text-white/90 drop-shadow-md mt-1">
             {spotifyOverview?.monthlyListeners ? (
-              <span className="text-foreground/90 font-medium">
+              <span>
                 {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
               </span>
             ) : formattedSubCount ? (
@@ -607,131 +664,113 @@ export function ArtistView({
             ) : null}
             {spotifyOverview?.monthlyListeners && formattedSubCount && (
               <>
-                <span>•</span>
-                <span>{formattedSubCount}</span>
+                <span className="opacity-60">•</span>
+                <span className="opacity-80 font-normal">{formattedSubCount}</span>
               </>
             )}
           </div>
-        }
-        circularArtwork
-        artworkUrl={artistAvatar}
-        artworkSlot={
-          <TrackArtwork
-            className="size-44 shrink-0 rounded-full bg-card shadow-2xl ring-1 ring-white/10"
-            size={544}
-            artworkUrl={artistAvatar}
-            iconSize={72}
-            variant="artist"
-            loading="eager"
-            preferProxy
-          />
-        }
-        actionsDisabled={isLoading || Boolean(error) || !page?.allSongs.length}
-        playback={{
-          onToggle: togglePlayCollection,
-          isPlaying: isCurrentCollection && isPlaying,
-          isLoading: isCurrentCollection && isPlayerLoading,
-        }}
-        onShuffle={() => void playShuffled()}
-        onAddToQueue={() => playerController.addTracksToQueue(page?.allSongs ?? [])}
-        actions={
-          <div className="flex items-center gap-2.5">
-            {/* Themed Follow button: Follow / Following */}
-            <button
-              className={cn(
-                "flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-200 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                isSubscribed
-                  ? "border border-white/20 bg-transparent text-white hover:border-white/40 hover:bg-white/10"
-                  : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95",
-              )}
-              type="button"
-              disabled={isLoading || Boolean(error) || isSubscribing}
-              onClick={() => void toggleArtistSubscription()}
-            >
-              {isSubscribing ? (
-                <SpinnerSteps size={18} color="currentColor" />
-              ) : isSubscribed ? (
-                <CheckIcon size={18} />
-              ) : (
-                <UserPlusIcon size={18} />
-              )}
-              <span>
-                {isSubscribing
-                  ? isSubscribed ? "Unfollowing..." : "Following..."
-                  : isSubscribed ? "Following" : "Follow"}
-              </span>
-            </button>
+        </div>
+      </div>
 
-            {/* Header 3-dots dropdown */}
-            <div className="relative" ref={headerMenuRef}>
+      {/* Hero Action Controls Row */}
+      <div className="flex items-center gap-6 pt-2">
+        {/* Play/Pause Button */}
+        <button
+          type="button"
+          onClick={togglePlayCollection}
+          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+          className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+          aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
+        >
+          {isCurrentCollection && isPlaying ? (
+            <PauseIcon size={26} fill="currentColor" />
+          ) : (
+            <PlayIcon size={26} fill="currentColor" className="ml-1" />
+          )}
+        </button>
+
+        {/* Shuffle Button */}
+        <button
+          type="button"
+          onClick={() => void playShuffled()}
+          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+          className="flex size-10 items-center justify-center rounded-full text-muted-foreground hover:text-white transition-colors cursor-pointer"
+          aria-label="Shuffle play"
+        >
+          <ShuffleIcon size={22} />
+        </button>
+
+        {/* Follow / Following Button */}
+        <button
+          type="button"
+          onClick={() => void toggleArtistSubscription()}
+          disabled={isLoading || Boolean(error) || isSubscribing}
+          className={cn(
+            "rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase border transition-all duration-200 cursor-pointer",
+            isSubscribed
+              ? "border-white/30 text-white hover:border-white/60 hover:bg-white/10"
+              : "border-white/30 bg-transparent text-white hover:border-white hover:scale-105",
+          )}
+        >
+          {isSubscribing
+            ? isSubscribed ? "Unfollowing..." : "Following..."
+            : isSubscribed ? "Following" : "Follow"}
+        </button>
+
+        {/* 3-dots Dropdown Menu */}
+        <div className="relative" ref={headerMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
+            className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+            aria-label="More artist options"
+          >
+            <MenuDotsIcon size={20} />
+          </button>
+
+          {isHeaderMenuOpen && (
+            <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
               <button
                 type="button"
-                onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
-                className="flex size-9 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors focus-visible:outline-none cursor-pointer"
-                aria-label="More artist options"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  void toggleArtistSubscription();
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <MenuDotsIcon size={18} />
+                {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
+                <span>{isSubscribed ? "Unfollow" : "Follow"}</span>
               </button>
 
-              {isHeaderMenuOpen && (
-                <div
-                  className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsHeaderMenuOpen(false);
-                      void toggleArtistSubscription();
-                    }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
-                    <span>{isSubscribed ? "Unfollow" : "Follow"}</span>
-                  </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  toggleBlockArtist();
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <CloseIcon size={16} className="text-red-400" />
+                <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
+              </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsHeaderMenuOpen(false);
-                      toggleBlockArtist();
-                    }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <CloseIcon size={16} className="text-red-400" />
-                    <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
-                  </button>
+              <div className="my-1 h-px bg-white/10" />
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsHeaderMenuOpen(false);
-                      startArtistRadio();
-                    }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <RadioIcon size={16} className="text-sky-400" />
-                    <span>Go to artist radio</span>
-                  </button>
-
-                  <div className="my-1 h-px bg-white/10" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsHeaderMenuOpen(false);
-                      void copyArtistShareLink();
-                    }}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  >
-                    <ShareIcon size={16} className="text-zinc-300" />
-                    <span>Share</span>
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  void copyArtistShareLink();
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <ShareIcon size={16} />
+                <span>Share artist link</span>
+              </button>
             </div>
-          </div>
-        }
-      />
+          )}
+        </div>
+      </div>
 
       {isLoading && (
         <div className="flex flex-col gap-8">
@@ -1054,7 +1093,7 @@ export function ArtistView({
             <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
             <div
               onClick={() => setIsAboutModalOpen(true)}
-              className="group relative h-80 w-full max-w-2xl cursor-pointer overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-2xl hover:ring-1 hover:ring-white/20"
+              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-card transition-all duration-300 hover:shadow-2xl hover:ring-1 hover:ring-white/20"
             >
               <img
                 src={artistHeaderBg}
@@ -1063,14 +1102,14 @@ export function ArtistView({
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
 
-              <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col gap-2">
+              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col gap-2">
                 {spotifyOverview?.monthlyListeners ? (
-                  <span className="text-base font-bold text-white/95">
+                  <span className="text-base md:text-lg font-bold text-white/95">
                     {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
                   </span>
                 ) : null}
                 {spotifyOverview?.cleanBio || spotifyOverview?.bio ? (
-                  <p className="line-clamp-3 text-sm text-white/80 leading-relaxed max-w-xl">
+                  <p className="line-clamp-3 text-sm md:text-base text-white/80 leading-relaxed max-w-2xl">
                     {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
                   </p>
                 ) : null}
@@ -1121,30 +1160,35 @@ export function ArtistView({
           {page?.fansAlsoLike && page.fansAlsoLike.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Fans also like</h2>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.fansAlsoLike.map((similarArtist) => (
-                  <div
-                    key={similarArtist.id}
-                    onClick={() => onOpenArtist?.(similarArtist)}
-                    className="group flex flex-col items-center gap-3 p-3 rounded-xl bg-card hover:bg-white/[0.08] transition-colors cursor-pointer text-center"
-                  >
-                    <TrackArtwork
-                      className="size-28 rounded-full shadow-md transition-transform group-hover:scale-105"
-                      size={224}
-                      artworkUrl={similarArtist.artworkUrl}
-                      iconSize={40}
-                      variant="artist"
-                    />
-                    <div className="flex flex-col w-full min-w-0">
-                      <span className="truncate w-full text-sm font-medium text-foreground group-hover:underline">
-                        {similarArtist.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground truncate w-full">
-                        {similarArtist.subscriberCount || "Artist"}
-                      </span>
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {page.fansAlsoLike.map((similarArtist) => {
+                  const avatarUrl = fansSpotifyAvatars[similarArtist.id] || similarArtist.artworkUrl;
+                  return (
+                    <div
+                      key={similarArtist.id}
+                      onClick={() => onOpenArtist?.(similarArtist)}
+                      className="group flex flex-col items-center gap-3 cursor-pointer text-center"
+                    >
+                      <div className="relative size-32 md:size-36 rounded-full overflow-hidden shadow-xl ring-1 ring-white/10 group-hover:scale-105 transition-transform duration-300">
+                        <TrackArtwork
+                          className="size-full rounded-full object-cover"
+                          size={256}
+                          artworkUrl={avatarUrl}
+                          iconSize={48}
+                          variant="artist"
+                        />
+                      </div>
+                      <div className="flex flex-col w-full min-w-0 mt-0.5">
+                        <span className="truncate w-full text-sm font-semibold text-white group-hover:underline">
+                          {similarArtist.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate w-full mt-0.5">
+                          Artist
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
@@ -1230,8 +1274,14 @@ export function ArtistView({
 
                   {/* World Rank */}
                   {spotifyOverview?.worldRank ? (
-                    <div className="inline-flex items-center gap-1.5 self-start rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white">
-                      #{spotifyOverview.worldRank} in the world
+                    <div className="flex items-center gap-3.5 my-1">
+                      <div className="flex size-14 md:size-16 shrink-0 items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-lg shadow-[#0D72EC]/40">
+                        <span className="text-xl md:text-2xl font-black tracking-tight">#{spotifyOverview.worldRank}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm md:text-base font-bold text-white tracking-wide">in the world</span>
+                        <span className="text-xs text-muted-foreground">Spotify Global Rank</span>
+                      </div>
                     </div>
                   ) : null}
 

@@ -95,10 +95,19 @@ export function pickBestLyrics<T extends { source: LyricsSource; lyrics: Lyrics 
   preferredId?: string,
 ): T | undefined {
   return [...candidates]
-    .sort(
-      (left, right) =>
-        rankOfSource(left.source.id, preferredId) - rankOfSource(right.source.id, preferredId),
-    )
+    .sort((left, right) => {
+      const leftPref = preferredId && left.source.id === preferredId && (left.lyrics?.lines.length ?? 0) > 0;
+      const rightPref = preferredId && right.source.id === preferredId && (right.lyrics?.lines.length ?? 0) > 0;
+      if (leftPref !== rightPref) return leftPref ? -1 : 1;
+
+      const leftSynced = left.lyrics?.timing === "synced" ? 1 : 0;
+      const rightSynced = right.lyrics?.timing === "synced" ? 1 : 0;
+      if (leftSynced !== rightSynced) {
+        return rightSynced - leftSynced;
+      }
+
+      return rankOfSource(left.source.id, preferredId) - rankOfSource(right.source.id, preferredId);
+    })
     .find((candidate) => (candidate.lyrics?.lines.length ?? 0) > 0);
 }
 

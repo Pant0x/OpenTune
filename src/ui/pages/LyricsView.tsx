@@ -8,8 +8,20 @@ import {
   useState,
 } from "react";
 import { useReduceMotion } from "../settings/renderEffects";
-import { cn } from "@/lib/utils";
-import { CloseIcon, FullScreenIcon, LyricsIcon, QuitFullScreenIcon, RefreshIcon } from "@/ui/icons";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { cn, formatMinutesSeconds } from "@/lib/utils";
+import { SpotifyService } from "../../services/SpotifyService";
+import {
+  CloseIcon,
+  FullScreenIcon,
+  LyricsIcon,
+  PauseActiveIcon,
+  PlayActiveIcon,
+  QuitFullScreenIcon,
+  RefreshIcon,
+  SkipNextIcon,
+  SkipPreviousIcon,
+} from "@/ui/icons";
 import type { Lyrics, LyricsSourceAttempt, LyricsSourceStatus } from "../../datasource/types";
 import { LYRICS_SOURCES } from "../../datasource/youtube/lyricsSources";
 import { FloatingPanel } from "../components/FloatingPanel";
@@ -92,6 +104,50 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const [isFollowPaused, setIsFollowPaused] = useState(false);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [bgMode, setBgMode] = useState<"artwork" | "artist">("artwork");
+  const [artistPhotoUrl, setArtistPhotoUrl] = useState<string | null>(null);
+  const [isOsFullscreen, setIsOsFullscreen] = useState(false);
+  const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+
+  useEffect(() => {
+    try {
+      void getCurrentWindow().isFullscreen().then(setIsOsFullscreen);
+    } catch {}
+  }, []);
+
+  const toggleOsFullscreen = async () => {
+    try {
+      const next = !isOsFullscreen;
+      await getCurrentWindow().setFullscreen(next);
+      setIsOsFullscreen(next);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!track?.artist) {
+      setArtistPhotoUrl(null);
+      return;
+    }
+    let active = true;
+    void SpotifyService.getArtistAvatar(track.artist).then((url) => {
+      if (active && url) setArtistPhotoUrl(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [track?.artist]);
+
+  const activeBackgroundUrl =
+    bgMode === "artist" && artistPhotoUrl ? artistPhotoUrl : track?.artworkUrl;
+
+  useEffect(() => {
+    const updateTime = () => {
+      setCurrentPlaybackTime(playerController.getCurrentTime());
+    };
+    updateTime();
+    const interval = window.setInterval(updateTime, 250);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<Array<HTMLElement | null>>([]);
@@ -434,20 +490,24 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         same reason. Toggle Settings > Potato PC > Manage > "Blur and colour filters" to see
         the whole class of effect on and off.
       */}
+      {/* Dynamic blurred ambient background (artwork or artist photo) */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        {track?.artworkUrl && (
+        {activeBackgroundUrl && (
           <div
-            key={track.artworkUrl}
-            data-fx="ambient"
+            key={activeBackgroundUrl}
             className={cn(
-              "absolute -inset-[18%] opacity-50 blur-[32px] saturate-[1.7] rounded-none",
+              "absolute -inset-[20%] opacity-70 blur-[70px] saturate-[2.2] scale-125 transition-all duration-700",
               !reduce && "lyrics-drift",
             )}
           >
-            <TrackArtwork className="size-full rounded-none" size={120} artworkUrl={track.artworkUrl} iconSize={0} />
+            <img
+              src={activeBackgroundUrl}
+              alt=""
+              className="size-full object-cover"
+            />
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/75 via-background/88 to-background" />
+        <div className="absolute inset-0 bg-black/45" />
       </div>
 
       {/*
@@ -458,155 +518,384 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         {isSynced && activeIndex >= 0 ? lines[activeIndex]?.text ?? "" : ""}
       </p>
 
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+      <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
+        {/* Background Visual Switch: Artwork / Artist */}
+        <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md p-0.5 border border-white/10 text-xs font-semibold text-white/80 shadow-md">
+          <button
+            type="button"
+            onClick={() => setBgMode("artwork")}
+            className={cn(
+              "rounded-full px-3 py-1 transition-all cursor-pointer",
+              bgMode === "artwork" ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
+            )}
+            title="Show album artwork"
+          >
+            Artwork
+          </button>
+          <button
+            type="button"
+            onClick={() => setBgMode("artist")}
+            className={cn(
+              "rounded-full px-3 py-1 transition-all cursor-pointer",
+              bgMode === "artist" ? "bg-white/20 text-white shadow-sm font-bold" : "hover:text-white",
+            )}
+            title="Show artist image"
+          >
+            Artist
+          </button>
+        </div>
+
+        {/* In-App Fullscreen Toggle (Split View) */}
         <button
           type="button"
-          className="flex size-9 items-center justify-center rounded-full bg-card/60 text-muted-foreground backdrop-blur transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md",
+            isFullscreen && "bg-white/20 text-white",
+          )}
           onClick={() => playerUIStore.setLyricsFullscreen(!isFullscreen)}
           aria-pressed={isFullscreen}
-          aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
-          title={isFullscreen ? "Exit full screen (Esc)" : "Full screen"}
+          aria-label={isFullscreen ? "Exit split fullscreen" : "Split fullscreen"}
+          title={isFullscreen ? "Collapse to single view" : "Split fullscreen view"}
         >
           {isFullscreen ? <QuitFullScreenIcon size={18} /> : <FullScreenIcon size={18} />}
         </button>
+
+        {/* Real OS Fullscreen Toggle */}
         <button
           type="button"
-          className="flex size-9 items-center justify-center rounded-full bg-card/60 text-muted-foreground backdrop-blur transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md",
+            isOsFullscreen && "bg-white/20 text-white",
+          )}
+          onClick={() => void toggleOsFullscreen()}
+          aria-pressed={isOsFullscreen}
+          aria-label={isOsFullscreen ? "Exit real fullscreen" : "Real fullscreen"}
+          title={isOsFullscreen ? "Exit real fullscreen" : "Real fullscreen"}
+        >
+          <span className="text-xs font-bold font-mono">⛶</span>
+        </button>
+
+        {/* Close Button */}
+        <button
+          type="button"
+          className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
           onClick={onClose}
           aria-label="Close lyrics"
-          title={isFullscreen ? "Close lyrics" : "Close lyrics (Esc)"}
+          title="Close lyrics (Esc)"
         >
           <CloseIcon size={19} />
         </button>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-
-        {/* Narrow: the poster would eat the column, so the song identifies itself in a strip. */}
-        <header className="flex shrink-0 items-center gap-3.5 px-6 pb-3 pr-16 pt-5 @4xl/lyrics:hidden">
-          <TrackArtwork
-            artworkUrl={track?.artworkUrl}
-            size={56}
-            className="size-14   shadow-lg shadow-black/30"
-            iconSize={20}
-            loading="eager"
-          />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-bold tracking-[-0.02em] text-foreground">
-              {track?.title ?? "Nothing playing"}
-            </h1>
-            {track && (
-              <p className="truncate text-sm text-muted-foreground">
-                <ArtistLinks artists={track.artists} fallback={track.artist} />
-              </p>
-            )}
-          </div>
-        </header>
-
-        <div className="relative min-h-0 flex-1">
-          <div
-            ref={scrollerRef}
-            /* `relative` makes this the offsetParent the scroll maths measures against. */
-            className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            onWheel={pauseFollow}
-            onPointerDown={pauseFollow}
-            onTouchMove={pauseFollow}
-          >
-            <div
-              className={cn(
-                "mx-auto max-w-3xl",
-                // Half a viewport of air top and bottom so the first and last line can still
-                // reach the centre, where the highlight lives.
-                isSynced ? "py-[44vh]" : "pb-20 pt-4",
-              )}
-            >
-              {isLoading && <LyricsSkeleton />}
-
-              {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
-
-              {!isLoading && track && !hasLines && (
-                <LyricsMessage
-                  text={emptyMessage}
-                  onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
+      {isFullscreen ? (
+        /* Split Screen Fullscreen View (Matches media_1788521601006.png) */
+        <div className="relative min-h-0 flex-1 flex flex-col justify-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden">
+            {/* Left Column: Artwork Card + Mini Transport Player */}
+            <div className="lg:col-span-5 flex flex-col items-center justify-center">
+              <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
+                <TrackArtwork
+                  artworkUrl={track?.artworkUrl}
+                  size={420}
+                  className="size-full object-cover"
+                  iconSize={64}
+                  loading="eager"
                 />
-              )}
+              </div>
 
-              {!isLoading && hasLines && (
-                <div
-                  className="flex flex-col pl-5"
-                  style={{
-                    /* Multiplied rather than replaced: the clamp still does the adapting, the
-                       preference just moves the whole scale up or down with it. */
-                    fontSize: `calc(${isSynced ? LINE_FONT_SIZE : READING_FONT_SIZE} * ${fontScale})`,
-                    gap: isSynced ? `calc(${LINE_GAP} * ${fontScale})` : undefined,
-                  }}
-                  onKeyDown={isSynced ? handleLineKeyDown : undefined}
-                >
-                  {lines.map((line, index) =>
-                    isSynced ? (
-                      <SyncedLine
-                        key={`${index}:${line.text}`}
-                        index={index}
-                        text={line.text}
-                        /* Clamped to the table length so every line past the ramp shares one
-                           prop value — otherwise line 300 of a long song would re-render on
-                           every flip just because its distance went from 287 to 286. */
-                        distance={
-                          activeIndex < 0
-                            ? 1
-                            : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
-                        }
-                        isActive={index === activeIndex}
-                        isTabbable={index === tabbableIndex}
-                        reduce={reduce}
-                        translation={translations?.[index] || undefined}
-                        onSeek={seekLine}
-                        onFocusLine={setFocusIndex}
-                        register={registerLine}
-                      />
-                    ) : (
-                      <p
-                        key={`${index}:${line.text}`}
-                        ref={(element) => registerLine(index, element)}
-                        className="text-pretty py-1 leading-relaxed text-foreground/85"
-                      >
-                        {line.text}
-                        {translations?.[index] && (
-                          <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
-                            {translations[index]}
-                          </span>
-                        )}
-                      </p>
-                    ),
-                  )}
+              {/* Mini Player Under Artwork */}
+              {track && (
+                <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
+                  <div className="flex min-w-0 flex-col mb-1 text-center lg:text-left">
+                    <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
+                    <span className="truncate text-sm text-white/70">
+                      <ArtistLinks artists={track.artists} fallback={track.artist} />
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
+                    <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
+                    <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={track.durationSec || 100}
+                    step="any"
+                    value={currentPlaybackTime}
+                    onChange={(e) => {
+                      const t = parseFloat(e.target.value);
+                      setCurrentPlaybackTime(t);
+                      void playerController.seekTo(t);
+                    }}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
+                    aria-label="Seek track"
+                  />
+
+                  <div className="flex items-center justify-center gap-5 mt-2 text-white">
+                    <button
+                      type="button"
+                      onClick={() => void playerController.skipToPrevious()}
+                      className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      aria-label="Previous track"
+                    >
+                      <SkipPreviousIcon size={22} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void playerController.togglePlayPause()}
+                      className="flex size-11 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                      aria-label={isPlaying ? "Pause" : "Play"}
+                    >
+                      {isPlaying ? <PauseActiveIcon size={20} fill="currentColor" /> : <PlayActiveIcon size={20} fill="currentColor" className="ml-0.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void playerController.skipToNext()}
+                      className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      aria-label="Next track"
+                    >
+                      <SkipNextIcon size={22} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Right Column: Synced Lyrics */}
+            <div className="lg:col-span-7 h-[70vh] lg:h-[80vh] relative">
+              <div
+                ref={scrollerRef}
+                className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onWheel={pauseFollow}
+                onPointerDown={pauseFollow}
+                onTouchMove={pauseFollow}
+              >
+                <div className={cn("max-w-xl", isSynced ? "py-[40vh]" : "pb-20 pt-8")}>
+                  {isLoading && <LyricsSkeleton />}
+
+                  {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
+
+                  {!isLoading && track && !hasLines && (
+                    <LyricsMessage
+                      text={emptyMessage}
+                      onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
+                    />
+                  )}
+
+                  {!isLoading && hasLines && (
+                    <div
+                      className="flex flex-col pl-5"
+                      style={{
+                        fontSize: `calc(${isSynced ? LINE_FONT_SIZE : READING_FONT_SIZE} * ${fontScale})`,
+                        gap: isSynced ? `calc(${LINE_GAP} * ${fontScale})` : undefined,
+                      }}
+                      onKeyDown={isSynced ? handleLineKeyDown : undefined}
+                    >
+                      {/* Intro / Instrumental Beat Dots (Apple Music Style) */}
+                      {isSynced && activeIndex < 0 && (
+                        <div className="flex items-center gap-2 py-4 mb-2">
+                          {[0, 1, 2].map((dot) => (
+                            <span
+                              key={dot}
+                              className="size-2.5 rounded-full bg-white/70 animate-pulse"
+                              style={{ animationDelay: `${dot * 250}ms` }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {lines.map((line, index) =>
+                        isSynced ? (
+                          <SyncedLine
+                            key={`${index}:${line.text}`}
+                            index={index}
+                            text={line.text}
+                            distance={
+                              activeIndex < 0
+                                ? 1
+                                : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
+                            }
+                            isActive={index === activeIndex}
+                            isTabbable={index === tabbableIndex}
+                            reduce={reduce}
+                            translation={translations?.[index] || undefined}
+                            onSeek={seekLine}
+                            onFocusLine={setFocusIndex}
+                            register={registerLine}
+                          />
+                        ) : (
+                          <p
+                            key={`${index}:${line.text}`}
+                            ref={(element) => registerLine(index, element)}
+                            className="text-pretty py-1 leading-relaxed text-foreground/85"
+                          >
+                            {line.text}
+                            {translations?.[index] && (
+                              <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
+                                {translations[index]}
+                              </span>
+                            )}
+                          </p>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/40 to-transparent" aria-hidden="true" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" aria-hidden="true" />
+
+              {isFollowPaused && activeIndex >= 0 && (
+                <button
+                  type="button"
+                  className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xl shadow-black/30 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={resumeFollow}
+                  aria-label="Resync lyrics to current playback position"
+                >
+                  <RefreshIcon size={15} aria-hidden="true" />
+                  Back to current line
+                </button>
+              )}
+            </div>
           </div>
-
-          {/* Fades the column into the chrome at both ends instead of cutting lines in half. */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-background to-transparent"
-            aria-hidden="true"
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background to-transparent"
-            aria-hidden="true"
-          />
-
-          {isFollowPaused && activeIndex >= 0 && (
-            <button
-              type="button"
-              className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xl shadow-black/30 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={resumeFollow}
-              aria-label="Resync lyrics to current playback position"
-            >
-              <RefreshIcon size={15} aria-hidden="true" />
-              Back to current line
-            </button>
-          )}
         </div>
-      </div>
+      ) : (
+        /* Normal Mode: Centered Lyrics */
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-center gap-3.5 px-6 pb-3 pr-20 pt-5">
+            <TrackArtwork
+              artworkUrl={track?.artworkUrl}
+              size={56}
+              className="size-14 rounded-lg shadow-lg shadow-black/30"
+              iconSize={20}
+              loading="eager"
+            />
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-lg font-bold tracking-[-0.02em] text-foreground">
+                {track?.title ?? "Nothing playing"}
+              </h1>
+              {track && (
+                <p className="truncate text-sm text-muted-foreground">
+                  <ArtistLinks artists={track.artists} fallback={track.artist} />
+                </p>
+              )}
+            </div>
+          </header>
+
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={scrollerRef}
+              className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              onWheel={pauseFollow}
+              onPointerDown={pauseFollow}
+              onTouchMove={pauseFollow}
+            >
+              <div
+                className={cn(
+                  "mx-auto max-w-3xl",
+                  isSynced ? "py-[44vh]" : "pb-20 pt-4",
+                )}
+              >
+                {isLoading && <LyricsSkeleton />}
+
+                {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
+
+                {!isLoading && track && !hasLines && (
+                  <LyricsMessage
+                    text={emptyMessage}
+                    onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
+                  />
+                )}
+
+                {!isLoading && hasLines && (
+                  <div
+                    className="flex flex-col pl-5"
+                    style={{
+                      fontSize: `calc(${isSynced ? LINE_FONT_SIZE : READING_FONT_SIZE} * ${fontScale})`,
+                      gap: isSynced ? `calc(${LINE_GAP} * ${fontScale})` : undefined,
+                    }}
+                    onKeyDown={isSynced ? handleLineKeyDown : undefined}
+                  >
+                    {/* Intro / Instrumental Beat Dots (Apple Music Style) */}
+                    {isSynced && activeIndex < 0 && (
+                      <div className="flex items-center gap-2 py-4 mb-2">
+                        {[0, 1, 2].map((dot) => (
+                          <span
+                            key={dot}
+                            className="size-2.5 rounded-full bg-white/70 animate-pulse"
+                            style={{ animationDelay: `${dot * 250}ms` }}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {lines.map((line, index) =>
+                      isSynced ? (
+                        <SyncedLine
+                          key={`${index}:${line.text}`}
+                          index={index}
+                          text={line.text}
+                          distance={
+                            activeIndex < 0
+                              ? 1
+                              : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
+                          }
+                          isActive={index === activeIndex}
+                          isTabbable={index === tabbableIndex}
+                          reduce={reduce}
+                          translation={translations?.[index] || undefined}
+                          onSeek={seekLine}
+                          onFocusLine={setFocusIndex}
+                          register={registerLine}
+                        />
+                      ) : (
+                        <p
+                          key={`${index}:${line.text}`}
+                          ref={(element) => registerLine(index, element)}
+                          className="text-pretty py-1 leading-relaxed text-foreground/85"
+                        >
+                          {line.text}
+                          {translations?.[index] && (
+                            <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
+                              {translations[index]}
+                            </span>
+                          )}
+                        </p>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-background/40 to-transparent"
+              aria-hidden="true"
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/40 to-transparent"
+              aria-hidden="true"
+            />
+
+            {isFollowPaused && activeIndex >= 0 && (
+              <button
+                type="button"
+                className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xl shadow-black/30 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={resumeFollow}
+                aria-label="Resync lyrics to current playback position"
+              >
+                <RefreshIcon size={15} aria-hidden="true" />
+                Back to current line
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

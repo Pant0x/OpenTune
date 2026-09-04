@@ -187,20 +187,44 @@ function BrowseShelfSection({
           ref={scrollRef}
           className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
         >
-          {shelf.albums.map((album) => (
-            <div
-              key={album.id}
-              className="w-40 shrink-0 snap-start"
-              onContextMenu={(event) => openAlbumMenu(event, album)}
-            >
-              <AlbumCard
-                artworkUrl={album.artworkUrl}
-                title={album.title}
-                subtitle={album.artist ? `Album • ${album.artist}` : undefined}
-                onClick={() => onOpenAlbum(album)}
-              />
-            </div>
-          ))}
+          {shelf.albums.map((album) => {
+            const releaseLabel = album.releaseType === "ep" ? "EP" : album.releaseType === "single" ? "Single" : "Album";
+            return (
+              <div
+                key={album.id}
+                className="w-40 shrink-0 snap-start"
+                onContextMenu={(event) => openAlbumMenu(event, album)}
+              >
+                <AlbumCard
+                  artworkUrl={album.artworkUrl}
+                  title={album.title}
+                  subtitleContent={
+                    album.artist ? (
+                      <span className="flex items-center gap-1">
+                        <span>{releaseLabel}</span>
+                        <span>•</span>
+                        <span
+                          role="link"
+                          tabIndex={0}
+                          className="cursor-pointer hover:underline hover:text-foreground transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenArtist({
+                              id: album.artists?.[0]?.id ?? "",
+                              name: album.artist,
+                            });
+                          }}
+                        >
+                          {album.artist}
+                        </span>
+                      </span>
+                    ) : undefined
+                  }
+                  onClick={() => onOpenAlbum(album)}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 

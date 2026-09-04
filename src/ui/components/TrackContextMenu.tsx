@@ -54,6 +54,7 @@ import {
 import { isTrackKnownInPlaylist } from "../../player/playlistMembership";
 import { ArtistLinks } from "./ArtistLinks";
 import { TagEditor } from "./TagEditor";
+import { SpotifyService } from "../../services/SpotifyService";
 
 interface MenuPosition {
   x: number;
@@ -320,11 +321,14 @@ export function TrackContextMenuProvider({
     if (!track) return;
     const selectedTrack = track;
     setMenuPosition(null);
+    showPersistentToast("Creating share link...");
     try {
-      await navigator.clipboard.writeText(
-        `https://music.youtube.com/watch?v=${encodeURIComponent(selectedTrack.id)}`,
-      );
-      showToast("Link copied");
+      let shareUrl = await SpotifyService.searchTrackUrl(selectedTrack.title, selectedTrack.artist).catch(() => null);
+      if (!shareUrl) {
+        shareUrl = `https://music.youtube.com/watch?v=${encodeURIComponent(selectedTrack.id)}`;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      showToast(shareUrl.includes("spotify.com") ? "Spotify track link copied" : "Track link copied");
     } catch {
       showToast("Unable to copy the link.", 4000);
     }

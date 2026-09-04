@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import { CloseIcon, HeartActiveIcon, HeartIcon, SearchIcon } from "@/ui/icons";
+import { createPortal } from "react-dom";
+import { cn, formatCompactNumber } from "@/lib/utils";
+import { ClockIcon, CloseIcon, HeartActiveIcon, HeartIcon, MenuDotsIcon, SearchIcon, ShareIcon } from "@/ui/icons";
 import { Tooltip } from "@/components/motion/tooltip";
 import { TrackRow } from "../components/TrackRow";
 import { TrackListSkeleton } from "../components/Skeleton";
@@ -20,6 +21,14 @@ import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { AlbumCard } from "../components/AlbumCard";
 import { TrackArtwork } from "../components/TrackArtwork";
+import { SpotifyService } from "../../services/SpotifyService";
+
+function formatDuration(totalSec?: number): string {
+  if (!totalSec || isNaN(totalSec) || totalSec < 0) return "";
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = Math.floor(totalSec % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
 
 const SEARCH_FIELD =
   "group/search flex min-h-8 items-center gap-1.5 overflow-hidden rounded-full bg-white/[0.04] px-2.5 " +
@@ -28,8 +37,6 @@ const SEARCH_FIELD =
   "[&_input]:min-w-0 [&_input]:flex-1 [&_input]:bg-transparent [&_input]:text-sm " +
   "[&_input]:text-foreground [&_input]:outline-none [&_input]:placeholder:text-muted-foreground";
 const SEARCH_FIELD_COLLAPSED = "w-9 hover:w-56 focus-within:w-56";
-
-import { formatCompactNumber } from "@/lib/utils";
 
 interface AlbumViewProps {
   album?: Album;
@@ -317,14 +324,47 @@ export function AlbumView({
       setIsSaving(false);
     }
   };
+  const [isAlbumMenuOpen, setIsAlbumMenuOpen] = useState(false);
+  const albumMenuRef = useRef<HTMLDivElement>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (albumMenuRef.current && !albumMenuRef.current.contains(e.target as Node)) {
+        setIsAlbumMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => window.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const copyAlbumShareLink = async () => {
+    if (!album) return;
+    try {
+      let shareUrl: string | null = null;
+      if (album.artist && album.title) {
+        shareUrl = await SpotifyService.searchAlbumUrl(album.title, album.artist).catch(() => null);
+      }
+      if (!shareUrl) {
+        shareUrl = `https://music.youtube.com/playlist?list=${encodeURIComponent(album.playlistId || album.id)}`;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      setToast("Album link copied to clipboard");
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
+    } catch {
+      // ignore
+    }
+  };
 
   const releaseTypeLabel = album.releaseType
-    ? album.releaseType.toUpperCase()
+    ? (album.releaseType === "ep" ? "EP" : album.releaseType === "single" ? "Single" : "Album")
     : tracks.length === 1
-      ? "SINGLE"
+      ? "Single"
       : tracks.length > 1 && tracks.length <= 6
         ? "EP"
-        : "ALBUM";
+        : "Album";
 
   return (
     <div className="flex flex-col gap-8 pb-16">
@@ -348,23 +388,52 @@ export function AlbumView({
         artworkVariant="album"
         actionsDisabled={isLoading || Boolean(error) || tracks.length === 0}
         actions={
-          <Tooltip content={isSaved ? "Remove from library" : "Save to library"}>
-            <button
-              type="button"
-              onClick={() => void toggleSaveAlbum()}
-              disabled={isSaving}
-              aria-label={isSaved ? "Remove album from library" : "Save album to library"}
-              className={cn(
-                "grid size-9 place-items-center rounded-full transition-all active:scale-95",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                isSaved
-                  ? "text-primary bg-primary/10 hover:bg-primary/20"
-                  : "text-muted-foreground hover:bg-card hover:text-foreground",
+          <div className="flex items-center gap-2.5">
+            <Tooltip content={isSaved ? "Remove from library" : "Save to library"}>
+              <button
+                type="button"
+                onClick={() => void toggleSaveAlbum()}
+                disabled={isSaving}
+                aria-label={isSaved ? "Remove album from library" : "Save album to library"}
+                className={cn(
+                  "flex size-11 items-center justify-center rounded-full bg-card transition-all hover:bg-muted border border-border/40 active:scale-95",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  isSaved
+                    ? "text-primary hover:text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {isSaved ? <HeartActiveIcon size={20} /> : <HeartIcon size={20} />}
+              </button>
+            </Tooltip>
+
+            <div className="relative" ref={albumMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsAlbumMenuOpen((prev) => !prev)}
+                className="flex size-11 items-center justify-center rounded-full bg-card text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border/40 focus-visible:outline-none cursor-pointer"
+                aria-label="More album options"
+              >
+                <MenuDotsIcon size={18} />
+              </button>
+
+              {isAlbumMenuOpen && (
+                <div className="absolute left-0 top-full mt-2 z-50 w-52 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAlbumMenuOpen(false);
+                      void copyAlbumShareLink();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  >
+                    <ShareIcon size={16} className="text-zinc-300" />
+                    <span>Share album</span>
+                  </button>
+                </div>
               )}
-            >
-              {isSaved ? <HeartActiveIcon size={20} /> : <HeartIcon size={20} />}
-            </button>
-          </Tooltip>
+            </div>
+          </div>
         }
         playback={{
           onToggle: togglePlayCollection,
@@ -425,6 +494,20 @@ export function AlbumView({
               )}
             </div>
           </div>
+          {/* Table Header */}
+          <div className="grid grid-cols-[1fr_auto] items-center px-4 py-2 border-b border-border/30 text-xs font-semibold tracking-wider text-muted-foreground">
+            <div className="flex items-center gap-4">
+              <span className="w-8 text-center">#</span>
+              <span>Title</span>
+            </div>
+            <div className="flex items-center gap-8 pr-4">
+              <span className="w-20 text-right">Plays</span>
+              <span className="w-12 flex justify-end">
+                <ClockIcon size={15} aria-label="Duration" />
+              </span>
+            </div>
+          </div>
+
           {isLoading ? (
             <TrackListSkeleton label="Loading songs" />
           ) : visibleTracks.length === 0 && albumSearchQuery.trim() ? (
@@ -444,11 +527,14 @@ export function AlbumView({
                     isSelected={selection.isSelected(track.id)}
                     isSelectionActive={selection.isActive}
                     trailing={
-                      viewFormatted ? (
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {viewFormatted}
+                      <div className="flex items-center gap-8 shrink-0 text-xs tabular-nums text-muted-foreground pr-2">
+                        <span className="w-20 text-right">
+                          {viewFormatted || "—"}
                         </span>
-                      ) : undefined
+                        <span className="w-12 text-right">
+                          {formatDuration(track.durationSec)}
+                        </span>
+                      </div>
                     }
                     onToggleSelected={() => selection.toggle(track.id, index)}
                     onSelect={(event) => {
@@ -564,6 +650,13 @@ export function AlbumView({
         }}
       />
 
+      {toast &&
+        createPortal(
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 rounded-full bg-foreground text-background px-4 py-2 text-xs font-medium shadow-lg animate-in fade-in zoom-in duration-200">
+            {toast}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

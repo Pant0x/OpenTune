@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { TrackInfo } from "./TrackInfo";
 import { PlaybackControls } from "./PlaybackControls";
@@ -11,7 +11,6 @@ import { DownloadButton } from "./DownloadButton";
 import { VolumeControl } from "./VolumeControl";
 import { LyricsButton } from "./LyricsButton";
 import {
-  useCompactPlayerBar,
   useExtraPlayerControlsAlwaysVisible,
 } from "../../settings/playerControls";
 
@@ -142,9 +141,6 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
   };
 
   const extraControlsAlwaysVisible = useExtraPlayerControlsAlwaysVisible();
-  const compactPlayerBar = useCompactPlayerBar();
-
-
 
   return (
     <>
@@ -167,7 +163,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
               aria-label="Reconnect to the internet"
             >
               {isCheckingConnection ? (
-                <SpinnerSteps   size={24}  />
+                <SpinnerSteps size={24} />
               ) : (
                 <PlayActiveIcon size={14} aria-hidden="true" />
               )}
@@ -178,29 +174,25 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
       </AnimatePresence>
 
       <div
-        className="group/playerbar flex shrink-0 flex-col gap-1 bg-background px-4 pb-3 pt-2"
+        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px]"
         onClick={handlePlayerBarClick}
       >
-        {/* Expanded: the seek bar spans the full bar above everything. */}
-        {!compactPlayerBar && <SeekBar />}
-
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
-          <div className="min-w-0">
+        <div className="grid w-full grid-cols-[minmax(180px,1fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
+          {/* Left: Track Info & Like */}
+          <div className="min-w-0 flex items-center justify-start">
             <TrackInfo />
           </div>
 
-          {/* Compact: the seek bar tucks under the controls, in the centre column only, so
-              the bar keeps one row of height and the transport stays the anchor. */}
-          <div className="flex flex-col items-center gap-1">
+          {/* Center: Playback Transport + Spotify Centered Seekbar */}
+          <div className="flex flex-col items-center gap-1 w-full max-w-xl justify-self-center">
             <PlaybackControls extraControlsAlwaysVisible={extraControlsAlwaysVisible} />
-            {compactPlayerBar && (
-              <div className="w-full min-w-[22rem]">
-                <SeekBar />
-              </div>
-            )}
+            <div className="w-full max-w-[540px]">
+              <SeekBar />
+            </div>
           </div>
 
-          <div className="flex min-w-0 items-center justify-end gap-1">
+          {/* Right: Secondary controls */}
+          <div className="flex min-w-0 items-center justify-end gap-1.5">
             <div
               className={cn(
                 "flex items-center gap-1 transition-opacity",
@@ -228,6 +220,15 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
 
             <DownloadButton />
             <VolumeControl />
+            <button
+              type="button"
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+              onClick={onToggleLyrics}
+              aria-label="Toggle lyrics / fullscreen"
+              title="Toggle lyrics / fullscreen"
+            >
+              <FullScreenIcon size={16} />
+            </button>
           </div>
         </div>
       </div>

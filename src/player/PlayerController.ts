@@ -971,12 +971,18 @@ export class PlayerController {
     });
 
     this.discardWarmedStream(track.id);
+    this.loadedTrackId = null;
 
-    await this.playTrackById(track.id, undefined, false, false);
-    if (position > 0.5 && this.loadedTrackId === track.id) {
-      await this.seekTo(position);
+    try {
+      await this.playTrackById(track.id, undefined, false, false);
+      if (position > 0.5 && this.loadedTrackId === track.id) {
+        await this.seekTo(position);
+      }
+      return true;
+    } catch (reloadErr) {
+      logInternalError("PlayerController.recoverFromPrematureEnd reload failed", reloadErr);
+      return false;
     }
-    return true;
   }
 
   /** Forgets a pre-resolved stream whose URL has proven dead, so the next load re-resolves. */

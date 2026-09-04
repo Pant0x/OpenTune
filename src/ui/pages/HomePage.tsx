@@ -42,6 +42,7 @@ const HOME_MOOD_CHIPS: HomeMoodChip[] = [
 const suggestionCache = new Map<string, Track[]>();
 const suggestionLoads = new Map<string, Promise<Track[]>>();
 const cachedMoodShelves = new Map<string, BrowseShelf[]>();
+let cachedRealHomeShelves: BrowseShelf[] | null = null;
 const EMPTY_TRACKS: Track[] = [];
 
 const MAX_SUGGESTION_ENTRIES = 20;
@@ -181,8 +182,8 @@ export function HomePage({
   const [activeMood, setActiveMood] = useState<string>("all");
   const [moodShelves, setMoodShelves] = useState<BrowseShelf[] | null>(null);
   const [isLoadingMood, setIsLoadingMood] = useState(false);
-  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>([]);
-  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(true);
+  const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>(() => cachedRealHomeShelves ?? []);
+  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(() => !cachedRealHomeShelves);
 
   const recentlyPlayed = useMemo(
     () => libraryState.library?.recentlyPlayed ?? EMPTY_TRACKS,
@@ -256,11 +257,62 @@ export function HomePage({
     let active = true;
 
     async function loadAllStaticHomeSections() {
-      setIsLoadingHomeShelves(true);
+      if (cachedRealHomeShelves && cachedRealHomeShelves.length > 0) {
+        setHomeShelves(cachedRealHomeShelves);
+        setIsLoadingHomeShelves(false);
+      } else {
+        setIsLoadingHomeShelves(true);
+      }
 
       try {
         const homePage = await libraryController.getBrowsePage("home").catch(() => null);
         const ytShelves = homePage ? splitMixedShelves(homePage.shelves) : [];
+
+        if (ytShelves.length > 0) {
+          const quickPicksTracks = suggestions.length > 0 ? suggestions : recentPlays;
+          const enhancedShelves = ytShelves.map((s) => {
+            if (
+              (s.title.toLowerCase().includes("quick pick") ||
+                s.title.toLowerCase().includes("picks for you")) &&
+              s.tracks.length < 4 &&
+              quickPicksTracks.length > 0
+            ) {
+              return { ...s, tracks: quickPicksTracks.slice(0, 20) };
+            }
+            return s;
+          });
+
+          const hasQuickPicks = enhancedShelves.some(
+            (s) =>
+              s.title.toLowerCase().includes("quick pick") ||
+              s.title.toLowerCase().includes("picks for you"),
+          );
+          const finalShelves = hasQuickPicks
+            ? enhancedShelves
+            : [
+                {
+                  title: "Quick picks",
+                  tracks: quickPicksTracks.slice(0, 20),
+                  albums: [],
+                  playlists: [],
+                  artists: [],
+                  links: [],
+                },
+                ...enhancedShelves,
+              ];
+
+          cachedRealHomeShelves = finalShelves;
+          if (active) {
+            setHomeShelves(finalShelves);
+            setIsLoadingHomeShelves(false);
+          }
+          return;
+        }
+
+        // If library is still restoring/authorizing, do not commit fallback searches yet
+        if (libraryState.status === "restoring" || libraryState.status === "loading" || libraryState.status === "authorizing") {
+          return;
+        }
 
         // 1. First pass: immediate render of available YouTube shelves and quick-picks
         const initialShelves: BrowseShelf[] = [];
@@ -338,7 +390,6 @@ export function HomePage({
         }
 
         if (!active) return;
-        // Deliver immediate layout so home view appears within milliseconds
         if (initialShelves.length > 0) {
           setHomeShelves(initialShelves);
           setIsLoadingHomeShelves(false);

@@ -1456,6 +1456,11 @@ const backOnboardingStep = () => {
       if (isTextEntry(event.target)) return;
 
       if (event.button === MOUSE_BACK_BUTTON) {
+        if (playerUIState.isLyricsOpen) {
+          event.preventDefault();
+          playerUIStore.setLyricsOpen(false);
+          return;
+        }
         if (isSearchOpen && activeTab?.view !== "settings") {
           event.preventDefault();
           setIsSearchOpen(false);
@@ -1496,6 +1501,7 @@ const backOnboardingStep = () => {
     handleNavigateBack,
     handleNavigateForward,
     isSearchOpen,
+    playerUIState.isLyricsOpen,
   ]);
 
   useEffect(() => {

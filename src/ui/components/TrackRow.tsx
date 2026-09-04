@@ -411,7 +411,12 @@ export const TrackRow = memo(function TrackRow({
   };
 
   const handleSelect = useCallback(
-    (event: MouseEvent<HTMLElement>) => handlersRef.current.onSelect(event),
+    (event: MouseEvent<HTMLElement>) => {
+      if ((event.target as HTMLElement).closest('[role="link"], button, [data-interactive]')) {
+        return;
+      }
+      handlersRef.current.onSelect(event);
+    },
     [],
   );
   const handleContextMenu = useCallback(

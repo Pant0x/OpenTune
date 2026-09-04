@@ -229,6 +229,92 @@ class SpotifyServiceManager {
   }
 
   /**
+   * Fast avatar resolver that returns Spotify artist avatar URL or null.
+   */
+  async getArtistAvatar(artistName: string): Promise<string | null> {
+    const overview = await this.getArtistOverview(artistName).catch(() => null);
+    return overview?.avatarUrl || null;
+  }
+
+  /**
+   * Search for an album by title and artist, returns open.spotify.com album URL if matched.
+   */
+  async searchAlbumUrl(title: string, artist: string): Promise<string | null> {
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `${title} ${artist}`,
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+      const albums = result?.data?.searchV2?.albums?.items;
+      if (Array.isArray(albums) && albums.length > 0) {
+        const match = albums[0];
+        const uri = match?.data?.uri;
+        if (uri && uri.startsWith("spotify:album:")) {
+          return `https://open.spotify.com/album/${uri.replace("spotify:album:", "")}`;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
+   * Search for a track by title and artist, returns open.spotify.com track URL if matched.
+   */
+  async searchTrackUrl(title: string, artist: string): Promise<string | null> {
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `${title} ${artist}`,
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+      const tracks = result?.data?.searchV2?.tracks?.items;
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        const match = tracks[0];
+        const uri = match?.item?.data?.uri || match?.data?.uri;
+        if (uri && uri.startsWith("spotify:track:")) {
+          return `https://open.spotify.com/track/${uri.replace("spotify:track:", "")}`;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
+   * Search for an artist by name, returns open.spotify.com artist URL if matched.
+   */
+  async searchArtistUrl(name: string): Promise<string | null> {
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: name,
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+      const artists = result?.data?.searchV2?.artists?.items;
+      if (Array.isArray(artists) && artists.length > 0) {
+        const match = artists[0];
+        const uri = match?.data?.uri;
+        if (uri && uri.startsWith("spotify:artist:")) {
+          return `https://open.spotify.com/artist/${uri.replace("spotify:artist:", "")}`;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
    * Fetches artist monthly listeners, followers, bio, top cities, avatar, gallery, and top tracks.
    */
   async getArtistOverview(artistNameOrUri: string): Promise<SpotifyArtistOverview | null> {

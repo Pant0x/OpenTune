@@ -111,7 +111,7 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
 
       <button
         type="button"
-        className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground transition-[transform,background-color] hover:bg-primary/80 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-md transition-transform duration-150 hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
         onClick={handlePlayPause}
         disabled={!hasCurrentTrack}
         aria-label={isPlaying ? "Pause" : "Play"}
@@ -120,11 +120,11 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
           <AnimatePresence initial={false} mode="popLayout">
             {isPlaying ? (
               <motion.span key="pause" {...GLYPH_MOTION} className="absolute">
-                <PauseActiveIcon size={20} />
+                <PauseActiveIcon size={18} fill="currentColor" />
               </motion.span>
             ) : (
-              <motion.span key="play" {...GLYPH_MOTION} className="absolute">
-                <PlayActiveIcon size={20} />
+              <motion.span key="play" {...GLYPH_MOTION} className="absolute ml-0.5">
+                <PlayActiveIcon size={18} fill="currentColor" />
               </motion.span>
             )}
           </AnimatePresence>

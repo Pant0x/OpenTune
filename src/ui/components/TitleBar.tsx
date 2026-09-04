@@ -142,9 +142,19 @@ export function TitleBar({
 
   const handleToggleMaximize = async () => {
     try {
-      await appWindow.toggleMaximize();
+      const isMax = await appWindow.isMaximized();
+      if (isMax) {
+        await appWindow.unmaximize();
+      } else {
+        await appWindow.maximize();
+      }
     } catch (error) {
       logInternalError("TitleBar.maximize failed", error);
+      try {
+        await appWindow.toggleMaximize();
+      } catch (fallbackError) {
+        logInternalError("TitleBar.toggleMaximize fallback failed", fallbackError);
+      }
     }
   };
 
