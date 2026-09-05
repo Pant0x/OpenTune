@@ -62,6 +62,26 @@ export interface SpotifyRelease {
   uri: string;
 }
 
+export interface SpotifyAlbumTrack {
+  id: string;
+  title: string;
+  artist?: string;
+  durationMs: number;
+  isExplicit: boolean;
+}
+
+export interface SpotifyAlbumMetadata {
+  id: string;
+  name: string;
+  type: "album" | "single" | "ep";
+  releaseDate?: string;
+  formattedReleaseDate?: string;
+  label?: string;
+  copyrights: string[];
+  trackCount: number;
+  tracks: SpotifyAlbumTrack[];
+}
+
 /**
  * Sanitizes Spotify's raw biography text, stripping <a href="spotify:..."> tags
  * while preserving clean artist names and removing raw HTML.
@@ -113,6 +133,19 @@ class SpotifyServiceManager {
   private discographyCache = new Map<string, { data: SpotifyRelease[]; timestamp: number }>();
   private playlistCache = new Map<string, { data: SpotifyPlaylist[]; timestamp: number }>();
 
+  constructor() {
+    if (typeof localStorage !== "undefined") {
+      try {
+        const savedToken = localStorage.getItem("spotify_anon_token_v2");
+        const exp = Number(localStorage.getItem("spotify_anon_token_exp_v2") || 0);
+        if (savedToken && exp > Date.now() + 60_000) {
+          this.accessToken = savedToken;
+          this.tokenExpiresAt = exp;
+        }
+      } catch {}
+    }
+  }
+
   /**
    * Fetches an anonymous client access token from open.spotify.com embed page.
    * Zero authentication/login required.
@@ -152,6 +185,10 @@ class SpotifyServiceManager {
 
         this.accessToken = token;
         this.tokenExpiresAt = expiresAt;
+        try {
+          localStorage.setItem("spotify_anon_token_v2", token);
+          localStorage.setItem("spotify_anon_token_exp_v2", String(expiresAt));
+        } catch {}
         logInternalInfo("SpotifyService: Acquired anonymous access token successfully");
         return token;
       } catch (err) {
@@ -320,9 +357,23 @@ class SpotifyServiceManager {
    * Fetches artist monthly listeners, followers, bio, top cities, avatar, gallery, and top tracks.
    */
   async getArtistOverview(artistNameOrUri: string): Promise<SpotifyArtistOverview | null> {
-    const cached = this.artistOverviewCache.get(artistNameOrUri.toLowerCase());
-    if (cached && Date.now() - cached.timestamp < 3600_000) {
-      return cached.data;
+    const cacheKey = artistNameOrUri.toLowerCase();
+    const inMem = this.artistOverviewCache.get(cacheKey);
+    if (inMem && Date.now() - inMem.timestamp < 3600_000 * 24) {
+      return inMem.data;
+    }
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`sp_ov_${cacheKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
+            this.artistOverviewCache.set(cacheKey, parsed);
+            return parsed.data;
+          }
+        }
+      } catch {}
     }
 
     let uri = artistNameOrUri;
@@ -410,6 +461,12 @@ class SpotifyServiceManager {
 
     this.artistOverviewCache.set(artistNameOrUri.toLowerCase(), { data: overview, timestamp: Date.now() });
     this.artistOverviewCache.set(uri.toLowerCase(), { data: overview, timestamp: Date.now() });
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(`sp_ov_${cacheKey}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
+        localStorage.setItem(`sp_ov_${uri.toLowerCase()}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
+      } catch {}
+    }
     return overview;
   }
 
@@ -466,9 +523,23 @@ class SpotifyServiceManager {
    * Fetches artist discography (albums, singles, eps) from Spotify.
    */
   async getArtistDiscography(artistNameOrUri: string): Promise<SpotifyRelease[]> {
-    const cached = this.discographyCache.get(artistNameOrUri.toLowerCase());
-    if (cached && Date.now() - cached.timestamp < 30_000) {
+    const cacheKey = artistNameOrUri.toLowerCase();
+    const cached = this.discographyCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 3600_000 * 24) {
       return cached.data;
+    }
+
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`sp_disc_${cacheKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
+            this.discographyCache.set(cacheKey, parsed);
+            return parsed.data;
+          }
+        }
+      } catch {}
     }
 
     let uri = artistNameOrUri;
@@ -524,8 +595,122 @@ class SpotifyServiceManager {
       return db.localeCompare(da);
     });
 
-    this.discographyCache.set(artistNameOrUri.toLowerCase(), { data: releases, timestamp: Date.now() });
+    this.discographyCache.set(cacheKey, { data: releases, timestamp: Date.now() });
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(`sp_disc_${cacheKey}`, JSON.stringify({ data: releases, timestamp: Date.now() }));
+      } catch {}
+    }
     return releases;
+  }
+
+  /**
+   * Fetches rich album / single metadata including track list, release date,
+   * record label, and copyrights (℗ and ©).
+   */
+  async getAlbumMetadata(albumIdOrUri: string): Promise<SpotifyAlbumMetadata | null> {
+    const cleanId = albumIdOrUri.replace(/^spotify:album:/, "").trim();
+    if (!cleanId) return null;
+
+    const cacheKey = cleanId.toLowerCase();
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`sp_alb_${cacheKey}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
+            return parsed.data;
+          }
+        }
+      } catch {}
+    }
+
+    try {
+      // 1. Fetch embed page which contains exact Next.js trackList entity
+      const embedHtml = await safeFetch(`https://open.spotify.com/embed/album/${cleanId}`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
+      }).then((r) => r.text());
+
+      const nextDataMatch = embedHtml.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+      const entity = nextDataMatch ? JSON.parse(nextDataMatch[1])?.props?.pageProps?.state?.data?.entity : null;
+
+      // 2. Fetch main web page for release date and copyrights
+      const pageHtml = await safeFetch(`https://open.spotify.com/album/${cleanId}`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
+      }).then((r) => r.text()).catch(() => "");
+
+      const copyrightMatches = [...pageHtml.matchAll(/([©℗]\s*[^<"&]+)/g)]
+        .map((m) => m[1].replace(/&amp;/g, "&").trim())
+        .filter((c, i, arr) => arr.indexOf(c) === i);
+
+      let releaseDate: string | undefined;
+      const datePublishedMatch = pageHtml.match(/"datePublished":\s*"([^"]+)"/);
+      if (datePublishedMatch) {
+        releaseDate = datePublishedMatch[1];
+      } else {
+        const metaDateMatch = pageHtml.match(/<meta property="music:release_date" content="([^"]+)"/);
+        if (metaDateMatch) releaseDate = metaDateMatch[1];
+      }
+
+      let formattedReleaseDate: string | undefined;
+      if (releaseDate) {
+        try {
+          const d = new Date(releaseDate);
+          if (!isNaN(d.getTime())) {
+            formattedReleaseDate = d.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            });
+          }
+        } catch {}
+      }
+
+      let label: string | undefined;
+      const labelMatch = pageHtml.match(/([A-Za-z0-9\s,\/]+(?:Records|Recordings|Music|Entertainment|Corporation|LLC|Inc))/i);
+      if (labelMatch) {
+        label = labelMatch[1].trim();
+      }
+
+      const tracks: SpotifyAlbumTrack[] = Array.isArray(entity?.trackList)
+        ? entity.trackList.map((t: any) => ({
+            id: (t.uri || "").replace("spotify:track:", ""),
+            title: t.title || "",
+            artist: t.subtitle || entity?.subtitle || "",
+            durationMs: Number(t.duration) || 0,
+            isExplicit: Boolean(t.isExplicit),
+          }))
+        : [];
+
+      const result: SpotifyAlbumMetadata = {
+        id: cleanId,
+        name: entity?.title || entity?.name || "",
+        type: (entity?.type === "album" ? "album" : "single") as "album" | "single" | "ep",
+        releaseDate,
+        formattedReleaseDate: formattedReleaseDate || releaseDate,
+        label,
+        copyrights: copyrightMatches,
+        trackCount: tracks.length || 1,
+        tracks,
+      };
+
+      if (typeof localStorage !== "undefined") {
+        try {
+          localStorage.setItem(`sp_alb_${cacheKey}`, JSON.stringify({ data: result, timestamp: Date.now() }));
+        } catch {}
+      }
+
+      return result;
+    } catch (err) {
+      logInternalWarn("SpotifyService.getAlbumMetadata failed", { cleanId, err });
+      return null;
+    }
   }
 }
 

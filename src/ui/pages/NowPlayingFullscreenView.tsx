@@ -115,16 +115,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     setIsLyricsSyncLocked(true);
   }, [track?.id]);
 
-  // Keyboard navigation: Escape closes this view
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+
 
   // Idle timer for auto-hiding dock and controls (Spotify behavior)
   const resetIdleTimer = useCallback(() => {

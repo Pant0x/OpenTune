@@ -67,6 +67,7 @@ import {
   usesYouTubeScrobbling,
 } from "../../ui/settings/youtubeAccount";
 import { usesRustAudioEngine } from "../../ui/settings/audioEngine";
+import { SpotifyService } from "../../services/SpotifyService";
 import {
   getLiveCookie,
   notifyAuthRejected,
@@ -3689,6 +3690,31 @@ export class YouTubeMusicDataSource extends DataSource {
     let albumPage: any = null;
     let albumFetchError: unknown = null;
 
+    if (album.id.startsWith("spotify:")) {
+      try {
+        const spMeta = await SpotifyService.getAlbumMetadata(album.id);
+        if (spMeta && spMeta.tracks.length > 0) {
+          return spMeta.tracks.map((st, idx) => ({
+            id: `spotify:${st.id}`,
+            title: st.title,
+            artist: st.artist || album.artist || "Unknown artist",
+            album: album.title,
+            albumId: album.id,
+            durationSec: Math.round(st.durationMs / 1000),
+            artworkUrl: album.artworkUrl,
+            isExplicit: st.isExplicit,
+            trackNumber: idx + 1,
+            source: "youtube" as const,
+          }));
+        }
+      } catch (spErr) {
+        logInternalWarn("YouTubeMusicDataSource.fetchAlbumTracksFresh spotify metadata lookup failed", {
+          albumId: album.id,
+          error: spErr instanceof Error ? spErr.message : String(spErr),
+        });
+      }
+    }
+
     if (!album.id.startsWith("spotify:")) {
       try {
         albumPage = await client.music.getAlbum(album.id);
@@ -3755,7 +3781,12 @@ export class YouTubeMusicDataSource extends DataSource {
         const searchRes = await client.music.search(term, { type: "album" });
         const candidate = (searchRes?.albums?.contents as any[])?.[0];
         if (candidate?.id && candidate.id !== album.id) {
-          return await this.fetchAlbumTracksFresh({ ...album, id: candidate.id });
+          const candTitle = (candidate.title?.toString() || "").toLowerCase().trim();
+          const origTitle = album.title.toLowerCase().trim();
+          // STRICT title validation: only accept candidate if titles match closely
+          if (candTitle === origTitle || candTitle.includes(origTitle) || origTitle.includes(candTitle)) {
+            return await this.fetchAlbumTracksFresh({ ...album, id: candidate.id });
+          }
         }
       } catch {}
       try {

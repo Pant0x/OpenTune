@@ -119,14 +119,14 @@ export function TrackInfo() {
             ref={titleTextRef}
             aria-hidden={isTitleOverflowing}
             className={cn(
-              "block whitespace-nowrap text-sm font-medium text-foreground hover:underline",
+              "block whitespace-nowrap text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all",
               isTitleOverflowing && "invisible absolute",
             )}
           >
             {currentTrack.title}
           </span>
           {isTitleOverflowing && (
-            <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:underline">
+            <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
               <span className="whitespace-nowrap" title={currentTrack.title}>
                 {currentTrack.title}
               </span>
@@ -146,7 +146,7 @@ export function TrackInfo() {
               <span className="shrink-0 opacity-40">•</span>
               <button
                 type="button"
-                className="hover:underline hover:text-foreground transition-colors truncate focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-left"
+                className="hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all truncate focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-left"
                 onClick={() => {
                   if (navigateAlbum) {
                     navigateAlbum({

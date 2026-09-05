@@ -480,6 +480,15 @@ function findBestTrackMatch(
     if (candTitle.includes("karaoke") || candTitle.includes("tribute") || candTitle.includes("parody")) score -= 60;
     if (!isOrigLive && (candTitle.includes("live at") || candTitle.includes("live from") || candTitle.includes("live performance"))) score -= 30;
 
+    // Heavy penalty for music videos (avoid dialogue/skits/intro noise)
+    if (candTitle.includes("official music video") || candTitle.includes("official video") || candTitle.includes("music video") || candTitle.includes("short film")) {
+      score -= 45;
+    }
+    // High bonus for official audio or topic tracks
+    if (candTitle.includes("official audio") || candArtist.includes(" - topic") || candArtist.includes("release - topic")) {
+      score += 35;
+    }
+
     // Bonus if candidate artist matches original artist
     if (candArtist && origArtist && (candArtist.includes(origArtist) || origArtist.includes(candArtist))) {
       score += 25;
@@ -991,15 +1000,23 @@ function findBestTrackMatch(
      * premature end looked like a finish — which is why this guard was silent the first time.
      */
     const ended = this.audioEngine.takeEndedPlayback();
-    const duration = ended?.durationSec ?? this.audioEngine.getDuration();
+    const duration = (ended?.durationSec && ended.durationSec > 0)
+      ? ended.durationSec
+      : (this.audioEngine.getDuration() > 0)
+        ? this.audioEngine.getDuration()
+        : (track.durationSec && track.durationSec > 0)
+          ? track.durationSec
+          : 0;
     const position = ended?.positionSec ?? this.audioEngine.getCurrentTime();
 
-    if (!isPrematureEnd({
+    const isPremature = isPrematureEnd({
       durationSec: duration,
       positionSec: position,
       crossfadeSec: this.crossfadeSec,
       toleranceSec: PREMATURE_END_TOLERANCE_SEC,
-    })) {
+    }) || (duration <= 0 && position < 45);
+
+    if (!isPremature) {
       // A track that reached its end clears the marker: the next failure gets its own retry.
       this.prematureEndRetryCountMap.delete(track.id);
       return false;

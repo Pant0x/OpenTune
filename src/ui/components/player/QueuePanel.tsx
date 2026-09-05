@@ -809,7 +809,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                       artists={currentTrack.artists}
                       fallback={currentTrack.artist}
                       trackTitle={currentTrack.title}
-                      className="hover:underline hover:text-foreground transition-colors"
+                      className="hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all"
                     />
                   </div>
                 </div>
@@ -856,15 +856,10 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     />
                   </div>
                   <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-sm text-foreground truncate group-hover:underline">
-                        {currentTrack.artist}
-                      </span>
-                      <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-primary text-white text-[9px] font-bold">
-                        ✓
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Verified Artist</span>
+                    <span className="font-bold text-sm text-foreground truncate group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
+                      {currentTrack.artist}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Artist</span>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
@@ -898,7 +893,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       From the album
                     </span>
-                    <span className="font-semibold text-sm text-foreground truncate group-hover:underline">
+                    <span className="font-semibold text-sm text-foreground truncate group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
                       {currentTrack.album}
                     </span>
                   </div>

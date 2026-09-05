@@ -21,7 +21,7 @@ import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { AlbumCard } from "../components/AlbumCard";
 import { TrackArtwork } from "../components/TrackArtwork";
-import { SpotifyService, useSpotifyArtistAvatar } from "../../services/SpotifyService";
+import { SpotifyService, type SpotifyAlbumMetadata, useSpotifyArtistAvatar } from "../../services/SpotifyService";
 
 function formatDuration(totalSec?: number, fallbackDuration?: string): string {
   if (typeof totalSec === "number" && !isNaN(totalSec) && totalSec > 0) {
@@ -92,6 +92,7 @@ export function AlbumView({
   const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const [moreReleases, setMoreReleases] = useState<Album[]>([]);
   const [artistDetails, setArtistDetails] = useState<Artist | null>(null);
+  const [spotifyAlbumMeta, setSpotifyAlbumMeta] = useState<SpotifyAlbumMetadata | null>(null);
   const albumSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const isInvalidArtist = (name?: string) => {
@@ -149,10 +150,38 @@ export function AlbumView({
     setArtistDetails(null);
     setMoreReleases([]);
     setTracks([]);
+    setSpotifyAlbumMeta(null);
     setIsLoading(true);
     setError(null);
     setAlbumSearchQuery("");
   }, [album?.id]);
+
+  useEffect(() => {
+    if (!album) return;
+    let active = true;
+    const fetchSpotifyData = async () => {
+      try {
+        let spId = album.id.startsWith("spotify:") ? album.id : "";
+        if (!spId) {
+          const spUrl = await SpotifyService.searchAlbumUrl(album.title, resolvedArtistName || album.artist || "");
+          if (spUrl) {
+            const m = spUrl.match(/\/album\/([a-zA-Z0-9]+)/);
+            if (m) spId = m[1];
+          }
+        }
+        if (spId) {
+          const meta = await SpotifyService.getAlbumMetadata(spId);
+          if (active && meta) {
+            setSpotifyAlbumMeta(meta);
+          }
+        }
+      } catch {}
+    };
+    void fetchSpotifyData();
+    return () => {
+      active = false;
+    };
+  }, [album?.id, album?.title, resolvedArtistName, album?.artist]);
 
   useEffect(() => {
     if (!resolvedArtistName && !resolvedArtistId) {
@@ -591,13 +620,28 @@ export function AlbumView({
         </>
       )}
 
-      {(album?.year || displayArtistName) && (
-        <div className="text-xs text-muted-foreground pt-4 flex flex-col gap-0.5">
-          <p className="text-[11px] opacity-75">
-            ℗ {album?.year ? `${album.year} ` : ""}{displayArtistName && displayArtistName !== album?.year ? displayArtistName : ""}
+      {/* Authentic release date, record label, and ℗ / © copyrights (Spotify-style) */}
+      <div className="text-xs text-muted-foreground pt-4 pb-1 flex flex-col gap-1 select-text">
+        {spotifyAlbumMeta?.formattedReleaseDate ? (
+          <p className="text-xs text-white/90 font-medium">{spotifyAlbumMeta.formattedReleaseDate}</p>
+        ) : album?.year ? (
+          <p className="text-xs text-white/90 font-medium">{album.year}</p>
+        ) : null}
+
+        {spotifyAlbumMeta?.label && (
+          <p className="text-[11px] text-muted-foreground opacity-80">{spotifyAlbumMeta.label}</p>
+        )}
+
+        {spotifyAlbumMeta?.copyrights && spotifyAlbumMeta.copyrights.length > 0 ? (
+          spotifyAlbumMeta.copyrights.map((c, i) => (
+            <p key={i} className="text-[11px] text-muted-foreground opacity-75 leading-tight">{c}</p>
+          ))
+        ) : (album?.year || displayArtistName) ? (
+          <p className="text-[11px] text-muted-foreground opacity-75 leading-tight">
+            ℗ {album?.year ? `${album.year} ` : ""}{displayArtistName || ""}
           </p>
-        </div>
-      )}
+        ) : null}
+      </div>
 
       {/* Artist Profile Card */}
       {displayArtistName && (
@@ -623,7 +667,7 @@ export function AlbumView({
           />
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Artist</span>
-            <span className="text-base font-bold text-foreground group-hover:underline truncate">{displayArtistName}</span>
+            <span className="text-base font-bold text-foreground group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all truncate">{displayArtistName}</span>
             {artistDetails?.subscriberCount && (
               <span className="text-xs text-muted-foreground">
                 {(() => {
@@ -647,7 +691,7 @@ export function AlbumView({
               <button
                 type="button"
                 onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: displayArtistName }, moreReleases)}
-                className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors focus-visible:outline-none cursor-pointer"
+                className="text-xs font-semibold text-muted-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all focus-visible:outline-none cursor-pointer"
               >
                 See discography
               </button>

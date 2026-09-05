@@ -149,17 +149,18 @@ interface StaticSectionDef {
 
 const STATIC_HOME_SECTIONS: StaticSectionDef[] = [
   { key: "quick-picks", title: "Quick picks", query: "", type: "tracks" },
-  { key: "mixed-for-you-1", title: "Mixed for you", query: "My Mix Supermix Chill Mix Energy Mix playlist", type: "playlists" },
-  { key: "albums-for-you", title: "Albums for you", query: "popular recommended albums", type: "albums" },
-  { key: "mixed-for-you-2", title: "Mixed for you", query: "Artist mix radio playlist", type: "playlists" },
   { key: "new-releases", title: "New releases", query: "new releases albums", type: "albums" },
+  { key: "albums-for-you", title: "Albums for you", query: "popular recommended albums", type: "albums" },
+  { key: "forgotten-favorites", title: "Forgotten favorites", query: "forgotten favorites nostalgic hits", type: "tracks" },
+  { key: "from-community", title: "From community", query: "community playlists trending fan", type: "playlists" },
   { key: "featured-playlists", title: "Featured playlists for you", query: "featured playlists today hits", type: "playlists" },
+  { key: "mixed-for-you", title: "Mixed for you", query: "My Mix Supermix Chill Mix Energy Mix playlist", type: "playlists" },
   { key: "trending-songs", title: "Trending songs for you", query: "trending top songs hits", type: "tracks" },
   { key: "daily-discover", title: "Your daily discover", query: "discover weekly daily mix songs", type: "tracks" },
-  { key: "from-library", title: "From your library", query: "", type: "tracks" },
   { key: "covers-remixes", title: "Covers and remixes", query: "acoustic cover remix slowed reverb", type: "tracks" },
-  { key: "heard-shorts", title: "Heard in Shorts", query: "viral shorts songs tiktok sounds", type: "tracks" },
   { key: "long-listens", title: "Long listens", query: "extended mix lofi live dj set", type: "tracks" },
+  { key: "heard-shorts", title: "Heard in Shorts", query: "viral shorts songs tiktok sounds", type: "tracks" },
+  { key: "from-library", title: "From your library", query: "", type: "tracks" },
   { key: "fresh-finds", title: "Fresh finds, old favorites", query: "fresh finds classics old favorites", type: "albums" },
   { key: "recaps", title: "Recaps", query: "recap 2024 2025 recap playlist", type: "playlists" },
   { key: "take-it-easy", title: "Take it easy", query: "take it easy chill acoustic relaxing", type: "playlists" },
@@ -301,19 +302,22 @@ function sortHomeShelvesPinned(shelves: BrowseShelf[], quickPicksFallback: Track
 
   const getShelfRank = (title: string): number => {
     const t = title.toLowerCase();
-    if (t.includes("mixed for you") || t.includes("listen again") || t.includes("my mix")) return 1;
-    if (t.includes("new release")) return 2;
-    if (t.includes("albums for you") || t.includes("recommended album") || t.includes("album")) return 3;
-    if (t.includes("featured playlist") || t.includes("today's hit")) return 4;
-    if (t.includes("trending") || t.includes("popular")) return 5;
-    if (t.includes("discover") || t.includes("daily")) return 6;
-    if (t.includes("from your library") || t.includes("library")) return 7;
-    if (t.includes("cover") || t.includes("remix")) return 8;
-    if (t.includes("heard in shorts") || t.includes("shorts")) return 9;
-    if (t.includes("long listens")) return 10;
-    if (t.includes("fresh finds")) return 11;
-    if (t.includes("recap")) return 12;
-    if (t.includes("take it easy")) return 13;
+    // Pinned 12-item ranking order
+    if (t.includes("new release")) return 1;
+    if (t.includes("albums for you") || (t.includes("album") && !t.includes("single"))) return 2;
+    if (t.includes("forgotten") || t.includes("favorite") || t.includes("favourites") || t.includes("listen again")) return 3;
+    if (t.includes("community") || t.includes("from community")) return 4;
+    if (t.includes("featured playlist") || t.includes("today's hit")) return 5;
+    if (t.includes("mixed for you") || t.includes("my mix") || t.includes("supermix")) return 6;
+    if (t.includes("trending") || t.includes("popular")) return 7;
+    if (t.includes("discover") || t.includes("daily")) return 8;
+    if (t.includes("cover") || t.includes("remix")) return 9;
+    if (t.includes("long listen")) return 10;
+    if (t.includes("heard in shorts") || t.includes("shorts")) return 11;
+    if (t.includes("from your library") || t.includes("library")) return 12;
+    if (t.includes("fresh finds")) return 13;
+    if (t.includes("recap")) return 14;
+    if (t.includes("take it easy")) return 15;
     return 20;
   };
 

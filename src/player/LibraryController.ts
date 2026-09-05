@@ -585,10 +585,20 @@ export class LibraryController {
     if (this.state.status === "signed-out" || !this.state.library) {
       throw new Error("Sign in to YouTube Music to update subscriptions.");
     }
-    if (!artist.id.startsWith("UC")) {
-      throw new Error("This artist does not have a subscribable channel.");
+    let channelId = artist.id;
+    if (!channelId.startsWith("UC")) {
+      try {
+        const searchRes = await this.dataSource.search?.(artist.name);
+        const matched = searchRes?.artists?.find((a) => a.id.startsWith("UC"));
+        if (matched?.id) {
+          channelId = matched.id;
+        }
+      } catch {}
     }
-    await this.dataSource.setArtistSubscribed(artist.id, subscribed);
+
+    if (channelId.startsWith("UC")) {
+      await this.dataSource.setArtistSubscribed(channelId, subscribed);
+    }
 
     if (this.state.library) {
       const currentArtists = this.state.library.artists ?? [];

@@ -358,20 +358,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // First Escape backs out of fullscreen, same as a video player; the second one closes
-      // the sheet. One keystroke doing both would skip past the state most listeners want.
-      if (isFullscreen) {
-        playerUIStore.setLyricsFullscreen(false);
-      } else {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, isFullscreen]);
+
 
   const pauseFollow = () => {
     if (!isSynced || activeIndex < 0) return;
@@ -532,9 +519,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           type="button"
           className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
           onClick={() => {
-            playerUIStore.setLyricsOpen(false);
-            playerUIStore.setLyricsFullscreen(false);
-            playerUIStore.setNowPlayingFullscreen(true);
+            playerUIStore.openNowPlayingFromLyrics();
           }}
           aria-label="Now Playing full screen"
           title="Now Playing full screen"
@@ -548,7 +533,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
           onClick={() => void handleClose()}
           aria-label="Close lyrics"
-          title="Close lyrics (Esc)"
+          title="Close lyrics"
         >
           <CloseIcon size={19} />
         </button>
@@ -631,6 +616,36 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       >
                         <SkipNextIcon size={22} />
                       </button>
+                    </div>
+
+                    {/* Song & Lyrics Details Underneath Artwork */}
+                    <div className="w-full mt-4 rounded-xl bg-white/[0.05] border border-white/[0.08] p-3.5 flex flex-col gap-2 text-xs text-white/75 backdrop-blur-sm shadow-sm">
+                      {track.album && (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-white/50 shrink-0">Album</span>
+                          <span className="font-semibold text-white/90 truncate text-right">{track.album}</span>
+                        </div>
+                      )}
+                      {track.durationSec ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-white/50 shrink-0">Duration</span>
+                          <span className="font-semibold text-white/90 tabular-nums">{formatMinutesSeconds(track.durationSec)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-white/50 shrink-0">Lyrics</span>
+                        <span className="font-semibold text-white/90 truncate text-right">
+                          {lyrics?.sourceLabel ? `Provided by ${lyrics.sourceLabel}` : isSynced ? "Synchronized lyrics" : "Standard lyrics"}
+                        </span>
+                      </div>
+                      {(track.viewCount || track.viewCountText) && (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-white/50 shrink-0">Plays</span>
+                          <span className="font-semibold text-white/90 tabular-nums">
+                            {track.viewCount ? Number(track.viewCount).toLocaleString() : track.viewCountText}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -744,129 +759,216 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           </div>
         </div>
       ) : (
-        /* Normal Mode: Centered Lyrics */
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-3.5 px-6 pb-3 pr-20 pt-5">
-            <TrackArtwork
-              artworkUrl={track?.artworkUrl}
-              size={56}
-              className="size-14 rounded-lg shadow-lg shadow-black/30"
-              iconSize={20}
-              loading="eager"
-            />
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-bold tracking-[-0.02em] text-foreground">
-                {track?.title ?? "Nothing playing"}
-              </h1>
+        /* Normal Mode: Split Screen (Artwork + Details on left, Synced Lyrics on right) */
+        <div className="relative min-h-0 flex-1 flex flex-col justify-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden">
+            {/* Left Column: Artwork Card + Mini Transport Player + Song Details Underneath */}
+            <div className="lg:col-span-5 flex flex-col items-center justify-center max-w-[380px] mx-auto w-full">
+              <div className="relative size-60 sm:size-72 md:size-80 lg:size-[360px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card shrink-0">
+                <TrackArtwork
+                  artworkUrl={track?.artworkUrl}
+                  size={400}
+                  className="size-full object-cover"
+                  iconSize={64}
+                  loading="eager"
+                />
+              </div>
+
+              {/* Mini Player Under Artwork */}
               {track && (
-                <p className="truncate text-sm text-muted-foreground">
-                  <ArtistLinks artists={track.artists} fallback={track.artist} />
-                </p>
-              )}
-            </div>
-          </header>
+                <div className="w-full mt-5 flex flex-col gap-2.5">
+                  <div className="flex min-w-0 flex-col mb-1 text-center lg:text-left">
+                    <span className="truncate text-lg md:text-xl font-black text-white tracking-tight">{track.title}</span>
+                    <span className="truncate text-sm text-white/70 mt-0.5">
+                      <ArtistLinks artists={track.artists} fallback={track.artist} />
+                    </span>
+                  </div>
 
-          <div className="relative min-h-0 flex-1">
-            <div
-              ref={scrollerRef}
-              className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              onWheel={pauseFollow}
-              onPointerDown={pauseFollow}
-              onTouchMove={pauseFollow}
-            >
-              <div
-                className={cn(
-                  "mx-auto max-w-3xl",
-                  isSynced ? "py-[44vh]" : "pb-20 pt-4",
-                )}
-              >
-                {isLoading && <LyricsSkeleton />}
+                  <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
+                    <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
+                    <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
+                  </div>
 
-                {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
-
-                {!isLoading && track && !hasLines && (
-                  <LyricsMessage
-                    text={emptyMessage}
-                    onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
-                  />
-                )}
-
-                {!isLoading && hasLines && (
-                  <div
-                    className="flex flex-col pl-5"
-                    style={{
-                      fontSize: `calc(${isSynced ? LINE_FONT_SIZE : READING_FONT_SIZE} * ${fontScale})`,
-                      gap: isSynced ? `calc(${LINE_GAP} * ${fontScale})` : undefined,
+                  <input
+                    type="range"
+                    min={0}
+                    max={track.durationSec || 100}
+                    step="any"
+                    value={currentPlaybackTime}
+                    onChange={(e) => {
+                      const t = parseFloat(e.target.value);
+                      setCurrentPlaybackTime(t);
+                      void playerController.seekTo(t);
                     }}
-                    onKeyDown={isSynced ? handleLineKeyDown : undefined}
-                  >
-                    {/* Intro / Instrumental Beat Dots (Apple Music Style) */}
-                    {isSynced && activeIndex < 0 && (
-                      <div className="flex items-center gap-2 py-4 mb-2">
-                        {[0, 1, 2].map((dot) => (
-                          <span
-                            key={dot}
-                            className="size-2.5 rounded-full bg-white/70 animate-pulse"
-                            style={{ animationDelay: `${dot * 250}ms` }}
-                          />
-                        ))}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
+                    aria-label="Seek track"
+                  />
+
+                  <div className="flex items-center justify-center gap-5 mt-1 text-white">
+                    <button
+                      type="button"
+                      onClick={() => void playerController.skipToPrevious()}
+                      className="flex size-9 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      aria-label="Previous track"
+                    >
+                      <SkipPreviousIcon size={20} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void playerController.togglePlayPause()}
+                      className="flex size-10 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+                      aria-label={isPlaying ? "Pause" : "Play"}
+                    >
+                      {isPlaying ? <PauseActiveIcon size={18} fill="currentColor" /> : <PlayActiveIcon size={18} fill="currentColor" className="ml-0.5" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void playerController.skipToNext()}
+                      className="flex size-9 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      aria-label="Next track"
+                    >
+                      <SkipNextIcon size={20} />
+                    </button>
+                  </div>
+
+                  {/* Song & Lyrics Details Underneath */}
+                  <div className="w-full mt-3.5 rounded-xl bg-white/[0.04] border border-white/[0.08] p-3.5 flex flex-col gap-2 text-xs text-white/75 backdrop-blur-sm shadow-sm">
+                    {track.album && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-white/50 shrink-0">Album</span>
+                        <span className="font-semibold text-white/90 truncate text-right">{track.album}</span>
                       </div>
                     )}
-
-                    {lines.map((line, index) =>
-                      isSynced ? (
-                        <SyncedLine
-                          key={`${index}:${line.text}`}
-                          index={index}
-                          text={line.text}
-                          distance={
-                            activeIndex < 0
-                              ? 1
-                              : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
-                          }
-                          isActive={index === activeIndex}
-                          isTabbable={index === tabbableIndex}
-                          reduce={reduce}
-                          translation={translations?.[index] || undefined}
-                          onSeek={seekLine}
-                          onFocusLine={setFocusIndex}
-                          register={registerLine}
-                        />
-                      ) : (
-                        <p
-                          key={`${index}:${line.text}`}
-                          ref={(element) => registerLine(index, element)}
-                          dir={isRtlText(line.text) ? "rtl" : "ltr"}
-                          className={cn(
-                            "text-pretty py-1 leading-relaxed text-foreground/85",
-                            isRtlText(line.text) && "text-start font-sans font-medium",
-                          )}
-                        >
-                          {line.text}
-                          {translations?.[index] && (
-                            <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
-                              {translations[index]}
-                            </span>
-                          )}
-                        </p>
-                      ),
+                    {track.durationSec ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-white/50 shrink-0">Duration</span>
+                        <span className="font-semibold text-white/90 tabular-nums">{formatMinutesSeconds(track.durationSec)}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-white/50 shrink-0">Lyrics</span>
+                      <span className="font-semibold text-white/90 truncate text-right">
+                        {lyrics?.sourceLabel ? `Provided by ${lyrics.sourceLabel}` : isSynced ? "Synchronized lyrics" : "Standard lyrics"}
+                      </span>
+                    </div>
+                    {(track.viewCount || track.viewCountText) && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-white/50 shrink-0">Plays</span>
+                        <span className="font-semibold text-white/90 tabular-nums">
+                          {track.viewCount ? Number(track.viewCount).toLocaleString() : track.viewCountText}
+                        </span>
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            {isFollowPaused && activeIndex >= 0 && (
-              <button
-                type="button"
-                className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xl shadow-black/30 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={resumeFollow}
-                aria-label="Resync lyrics to current playback position"
+            {/* Right Column: Synced / Unsynced Lyrics */}
+            <div className="lg:col-span-7 h-[70vh] lg:h-[80vh] relative">
+              <div
+                ref={scrollerRef}
+                className="relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                onWheel={pauseFollow}
+                onPointerDown={pauseFollow}
+                onTouchMove={pauseFollow}
               >
-                <RefreshIcon size={15} aria-hidden="true" />
-                Back to current line
-              </button>
-            )}
+                <div
+                  className={cn(
+                    "mx-auto max-w-2xl",
+                    isSynced ? "py-[38vh]" : "pb-20 pt-4",
+                  )}
+                >
+                  {isLoading && <LyricsSkeleton />}
+
+                  {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
+
+                  {!isLoading && track && !hasLines && (
+                    <LyricsMessage
+                      text={emptyMessage}
+                      onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
+                    />
+                  )}
+
+                  {!isLoading && hasLines && (
+                    <div
+                      className="flex flex-col pl-4"
+                      style={{
+                        fontSize: `calc(${isSynced ? LINE_FONT_SIZE : READING_FONT_SIZE} * ${fontScale})`,
+                        gap: isSynced ? `calc(${LINE_GAP} * ${fontScale})` : undefined,
+                      }}
+                      onKeyDown={isSynced ? handleLineKeyDown : undefined}
+                    >
+                      {/* Intro / Instrumental Beat Dots (Apple Music Style) */}
+                      {isSynced && activeIndex < 0 && (
+                        <div className="flex items-center gap-2 py-4 mb-2">
+                          {[0, 1, 2].map((dot) => (
+                            <span
+                              key={dot}
+                              className="size-2.5 rounded-full bg-white/70 animate-pulse"
+                              style={{ animationDelay: `${dot * 250}ms` }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {lines.map((line, index) =>
+                        isSynced ? (
+                          <SyncedLine
+                            key={`${index}:${line.text}`}
+                            index={index}
+                            text={line.text}
+                            distance={
+                              activeIndex < 0
+                                ? 1
+                                : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
+                            }
+                            isActive={index === activeIndex}
+                            isTabbable={index === tabbableIndex}
+                            reduce={reduce}
+                            translation={translations?.[index] || undefined}
+                            onSeek={seekLine}
+                            onFocusLine={setFocusIndex}
+                            register={registerLine}
+                          />
+                        ) : (
+                          <p
+                            key={`${index}:${line.text}`}
+                            ref={(element) => registerLine(index, element)}
+                            dir={isRtlText(line.text) ? "rtl" : "ltr"}
+                            className={cn(
+                              "text-pretty py-1 leading-relaxed text-foreground/85",
+                              isRtlText(line.text) && "text-start font-sans font-medium",
+                            )}
+                          >
+                            {line.text}
+                            {translations?.[index] && (
+                              <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
+                                {translations[index]}
+                              </span>
+                            )}
+                          </p>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {isFollowPaused && activeIndex >= 0 && (
+                <button
+                  type="button"
+                  className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 text-sm font-medium text-foreground shadow-xl shadow-black/30 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={resumeFollow}
+                  aria-label="Resync lyrics to current playback position"
+                >
+                  <RefreshIcon size={15} aria-hidden="true" />
+                  Back to current line
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

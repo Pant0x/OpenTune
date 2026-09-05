@@ -11,6 +11,7 @@ export interface PlayerUIState {
   isNowPlayingFullscreen: boolean;
   isQueueOpen: boolean;
   rightPanelTab: RightPanelTab;
+  returnToLyricsOnFullscreenClose: boolean;
 }
 
 type Listener = () => void;
@@ -25,6 +26,7 @@ class PlayerUIStore {
     isNowPlayingFullscreen: false,
     isQueueOpen: false,
     rightPanelTab: "nowplaying",
+    returnToLyricsOnFullscreenClose: false,
   };
   private listeners = new Set<Listener>();
 
@@ -75,11 +77,34 @@ class PlayerUIStore {
   }
 
   setNowPlayingFullscreen(isNowPlayingFullscreen: boolean) {
+    if (!isNowPlayingFullscreen && this.state.returnToLyricsOnFullscreenClose) {
+      this.setState({
+        isNowPlayingFullscreen: false,
+        returnToLyricsOnFullscreenClose: false,
+        isLyricsOpen: true,
+      });
+      return;
+    }
     this.setState({ isNowPlayingFullscreen });
   }
 
+  openNowPlayingFromLyrics() {
+    this.setState({
+      isNowPlayingFullscreen: true,
+      returnToLyricsOnFullscreenClose: true,
+    });
+  }
+
   toggleNowPlayingFullscreen() {
-    this.setState({ isNowPlayingFullscreen: !this.state.isNowPlayingFullscreen });
+    if (this.state.isNowPlayingFullscreen) {
+      this.setNowPlayingFullscreen(false);
+    } else {
+      if (this.state.isLyricsOpen) {
+        this.openNowPlayingFromLyrics();
+      } else {
+        this.setState({ isNowPlayingFullscreen: true });
+      }
+    }
   }
 
   setQueueOpen(isQueueOpen: boolean) {
