@@ -8,5 +8,4 @@
 export const GITHUB_REPOSITORY_URL = "https://github.com/Pant0x/Amber-Music-Platform";
 export const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPOSITORY_URL}/issues/new/choose`;
 export const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
-export const DISCORD_COMMUNITY_URL = "https://discord.gg/amber";
 

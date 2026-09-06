@@ -177,7 +177,7 @@ import { DiscordRpcService } from "../../player/DiscordRPC";
 import { useDiscordPresenceEnabled } from "../settings/discord";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isLinux, isTilingWindowManager, subscribeTilingWindowManager } from "../platform";
-import { DISCORD_COMMUNITY_URL, GITHUB_NEW_ISSUE_URL, GITHUB_REPOSITORY_URL } from "../links";
+import { GITHUB_NEW_ISSUE_URL, GITHUB_REPOSITORY_URL } from "../links";
 import { AccountAvatar, AccountSwitcher, AddGoogleAccountButton, GoogleAccountSwitcher } from "../components/AccountSwitcher";
 import {
   AUDIO_QUALITY_LABELS,
@@ -1293,31 +1293,6 @@ export function SettingsPage({
                       aria-label="Discord Rich Presence"
                     />
                   </div>
-                </div>
-
-                <div className="h-px bg-border/40 my-1" />
-
-                {/* Discord Community Link */}
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid size-10 place-items-center rounded-xl bg-card">
-                      <DiscordIcon size={22} className="text-[#5865F2]" />
-                    </span>
-                    <div className="flex flex-col">
-                      <strong className="text-sm font-semibold text-foreground">Discord Community</strong>
-                      <span className="text-xs text-muted-foreground">
-                        Join our Discord server to get updates and chat with the community
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void openUrl(DISCORD_COMMUNITY_URL)}
-                    className="flex items-center gap-1.5 rounded-full bg-card hover:bg-card/80 border border-border/50 px-4 py-1.5 text-xs font-semibold text-foreground transition-colors cursor-pointer"
-                  >
-                    <span>Join Server</span>
-                    <ArrowUpRightIcon size={12} className="text-muted-foreground" />
-                  </button>
                 </div>
 
                 <div className="h-px bg-border/40 my-1" />
