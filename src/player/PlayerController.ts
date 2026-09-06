@@ -481,12 +481,23 @@ function findBestTrackMatch(
     if (!isOrigLive && (candTitle.includes("live at") || candTitle.includes("live from") || candTitle.includes("live performance"))) score -= 30;
 
     // Heavy penalty for music videos (avoid dialogue/skits/intro noise)
-    if (candTitle.includes("official music video") || candTitle.includes("official video") || candTitle.includes("music video") || candTitle.includes("short film")) {
-      score -= 45;
+    if (
+      candTitle.includes("official music video") ||
+      candTitle.includes("official video") ||
+      candTitle.includes("music video") ||
+      candTitle.includes("short film") ||
+      candTitle.includes("video clip")
+    ) {
+      score -= 80;
     }
     // High bonus for official audio or topic tracks
-    if (candTitle.includes("official audio") || candArtist.includes(" - topic") || candArtist.includes("release - topic")) {
-      score += 35;
+    if (
+      candTitle.includes("official audio") ||
+      candArtist.includes(" - topic") ||
+      candArtist.includes("release - topic") ||
+      candArtist.endsWith(" topic")
+    ) {
+      score += 50;
     }
 
     // Bonus if candidate artist matches original artist

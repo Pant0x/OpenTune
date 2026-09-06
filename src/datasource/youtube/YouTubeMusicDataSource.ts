@@ -392,6 +392,28 @@ const ARTIST_SUBSCRIPTION_OVERRIDE_MS = 60_000;
 const PLAYLIST_PAGE_SESSION_TTL_MS = 10 * 60_000;
 const PLAYLIST_TRACK_CACHE_VERSION = "v6";
 const PLAYLIST_EMPTY_RETRY_DELAYS_MS = [0, 600, 1_500];
+export function cleanSongTitle(rawTitle: string): string {
+  let title = rawTitle;
+  const dashParts = title.split(/\s+-\s+/);
+  if (dashParts.length === 2 && dashParts[0].length > 0 && dashParts[1].length > 0) {
+    title = dashParts[1];
+  }
+  return title
+    .replace(/\s*[\(\[][^\)\]]*(?:video|audio|visualizer|lyric|clip)[^\)\]]*[\)\]]/gi, "")
+    .replace(/\s*[\(\[][^\)\]]*(?:hd|4k|remastered|explicit)[^\)\]]*[\)\]]/gi, "")
+    .replace(/["“”]/g, "")
+    .trim();
+}
+
+export function cleanArtistName(rawArtist: string): string {
+  return rawArtist
+    .replace(/\s*-\s*topic$/i, "")
+    .replace(/\s*vevo$/i, "")
+    .replace(/,\s*feat\..*$/i, "")
+    .replace(/\s+ft\..*$/i, "")
+    .replace(/\s+feat\..*$/i, "")
+    .trim();
+}
 
 class YouTubeMusicAuthError extends AuthExpiredError {}
 
@@ -6239,48 +6261,174 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private topicSongCache = new Map<string, string>();
 
-  private async findOfficialTopicSongId(title: string, artist: string, currentId: string): Promise<string | null> {
-    const key = `${title.toLowerCase()}::${artist.toLowerCase()}`;
+  private async findOfficialTopicSongId(
+    title: string,
+    artist: string,
+    currentId: string,
+    durationSec?: number,
+  ): Promise<string> {
+    const cleanTitle = cleanSongTitle(title);
+    const cleanArtist = cleanArtistName(artist);
+    if (!cleanTitle || !cleanArtist) return currentId;
+
+    const key = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
     if (this.topicSongCache.has(key)) return this.topicSongCache.get(key)!;
 
+    // 1. First priority: Search YouTube Music for song items (official label releases)
     try {
       const yt = await this.getClient("music");
-      const searchResults = await yt.music.search(`${title} ${artist}`, { type: "song" });
-      const items = this.collectMusicItems(searchResults, new Set(["song"]));
-      for (const item of items) {
-        if (item.item_type === "song" && item.id && isVideoId(item.id)) {
-          const itemTitle = this.getTitle(item)?.toLowerCase() || "";
-          if (itemTitle.includes(title.toLowerCase())) {
-            this.topicSongCache.set(key, item.id);
-            return item.id;
+      const searchResults = await yt.music.search(`${cleanTitle} ${cleanArtist}`, { type: "song" });
+      const rawCandidates = [
+        ...(searchResults.songs?.contents ?? []),
+        ...(searchResults.contents ?? []),
+        ...this.collectMusicItems(searchResults, new Set(["song"])),
+      ];
+
+      let bestSongId: string | null = null;
+      let highestScore = -1;
+
+      for (const rawItem of rawCandidates) {
+        const item = rawItem as MusicItem;
+        const id = (item as any)?.endpoint?.payload?.videoId ?? ((item as any)?.id && isVideoId((item as any).id) ? (item as any).id : null);
+        if (!id || !isVideoId(id)) continue;
+
+        const rawItemTitle = this.getTitle(item) || "";
+        const itemTitle = cleanSongTitle(rawItemTitle).toLowerCase();
+        const itemArtist = cleanArtistName(this.getArtistName(item) || "").toLowerCase();
+
+        let score = 0;
+        const tTitle = cleanTitle.toLowerCase();
+        const tArtist = cleanArtist.toLowerCase();
+
+        if (itemTitle === tTitle) {
+          score += 100;
+        } else if (itemTitle.includes(tTitle) || tTitle.includes(itemTitle)) {
+          score += 70;
+        } else {
+          continue;
+        }
+
+        if (itemArtist && tArtist) {
+          if (itemArtist === tArtist) {
+            score += 50;
+          } else if (itemArtist.includes(tArtist) || tArtist.includes(itemArtist)) {
+            score += 35;
           }
         }
+
+        const lowerRaw = rawItemTitle.toLowerCase();
+        if (lowerRaw.includes("music video") || lowerRaw.includes("official video") || lowerRaw.includes("video clip")) {
+          score -= 60;
+        }
+
+        if (durationSec && durationSec > 0) {
+          const itemDuration = this.getTrackDuration(item)?.durationSec;
+          if (itemDuration && itemDuration > 0) {
+            const diff = Math.abs(itemDuration - durationSec);
+            if (diff <= 3) score += 30;
+            else if (diff <= 8) score += 15;
+            else if (diff > 30) score -= 25;
+          }
+        }
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestSongId = id;
+        }
       }
-    } catch {
-      // ignore
+
+      if (bestSongId && highestScore >= 100) {
+        logInternalInfo("YouTubeMusicDataSource: resolved official topic song from Music client", {
+          originalId: currentId,
+          topicId: bestSongId,
+          title,
+          artist,
+          score: highestScore,
+        });
+        this.topicSongCache.set(key, bestSongId);
+        return bestSongId;
+      }
+    } catch (e) {
+      logInternalWarn("YouTubeMusicDataSource: topic song lookup via music client failed", {
+        title,
+        artist,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
+
+    // 2. Second priority: Search YouTube Web specifically for the artist's Topic channel upload
+    try {
+      const webYt = await this.getClient("web");
+      const topicQuery = `${cleanArtist} - ${cleanTitle} topic`;
+      const webResults = await webYt.search(topicQuery, { type: "video" });
+      const videos = ((webResults as any)?.videos ?? (webResults as any)?.results ?? []) as any[];
+
+      for (const video of videos) {
+        const vId = video?.id;
+        if (!vId || !isVideoId(vId)) continue;
+        const vAuthor = (video.author?.name || video.channel?.name || "").toLowerCase();
+        const rawVTitle = video.title?.text || video.title?.toString() || "";
+        const vTitle = cleanSongTitle(rawVTitle).toLowerCase();
+        const vDesc = (video.description || video.description_snippet?.text || "").toLowerCase();
+
+        const isTopicChannel = vAuthor.includes("topic") || vAuthor.endsWith("- topic");
+        const isTopicDesc = vDesc.includes("provided to youtube by") || vDesc.includes("auto-generated by youtube");
+        const tTitle = cleanTitle.toLowerCase();
+        const titleMatches = vTitle === tTitle || vTitle.includes(tTitle) || tTitle.includes(vTitle);
+
+        if ((isTopicChannel || isTopicDesc) && titleMatches) {
+          logInternalInfo("YouTubeMusicDataSource: resolved official topic song from Web client", {
+            originalId: currentId,
+            topicId: vId,
+            title,
+            artist,
+            author: vAuthor,
+          });
+          this.topicSongCache.set(key, vId);
+          return vId;
+        }
+      }
+    } catch (e) {
+      logInternalWarn("YouTubeMusicDataSource: topic song lookup via web client failed", {
+        title,
+        artist,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
     this.topicSongCache.set(key, currentId);
     return currentId;
+  }
+
+  private async resolveTopicSongTargetId(track: Track): Promise<string> {
+    if (
+      track.source === "local" ||
+      !track.title ||
+      !track.artist ||
+      track.artist === "Unknown artist" ||
+      track.artist.toLowerCase().endsWith("- topic") ||
+      this.isSpecialAudioVersion(track.title)
+    ) {
+      return track.id;
+    }
+
+    try {
+      const topicId = await this.findOfficialTopicSongId(
+        track.title,
+        track.artist,
+        track.id,
+        track.durationSec,
+      );
+      return topicId || track.id;
+    } catch {
+      return track.id;
+    }
   }
 
   async getStreamUrl(track: Track): Promise<string> {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
 
-    let targetId = track.id;
-    if (
-      !isVideoId(track.id) &&
-      track.title &&
-      track.artist &&
-      track.artist !== "Unknown artist" &&
-      !this.isSpecialAudioVersion(track.title)
-    ) {
-      try {
-        const topicId = await this.findOfficialTopicSongId(track.title, track.artist, track.id);
-        if (topicId) targetId = topicId;
-      } catch {
-        // ignore
-      }
-    }
+    const targetId = await this.resolveTopicSongTargetId(track);
 
     for (const label of ["music", "web", "download"] as ClientLabel[]) {
       try {
@@ -6476,7 +6624,8 @@ export class YouTubeMusicDataSource extends DataSource {
     const order: ClientLabel[] = usesAuthenticatedStreaming()
       ? ["music", "download", "web"]
       : ["download", "music", "web"];
-    return this.resolveStream(track, quality, order);
+    const targetId = await this.resolveTopicSongTargetId(track);
+    return this.resolveStream({ ...track, id: targetId }, quality, order);
   }
 
   /**
@@ -6491,7 +6640,8 @@ export class YouTubeMusicDataSource extends DataSource {
     track: Track,
     quality: AudioQuality = getDownloadQuality(),
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
-    return this.resolveStream(track, quality, ["download", "music", "web"]);
+    const targetId = await this.resolveTopicSongTargetId(track);
+    return this.resolveStream({ ...track, id: targetId }, quality, ["download", "music", "web"]);
   }
 
   /**
@@ -7093,21 +7243,7 @@ export class YouTubeMusicDataSource extends DataSource {
       return { mimeType, rustSource: { kind: "offline", trackId: track.id, mimeType } };
     }
 
-    let targetId = track.id;
-    if (
-      !isVideoId(track.id) &&
-      track.title &&
-      track.artist &&
-      track.artist !== "Unknown artist" &&
-      !this.isSpecialAudioVersion(track.title)
-    ) {
-      try {
-        const topicId = await this.findOfficialTopicSongId(track.title, track.artist, track.id);
-        if (topicId) targetId = topicId;
-      } catch {
-        // ignore
-      }
-    }
+    const targetId = await this.resolveTopicSongTargetId(track);
 
     const { url, mimeType, cookie } = await this.resolveStream(
       { ...track, id: targetId },
@@ -7480,8 +7616,9 @@ export class YouTubeMusicDataSource extends DataSource {
    */
   private async fetchYouTubeMusicLyrics(track: Track): Promise<Lyrics | null> {
     try {
+      const targetId = await this.resolveTopicSongTargetId(track);
       const client = await this.getMusicClient();
-      const shelf = await client.music.getLyrics(track.id);
+      const shelf = await client.music.getLyrics(targetId);
       const text = shelf?.description?.toString().trim();
       if (!text) return null;
 
