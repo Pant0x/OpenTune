@@ -601,6 +601,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
+  will-change: background-size;
 }
 
 /* For RTL Arabic language */
@@ -612,6 +613,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
     var(--color-foreground) calc(var(--sweep, 0%) - 4%),
     color-mix(in oklab, var(--color-foreground) 28%, transparent) calc(var(--sweep, 0%) + 7%)
   );
+  will-change: background-size;
 }
 
 /*

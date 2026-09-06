@@ -1,6 +1,5 @@
-import { useEffect, type MouseEvent } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { CopyIcon } from "@/ui/icons";
 import { TrackArtwork } from "./TrackArtwork";
 import { cn } from "@/lib/utils";
 
@@ -35,15 +34,6 @@ export function ArtworkLightboxModal({
 
   if (!isOpen || !artworkUrl) return null;
 
-  const handleCopyUrl = async (event: MouseEvent) => {
-    event.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(artworkUrl);
-    } catch {
-      // ignore
-    }
-  };
-
   return createPortal(
     <div
       role="dialog"
@@ -53,14 +43,15 @@ export function ArtworkLightboxModal({
       className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-4 sm:p-8 backdrop-blur-xl animate-in fade-in duration-200 cursor-pointer"
     >
       <div
-        className="relative flex max-h-[85vh] max-w-[85vw] flex-col items-center gap-4 text-center cursor-default"
-        onClick={(event) => event.stopPropagation()}
+        className="relative flex max-h-[85vh] max-w-[85vw] flex-col items-center gap-4 text-center cursor-pointer"
+        onClick={onClose}
       >
         <div
           className={cn(
-            "relative flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300 rounded-2xl bg-black/60",
+            "relative flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/15 transition-transform duration-300 rounded-2xl bg-black/60 hover:scale-[1.01]",
             "size-[min(70vh,70vw,600px)]",
           )}
+          title="Click to close"
         >
           <TrackArtwork
             className="size-full object-cover rounded-2xl"
@@ -86,17 +77,6 @@ export function ArtworkLightboxModal({
             )}
           </div>
         )}
-
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleCopyUrl}
-            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-          >
-            <CopyIcon size={14} />
-            <span>Copy image URL</span>
-          </button>
-        </div>
       </div>
     </div>,
     document.body,

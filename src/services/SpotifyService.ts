@@ -108,6 +108,17 @@ export function getSpotifyShareUrl(type: "track" | "artist" | "album" | "playlis
   return `https://open.spotify.com/${type}/${cleanId}`;
 }
 
+/**
+ * Returns the highest-resolution image URL from a Spotify sources array.
+ */
+export function getHighestResSource(sources?: Array<{ url?: string; width?: number; height?: number }>): string | undefined {
+  if (!Array.isArray(sources) || sources.length === 0) return undefined;
+  const valid = sources.filter((s): s is { url: string; width?: number; height?: number } => typeof s?.url === "string" && s.url.length > 0);
+  if (valid.length === 0) return undefined;
+  const sorted = [...valid].sort((a, b) => ((b.width ?? 0) * (b.height ?? 0)) - ((a.width ?? 0) * (a.height ?? 0)));
+  return sorted[0]?.url;
+}
+
 const SPOTIFY_PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v1/query";
 
 const QUERY_HASHES = {
@@ -405,7 +416,7 @@ class SpotifyServiceManager {
 
     const galleryUrls: string[] = Array.isArray(visuals.gallery?.items)
       ? visuals.gallery.items
-          .map((item: any) => item.sources?.[0]?.url)
+          .map((item: any) => getHighestResSource(item.sources))
           .filter((url: any): url is string => typeof url === "string")
       : [];
 
@@ -421,7 +432,7 @@ class SpotifyServiceManager {
             artists: Array.isArray(track.artists?.items)
               ? track.artists.items.map((a: any) => a.profile?.name || "").filter(Boolean)
               : [],
-            coverUrl: track.albumOfTrack?.coverArt?.sources?.[0]?.url,
+            coverUrl: getHighestResSource(track.albumOfTrack?.coverArt?.sources) || track.albumOfTrack?.coverArt?.sources?.[0]?.url,
             uri: track.uri || "",
           };
         })
@@ -450,8 +461,8 @@ class SpotifyServiceManager {
       worldRank: Number(stats.worldRank) || undefined,
       bio: rawBio || undefined,
       cleanBio: cleanBio || undefined,
-      avatarUrl: visuals.avatarImage?.sources?.[0]?.url || undefined,
-      headerUrl: visuals.headerImage?.sources?.[0]?.url || undefined,
+      avatarUrl: getHighestResSource(visuals.avatarImage?.sources) || undefined,
+      headerUrl: getHighestResSource(visuals.headerImage?.sources) || undefined,
       galleryUrls,
       instagramUrl: instagramItem?.url || undefined,
       externalLinks,

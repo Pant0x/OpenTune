@@ -1025,7 +1025,7 @@ function findBestTrackMatch(
     const currentRetries = (this.prematureEndRetryCountMap.get(track.id) ?? 0) + 1;
     this.prematureEndRetryCountMap.set(track.id, currentRetries);
 
-    if (currentRetries > 2) {
+    if (currentRetries > 4) {
       logInternalWarn("PlayerController.prematureEnd retry failed, advancing", {
         trackId: track.id,
         positionSec: Math.round(position),
@@ -1041,15 +1041,29 @@ function findBestTrackMatch(
       positionSec: Math.round(position),
       durationSec: Math.round(duration),
       retryCount: currentRetries,
+      forceIframe: currentRetries >= 2,
     });
 
     this.discardWarmedStream(track.id);
     this.loadedTrackId = null;
 
     try {
-      await this.playTrackById(track.id, undefined, false, false);
-      if (position > 0.5 && this.loadedTrackId === track.id) {
-        await this.seekTo(position);
+      // On 2nd+ retry, force the IFrame player path — it's Google's own embed and never
+      // 403s, so it always works even when Rust/native audio streams expire or get blocked.
+      if (currentRetries >= 2) {
+        await this.audioEngine.loadIframeFallback(track.id);
+        this.loadedTrackId = track.id;
+        if (position > 0.5) {
+          this.audioEngine.seekTo(position);
+        }
+        await this.audioEngine.play();
+        this.setState({ status: "playing", error: null });
+        this.beginPlayReport(track);
+      } else {
+        await this.playTrackById(track.id, undefined, false, false);
+        if (position > 0.5 && this.loadedTrackId === track.id) {
+          await this.seekTo(position);
+        }
       }
       return true;
     } catch (reloadErr) {

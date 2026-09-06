@@ -17,7 +17,9 @@ function getDismissedIds(): Set<string> {
     const raw = localStorage.getItem(DISMISSED_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return new Set(parsed);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((id): id is string => typeof id === "string" && id.trim().length > 0));
+      }
     }
   } catch {}
   return new Set();
@@ -29,6 +31,28 @@ function saveDismissedIds(ids: Set<string>) {
   } catch {}
 }
 
+function getNotificationKeys(notification: FeedNotification): string[] {
+  const keys: string[] = [];
+  if (notification.id && notification.id !== "undefined") {
+    keys.push(notification.id);
+  }
+  if (notification.videoId) {
+    keys.push(`vid:${notification.videoId}`);
+  }
+  if (notification.text) {
+    keys.push(`txt:${notification.text.trim()}`);
+  }
+  if (notification.videoId && notification.text) {
+    keys.push(`combo:${notification.videoId}:${notification.text.trim()}`);
+  }
+  return keys;
+}
+
+function isNotificationDismissed(notification: FeedNotification, dismissedSet: Set<string>): boolean {
+  const keys = getNotificationKeys(notification);
+  return keys.some((key) => dismissedSet.has(key));
+}
+
 function NotificationRow({
   notification,
   onOpen,
@@ -36,7 +60,7 @@ function NotificationRow({
 }: {
   notification: FeedNotification;
   onOpen: (notification: FeedNotification) => void;
-  onDismiss: (id: string) => void;
+  onDismiss: (notification: FeedNotification) => void;
 }) {
   const canOpen = Boolean(notification.videoId);
 
@@ -83,7 +107,7 @@ function NotificationRow({
         title="Remove notification"
         onClick={(e) => {
           e.stopPropagation();
-          onDismiss(notification.id);
+          onDismiss(notification);
         }}
       >
         <CloseIcon size={13} aria-hidden="true" />
@@ -112,7 +136,9 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
       return;
     }
     void libraryController.getUnseenNotificationCount()
-      .then(setUnseen)
+      .then((count) => {
+        setUnseen(count);
+      })
       .catch(() => setUnseen(0));
   }, [signedIn]);
 
@@ -127,7 +153,14 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
     setIsLoading(true);
     void libraryController.getNotifications()
       .then((fetched) => {
-        if (active) setNotifications(fetched);
+        if (active) {
+          setNotifications(fetched);
+          const currentDismissed = getDismissedIds();
+          const unreadCount = fetched.filter(
+            (item) => !isNotificationDismissed(item, currentDismissed) && !item.read,
+          ).length;
+          setUnseen(unreadCount);
+        }
       })
       .catch((error: unknown) => {
         logInternalError("NotificationsPanel.load failed", error);
@@ -151,13 +184,15 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   if (!signedIn) return null;
 
   const visibleNotifications = (notifications ?? []).filter(
-    (item) => !dismissedIds.has(item.id),
+    (item) => !isNotificationDismissed(item, dismissedIds),
   );
 
-  const handleDismiss = (id: string) => {
+  const handleDismiss = (notification: FeedNotification) => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
-      next.add(id);
+      for (const k of getNotificationKeys(notification)) {
+        next.add(k);
+      }
       saveDismissedIds(next);
       return next;
     });
@@ -166,10 +201,17 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   const handleClearAll = () => {
     setDismissedIds((prev) => {
       const next = new Set(prev);
-      visibleNotifications.forEach((item) => next.add(item.id));
+      const itemsToDismiss = [...visibleNotifications, ...(notifications ?? [])];
+      for (const item of itemsToDismiss) {
+        for (const k of getNotificationKeys(item)) {
+          next.add(k);
+        }
+      }
       saveDismissedIds(next);
       return next;
     });
+    setNotifications([]);
+    setUnseen(0);
   };
 
   const handleOpen = (notification: FeedNotification) => {

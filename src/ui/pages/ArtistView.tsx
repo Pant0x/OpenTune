@@ -8,7 +8,6 @@ import {
   CloseIcon,
   CopyIcon,
   FacebookIcon,
-  HeartIcon,
   InstagramIcon,
   ListIcon,
   MenuDotsIcon,
@@ -126,7 +125,6 @@ export function ArtistView({
   const [showAllReleases, setShowAllReleases] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [justLiked, setJustLiked] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
@@ -155,6 +153,7 @@ export function ArtistView({
   // Extra playlists for Featuring and Discovered on fallback
   const [extraFeaturingPlaylists, setExtraFeaturingPlaylists] = useState<Playlist[]>([]);
   const [extraDiscoveredOnPlaylists, setExtraDiscoveredOnPlaylists] = useState<Playlist[]>([]);
+  const [extraAppearsOn, setExtraAppearsOn] = useState<Album[]>([]);
   const [fansSpotifyAvatars, setFansSpotifyAvatars] = useState<Record<string, string>>({});
 
   // Click outside listener for dropdowns
@@ -184,6 +183,7 @@ export function ArtistView({
     setShowAllReleases(false);
     setExtraFeaturingPlaylists([]);
     setExtraDiscoveredOnPlaylists([]);
+    setExtraAppearsOn([]);
 
     // Fetch YouTube Music artist page
     void libraryController.getArtist(artist.id, (updated) => {
@@ -247,6 +247,16 @@ export function ArtistView({
     searchController.search(`${artistName} playlist`).then((res) => {
       if (active && res.playlists?.length) {
         setExtraDiscoveredOnPlaylists((prev) => [...prev, ...res.playlists]);
+      }
+    }).catch(() => {});
+
+    searchController.search(`feat. ${artistName}`).then((res) => {
+      if (active && res.albums?.length) {
+        setExtraAppearsOn((prev) => {
+          const ids = new Set(prev.map((a) => a.id));
+          const additions = res.albums.filter((a) => !ids.has(a.id));
+          return [...prev, ...additions];
+        });
       }
     }).catch(() => {});
 
@@ -561,7 +571,7 @@ export function ArtistView({
     }
 
     if (officialMatches.length > 0) return officialMatches;
-    return extraFeaturingPlaylists.filter((p) => !p.id.startsWith("spotify:") && !p.title.toLowerCase().includes("unknown"));
+    return [];
   }, [page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
 
   const discoveredOnPlaylists = useMemo(() => {
@@ -626,6 +636,23 @@ export function ArtistView({
     }
     return result;
   }, [page?.playlists, extraDiscoveredOnPlaylists, displayedArtist?.name]);
+
+  const combinedAppearsOn = useMemo(() => {
+    const list = [...(page?.appearsOn ?? []), ...extraAppearsOn];
+    const seen = new Set<string>();
+    const result: Album[] = [];
+    for (const item of list) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      result.push(item);
+    }
+    return result;
+  }, [page?.appearsOn, extraAppearsOn]);
+
+  const isCreator = Boolean(
+    page?.isCreator ||
+    (!spotifyOverview && !page?.releases?.length && (page?.allSongs?.length || page?.popularSongs?.length))
+  );
 
   // Popular song items based on authentic YouTube Music tracks, enriched with Spotify plays
   const popularItems: PopularSongItem[] = useMemo(() => {
@@ -757,14 +784,14 @@ export function ArtistView({
     if (isSubscribing) return;
     const nextSubscribed = !isSubscribed;
     setIsSubscribing(true);
-    if (nextSubscribed) {
-      setJustLiked(true);
-      window.setTimeout(() => setJustLiked(false), 1200);
-    }
     try {
       await libraryController.setArtistSubscribed(displayedArtist, nextSubscribed);
       setIsSubscribed(nextSubscribed);
-      showToast(nextSubscribed ? "Following artist" : "Unfollowed artist");
+      showToast(
+        isCreator
+          ? nextSubscribed ? "Subscribed to channel" : "Unsubscribed from channel"
+          : nextSubscribed ? "Following artist" : "Unfollowed artist"
+      );
     } catch (subscriptionError) {
       showToast(
         subscriptionError instanceof Error
@@ -787,22 +814,21 @@ export function ArtistView({
         />
       </div>
 
-      {/* Spotify Panoramic Hero Header */}
-      <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[360px] md:min-h-[400px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
-        {/* Hero Background Image with Gradient Overlay & Ambient Blurred PFP */}
+      {/* Modern Panoramic Hero Header */}
+      <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[380px] md:min-h-[440px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
+        {/* Hero Background Image with Clean Gradient Overlay (No heavy blur) */}
         <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
-          {/* Soft Gaussian Ambient Backdrop */}
           <img
-            src={artistAvatar || artistHeaderBg}
+            src={artistHeaderBg || artistAvatar}
             alt=""
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center scale-105 blur-2xl opacity-75 saturate-125"
+            className="w-full h-full object-cover object-center scale-100 opacity-45 transition-transform duration-700"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/45 to-black/20" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
         </div>
 
-        {/* Hero Content with Circular PFP beside Name */}
+        {/* Hero Content with Circular PFP beside Name and Inline Controls */}
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-end gap-6 max-w-5xl">
           {/* Circular PFP that opens Lightbox on click */}
           <button
@@ -820,133 +846,164 @@ export function ArtistView({
             />
           </button>
 
-          {/* Artist Name and Listeners (Verified checkmark removed) */}
-          <div className="flex flex-col gap-2 min-w-0 flex-1 pb-1">
+          {/* Artist Name, Stats, Bio, and Action Controls */}
+          <div className="flex flex-col gap-3 min-w-0 flex-1 pb-1">
             <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
               {displayedArtist.name}
             </h1>
 
             {/* Monthly Listeners / Subscribers */}
             <div className="flex items-center gap-2 text-sm md:text-base font-semibold text-white/90 drop-shadow-md">
-              {spotifyOverview?.monthlyListeners ? (
+              {!isCreator && spotifyOverview?.monthlyListeners ? (
                 <span>
                   {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
                 </span>
               ) : formattedSubCount ? (
                 <span>{formattedSubCount}</span>
               ) : null}
-              {spotifyOverview?.monthlyListeners && formattedSubCount && (
+              {!isCreator && spotifyOverview?.monthlyListeners && formattedSubCount && (
                 <>
                   <span className="opacity-60">•</span>
                   <span className="opacity-80 font-normal">{formattedSubCount}</span>
                 </>
               )}
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Hero Action Controls Row */}
-      <div className="flex items-center gap-6 pt-2">
-        {/* Play/Pause Button */}
-        <button
-          type="button"
-          onClick={togglePlayCollection}
-          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-          className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
-          aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
-        >
-          {isCurrentCollection && isPlaying ? (
-            <PauseIcon size={26} fill="currentColor" />
-          ) : (
-            <PlayIcon size={26} fill="currentColor" className="ml-1" />
-          )}
-        </button>
+            {/* Short Bio Snippet (Official Artists Only) */}
+            {!isCreator && (spotifyOverview?.cleanBio || spotifyOverview?.bio) && (
+              <p className="line-clamp-2 text-xs md:text-sm text-white/70 max-w-xl">
+                {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
+                <button
+                  type="button"
+                  onClick={() => setIsAboutModalOpen(true)}
+                  className="ml-1.5 font-bold text-white underline hover:text-white/80 cursor-pointer"
+                >
+                  MORE
+                </button>
+              </p>
+            )}
 
-        {/* Shuffle Button */}
-        <button
-          type="button"
-          onClick={() => void playShuffled()}
-          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-          className="flex size-10 items-center justify-center rounded-full text-muted-foreground hover:text-white transition-colors cursor-pointer"
-          aria-label="Shuffle play"
-        >
-          <ShuffleIcon size={22} />
-        </button>
-
-        {/* Follow / Following Button */}
-        <button
-          type="button"
-          onClick={() => void toggleArtistSubscription()}
-          disabled={isLoading || Boolean(error) || isSubscribing}
-          className={cn(
-            "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase border transition-all duration-200 cursor-pointer select-none",
-            isSubscribed
-              ? "border-white/40 bg-white/10 text-white hover:border-white/60 hover:bg-white/15"
-              : "border-white/30 bg-transparent text-white hover:text-red-500 hover:border-red-500 hover:bg-red-500/10 hover:scale-105 active:scale-95",
-            justLiked && "scale-110 border-red-500 text-red-500 shadow-lg shadow-red-500/20",
-          )}
-        >
-          {justLiked && <HeartIcon size={16} className="text-red-500 animate-bounce shrink-0" />}
-          <span>
-            {isSubscribed
-              ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
-              : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
-          </span>
-        </button>
-
-        {/* 3-dots Dropdown Menu */}
-        <div className="relative" ref={headerMenuRef}>
-          <button
-            type="button"
-            onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
-            className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
-            aria-label="More artist options"
-          >
-            <MenuDotsIcon size={20} />
-          </button>
-
-          {isHeaderMenuOpen && (
-            <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+            {/* Hero Action Controls Inline Under Listeners */}
+            <div className="flex flex-wrap items-center gap-4 pt-1">
+              {/* Play/Pause Button */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsHeaderMenuOpen(false);
-                  void toggleArtistSubscription();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                onClick={togglePlayCollection}
+                disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+                className="flex size-12 sm:size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
               >
-                {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
-                <span>{isSubscribed ? "Unfollow" : "Follow"}</span>
+                {isCurrentCollection && isPlaying ? (
+                  <PauseIcon size={24} fill="currentColor" />
+                ) : (
+                  <PlayIcon size={24} fill="currentColor" className="ml-1" />
+                )}
               </button>
 
+              {/* Shuffle Button */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsHeaderMenuOpen(false);
-                  toggleBlockArtist();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                onClick={() => void playShuffled()}
+                disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+                className="flex size-10 items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                aria-label="Shuffle play"
               >
-                <CloseIcon size={16} className="text-red-400" />
-                <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
+                <ShuffleIcon size={22} />
               </button>
 
-              <div className="my-1 h-px bg-white/10" />
-
+              {/* Follow / Subscribe Button */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsHeaderMenuOpen(false);
-                  void copyArtistShareLink();
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                onClick={() => void toggleArtistSubscription()}
+                disabled={isLoading || Boolean(error) || isSubscribing}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
+                  isCreator
+                    ? isSubscribed
+                      ? "border border-white/30 bg-white/10 text-white hover:bg-white/15"
+                      : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95"
+                    : isSubscribed
+                      ? "border border-white/40 bg-white/10 text-white hover:border-white/60 hover:bg-white/15"
+                      : "border border-white/30 bg-transparent text-white hover:border-white/50 hover:bg-white/10 active:scale-95",
+                )}
               >
-                <ShareIcon size={16} />
-                <span>Share artist link</span>
+                <span>
+                  {isCreator
+                    ? isSubscribed
+                      ? "Subscribed"
+                      : compactSubCount ? `Subscribe ${compactSubCount}` : "Subscribe"
+                    : isSubscribed
+                      ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
+                      : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
+                </span>
               </button>
+
+              {/* Share button */}
+              <button
+                type="button"
+                onClick={() => void copyArtistShareLink()}
+                className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-xs md:text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+                title="Share artist link"
+              >
+                <ShareIcon size={15} />
+                <span>Share</span>
+              </button>
+
+              {/* 3-dots Dropdown Menu */}
+              <div className="relative" ref={headerMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
+                  className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+                  aria-label="More artist options"
+                >
+                  <MenuDotsIcon size={20} />
+                </button>
+
+                {isHeaderMenuOpen && (
+                  <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        void toggleArtistSubscription();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
+                      <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        toggleBlockArtist();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      <CloseIcon size={16} className="text-red-400" />
+                      <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
+                    </button>
+
+                    <div className="my-1 h-px bg-white/10" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        void copyArtistShareLink();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    >
+                      <ShareIcon size={16} />
+                      <span>Share artist link</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -963,9 +1020,76 @@ export function ArtistView({
         </div>
       )}
 
-      {error && <p className="px-2 py-10 text-center text-sm text-muted-foreground">{error}</p>}
+      {!isLoading && !error && isCreator && (
+        <div className="flex flex-col gap-10">
+          {/* Videos Section (16:9 Widescreen Cards) */}
+          {((page?.allSongs?.length ?? 0) > 0 || (page?.popularSongs?.length ?? 0) > 0) && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Videos</h2>
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))]">
+                {(page?.allSongs && page.allSongs.length > 0 ? page.allSongs : (page?.popularSongs ?? [])).map((song) => {
+                  const isSongPlaying = isPlaying && currentTrackId === song.id;
+                  return (
+                    <div
+                      key={song.id}
+                      onClick={() => void playerController.playTrackById(song.id, page?.allSongs ?? [song])}
+                      className="group flex flex-col gap-2.5 cursor-pointer rounded-xl p-2 transition-colors hover:bg-white/[0.06]"
+                    >
+                      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-card shadow-lg">
+                        <TrackArtwork
+                          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          artworkUrl={song.artworkUrl}
+                          size={400}
+                          iconSize={48}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+                          <div className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl">
+                            {isSongPlaying ? <PauseIcon size={20} fill="currentColor" /> : <PlayIcon size={20} fill="currentColor" className="ml-0.5" />}
+                          </div>
+                        </div>
+                        {song.duration && (
+                          <div className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                            {song.duration}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-sm text-foreground group-hover:text-white line-clamp-2">
+                          {song.title}
+                        </span>
+                        <span className="text-xs text-muted-foreground truncate mt-0.5">
+                          {displayedArtist.name} {song.viewCountText ? `• ${song.viewCountText}` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
-      {!isLoading && !error && (
+          {/* Playlists Section */}
+          {page?.playlists && page.playlists.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Playlists</h2>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
+                {page.playlists.map((playlist) => (
+                  <AlbumCard
+                    key={playlist.id}
+                    artworkUrl={playlist.artworkUrl}
+                    title={playlist.title}
+                    subtitle={playlist.owner || displayedArtist.name}
+                    onClick={() => onOpenPlaylist(playlist)}
+                    onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {!isLoading && !error && !isCreator && (
         <>
           {/* 1. Popular Tracks Table (Matches user image with Thumbnail, Title, Plays middle right, 3-dots, Duration) */}
           {popularItems.length > 0 && (
@@ -1471,11 +1595,11 @@ export function ArtistView({
           )}
 
           {/* 8. Appears on (Features with other artists) */}
-          {page?.appearsOn && page.appearsOn.length > 0 && (
+          {combinedAppearsOn.length > 0 && (
             <section className="flex flex-col gap-4">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Appears on</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
-                {page.appearsOn.map((album) => (
+                {combinedAppearsOn.map((album) => (
                   <AlbumCard
                     key={album.id}
                     artworkUrl={album.artworkUrl}

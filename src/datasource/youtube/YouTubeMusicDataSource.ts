@@ -7382,14 +7382,20 @@ export class YouTubeMusicDataSource extends DataSource {
       const menu = await client.getNotifications();
       const notifications = (menu.contents ?? []).map((item) => {
         const payload = item.endpoint?.payload as { videoId?: string } | undefined;
+        const text = item.short_message?.toString() ?? "";
+        const videoId = payload?.videoId;
+        const rawNotificationId = (typeof item.notification_id === "string" && item.notification_id.trim())
+          ? item.notification_id.trim()
+          : undefined;
+        const id = rawNotificationId || (videoId ? `vid:${videoId}` : `txt:${text.trim()}`);
         return {
-          id: item.notification_id,
-          text: item.short_message?.toString() ?? "",
+          id,
+          text,
           sentAtText: item.sent_time?.toString() || undefined,
           thumbnailUrl: selectArtworkUrl(
             collectArtworkCandidates(item.video_thumbnails ?? item.thumbnails ?? []),
           ),
-          videoId: payload?.videoId,
+          videoId,
           read: Boolean(item.read),
         } satisfies FeedNotification;
       }).filter((item) => item.text.length > 0);
