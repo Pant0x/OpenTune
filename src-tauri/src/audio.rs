@@ -204,8 +204,10 @@ struct Deck {
 }
 
 impl Deck {
-    fn clear(&mut self) {
+    fn clear(&mut self, mixer: &rodio::mixer::Mixer) {
         self.sink.stop();
+        self.sink = Player::connect_new(mixer);
+        self.sink.pause();
         self.track_id = None;
         self.duration_sec = 0.0;
         self.health = None;
@@ -737,6 +739,7 @@ impl Engine {
 
                 let deck = &mut self.decks[index];
                 deck.sink.stop();
+                deck.sink = Player::connect_new(self._stream.mixer());
                 deck.sink.append(source);
                 deck.sink.pause();
                 deck.sink.set_volume(volume);
@@ -776,7 +779,7 @@ impl Engine {
             Command::Stop => {
                 self.cancel_fade();
                 for deck in &mut self.decks {
-                    deck.clear();
+                    deck.clear(self._stream.mixer());
                 }
                 self.playing = false;
             }
@@ -818,7 +821,7 @@ impl Engine {
                         "[internal][tauri][warn] native_audio transition refused, download failed track_id={}",
                         track_id
                     );
-                    self.decks[standby].clear();
+                    self.decks[standby].clear(self._stream.mixer());
                     let _ = reply.send(false);
                     return false;
                 }
@@ -842,7 +845,7 @@ impl Engine {
                         outgoing,
                     });
                 } else {
-                    self.decks[outgoing].clear();
+                    self.decks[outgoing].clear(self._stream.mixer());
                 }
                 let _ = reply.send(true);
             }
@@ -860,7 +863,7 @@ impl Engine {
                         "[internal][tauri][warn] native_audio standby discarded, download failed track_id={}",
                         track_id
                     );
-                    self.decks[standby].clear();
+                    self.decks[standby].clear(self._stream.mixer());
                     let _ = reply.send(false);
                     return false;
                 }
@@ -868,13 +871,13 @@ impl Engine {
             }
             Command::DropStandby => {
                 let standby = self.standby();
-                self.decks[standby].clear();
+                self.decks[standby].clear(self._stream.mixer());
             }
             Command::DropActive => {
                 // A fade reads the active deck's volume every tick; cancel it first, or the
                 // next tick would ramp a deck that was just cleared.
                 self.cancel_fade();
-                self.decks[self.active].clear();
+                self.decks[self.active].clear(self._stream.mixer());
                 self.playing = false;
             }
             Command::SetOutputDevice { id, reply } => match open_device_sink(id.as_deref()) {
@@ -944,7 +947,7 @@ impl Engine {
 
         if progress >= 1.0 {
             self.fade = None;
-            self.decks[outgoing].clear();
+            self.decks[outgoing].clear(self._stream.mixer());
             self.decks[self.active].sink.set_volume(target);
         }
     }
@@ -959,7 +962,7 @@ impl Engine {
          * not the new track finishing.
          */
         if self.playing && self.fade.is_none() && self.decks[index].sink.empty() {
-            self.decks[index].clear();
+            self.decks[index].clear(self._stream.mixer());
             self.playing = false;
             let _ = self.app.emit("native-audio-ended", EndedEvent { track_id });
             return;

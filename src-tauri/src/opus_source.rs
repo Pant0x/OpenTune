@@ -295,9 +295,13 @@ impl Iterator for OpusSource {
 impl Source for OpusSource {
     #[inline]
     fn current_span_len(&self) -> Option<usize> {
-        // Channel count and sample rate never change mid-stream for Opus, so there is only ever
-        // one span and its end is the end of the track.
-        None
+        // Channel count and sample rate never change mid-stream for Opus.
+        // When exhausted, return Some(0) so rodio's is_exhausted() correctly reports true.
+        if self.exhausted {
+            Some(0)
+        } else {
+            None
+        }
     }
 
     #[inline]
