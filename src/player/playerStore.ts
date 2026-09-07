@@ -46,17 +46,29 @@ if (restoredSession) {
 
 export type PlayerControllerActions = PlayerController;
 
+let cachedPlayerSession: PlayerSession | null = null;
+playerController.subscribe(() => {
+  cachedPlayerSession = null;
+});
+
+const getPlayerSession = (): PlayerSession => {
+  if (cachedPlayerSession === null) {
+    cachedPlayerSession = playerController.exportSession();
+  }
+  return cachedPlayerSession;
+};
+
 export const tabManager = {
   applyPlaybackSettings: (settings: Parameters<PlayerController["applyPlaybackSettings"]>[0]) =>
     playerController.applyPlaybackSettings(settings),
-  exportSession: () => ({ activeId: "1", playbackOwnerId: "1", players: { "1": playerController.exportSession() } }),
+  exportSession: () => ({ activeId: "1", playbackOwnerId: "1", players: { "1": getPlayerSession() } }),
   getActiveId: () => "1",
   getActivePlayerId: () => "1",
   getActivePlayer: () => playerController,
   claimFocusedPlayer: async () => playerController,
   subscribe: (listener: () => void) => playerController.subscribe(listener),
   getActiveState: () => playerController.getState(),
-  getActiveSession: () => playerController.exportSession(),
+  getActiveSession: () => getPlayerSession(),
   isOnlyTab: () => true,
   reset: () => {},
   createTab: () => ({ player: playerController }),
@@ -76,7 +88,6 @@ export const tabManager = {
 const subscribeToPlayer = (listener: () => void) => playerController.subscribe(listener);
 const subscribeToLibrary = (listener: () => void) => libraryController.subscribe(listener);
 const getPlayerState = () => playerController.getState();
-const getPlayerSession = () => playerController.exportSession();
 const getLibraryState = () => libraryController.getState();
 
 /** Re-exported so selector call sites need one import, not two. */

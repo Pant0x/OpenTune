@@ -63,13 +63,13 @@ import type { AppViewState } from "./types/tab";
 import {
   libraryController,
   playerController,
+  restoredSession,
   searchController,
   useLibraryState,
-  usePlayerSession,
   usePlayerSelector,
   shallowEqual,
 } from "../player/playerStore";
-import { clearAppSession, loadAppSession, saveAppSession } from "../player/appSession";
+import { clearAppSession, saveAppSession } from "../player/appSession";
 import { useMediaSession } from "../player/useMediaSession";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
@@ -102,7 +102,6 @@ import {
 } from "./settings/keyboardShortcuts";
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
-const restoredSession = loadAppSession();
 const LOADING_SCREEN_FADE_MS = 50;
 const LOADING_SCREEN_MAX_MS = 800;
 const ONBOARDING_COMPLETE_KEY = "amber:onboarding-complete";
@@ -213,7 +212,6 @@ export default function App() {
     }),
     shallowEqual,
   );
-const playerSession = usePlayerSession();
   const playerUIState = usePlayerUIState();
   const keyboardShortcuts = useKeyboardShortcuts();
   // The stylesheet kills CSS animation via !important; this is the JS half. Motion writes
@@ -568,8 +566,12 @@ const playerSession = usePlayerSession();
   }, [persistAppSession, playerState.status]);
 
   useEffect(() => {
+    return playerController.subscribe(persistAppSession);
+  }, [persistAppSession]);
+
+  useEffect(() => {
     persistAppSession();
-  }, [currentView, persistAppSession, playerSession]);
+  }, [currentView, persistAppSession]);
 
   useEffect(() => {
     const unlistenPromise = listen("main-window-recovery-reload", persistAppSession);
