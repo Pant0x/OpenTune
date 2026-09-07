@@ -1,7 +1,6 @@
 import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { SearchBar } from "./SearchBar";
 import { TrackArtwork } from "./TrackArtwork";
 import { useAmbientArtwork } from "../stores/ambientArtworkStore";
 import { Sidebar } from "./Sidebar";
@@ -60,13 +59,13 @@ export function Layout({
   onNavigateDownloads,
   onNavigateReleases,
   onNavigateLocalFiles,
-  onSearch,
-  showSearchBar,
-  onOpenSearch,
-  canGoBack,
-  canGoForward,
-  onNavigateBack,
-  onNavigateForward,
+  onSearch: _onSearch,
+  showSearchBar: _showSearchBar,
+  onOpenSearch: _onOpenSearch,
+  canGoBack: _canGoBack,
+  canGoForward: _canGoForward,
+  onNavigateBack: _onNavigateBack,
+  onNavigateForward: _onNavigateForward,
   fullBleedContent = false,
   hideSidebar = false,
   showTransientScrollbar = false,
@@ -305,20 +304,6 @@ export function Layout({
               </span>
             </span>
           ) : null}
-
-          {showSearchBar && (
-            <div className="relative">
-              <SearchBar
-                onSearch={onSearch}
-                onOpen={onOpenSearch}
-                canGoBack={canGoBack}
-                canGoForward={canGoForward}
-                onBack={onNavigateBack}
-                onForward={onNavigateForward}
-                onNavigatePlaylist={onNavigatePlaylist}
-              />
-            </div>
-          )}
 
           <div className="relative flex min-h-0 min-w-0 flex-1 gap-3 pb-3 ">
             <div className="relative min-h-0 min-w-0 flex-1">

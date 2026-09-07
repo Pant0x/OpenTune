@@ -58,7 +58,7 @@ equal(stored.gaplessEnabled, false, "gaplessEnabled round-trips");
 savePlaybackSettings({ volume: 0.3, muted: false });
 const clobbered = readPlaybackSettings();
 equal(clobbered.playbackRate, 1, "a partial save resets playbackRate to the default");
-equal(clobbered.crossfadeSec, 0, "a partial save resets crossfadeSec to the default");
+equal(clobbered.crossfadeSec, 4, "a partial save resets crossfadeSec to the default");
 equal(clobbered.gaplessEnabled, true, "a partial save resets gaplessEnabled to the default");
 
 // The shape every caller is expected to build: read, spread, override.

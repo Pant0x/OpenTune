@@ -25,6 +25,8 @@ import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { motion } from "motion/react";
 import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
+import { SearchBar } from "./SearchBar";
+import type { Playlist } from "../../datasource/types";
 
 interface TitleBarProps {
   sidebarWidth: number;
@@ -32,6 +34,13 @@ interface TitleBarProps {
   onNavigateHome: () => void;
   onOpenSettings: () => void;
   onOpenDownloads?: () => void;
+  onSearch?: (query: string, openInNewTab?: boolean) => void;
+  onOpenSearch?: () => void;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  onNavigateBack?: () => void;
+  onNavigateForward?: () => void;
+  onNavigatePlaylist?: (playlist: Playlist) => void;
 }
 
 const ACCOUNT_PANEL_ITEM =
@@ -47,6 +56,13 @@ export function TitleBar({
   onNavigateHome,
   onOpenSettings,
   onOpenDownloads,
+  onSearch,
+  onOpenSearch,
+  canGoBack = false,
+  canGoForward = false,
+  onNavigateBack = () => {},
+  onNavigateForward = () => {},
+  onNavigatePlaylist,
 }: TitleBarProps) {
   const appWindow = getCurrentWindow();
   const libraryState = useLibraryState();
@@ -198,9 +214,21 @@ export function TitleBar({
 
       <div
         data-tauri-drag-region=""
-        className="min-w-6 flex-1 cursor-default select-none"
+        className="flex min-w-0 flex-1 items-center justify-center px-2 sm:px-4 cursor-default select-none h-full"
         aria-label="Drag window"
-      />
+      >
+        <div data-tauri-drag-region="none" className="w-full max-w-lg pointer-events-auto">
+          <SearchBar
+            onSearch={onSearch}
+            onOpen={onOpenSearch}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onBack={onNavigateBack}
+            onForward={onNavigateForward}
+            onNavigatePlaylist={onNavigatePlaylist}
+          />
+        </div>
+      </div>
 
       {/*
         App actions sit immediately left of the window controls, separated by a hairline so

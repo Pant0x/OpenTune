@@ -63,7 +63,6 @@ import type { AppViewState } from "./types/tab";
 import {
   libraryController,
   playerController,
-  restoredSession,
   searchController,
   useLibraryState,
   usePlayerSelector,
@@ -268,15 +267,9 @@ export default function App() {
       });
   }, [playerUIState.isLyricsFullscreen]);
 
-  const [currentView, setCurrentView] = useState<AppViewState>(
-    () => restoredSession?.view ?? { view: "home" },
-  );
-  const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>(
-    () => restoredSession?.history ?? [],
-  );
-  const [forwardHistory, setForwardHistory] = useState<AppViewState[]>(
-    () => restoredSession?.forwardHistory ?? [],
-  );
+  const [currentView, setCurrentView] = useState<AppViewState>({ view: "home" });
+  const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>([]);
+  const [forwardHistory, setForwardHistory] = useState<AppViewState[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   /*
    * The sidebar is a fixed icon rail. 72px sits below the Sidebar's own text-hide threshold,
@@ -312,9 +305,6 @@ export default function App() {
         if (cancelled || !diskSession?.player?.currentTrack) return;
         if (!playerController.getState().currentTrack) {
           playerController.restoreSession(diskSession.player);
-          if (diskSession.view && diskSession.view.view !== "home") {
-            setCurrentView(diskSession.view);
-          }
         }
       });
     }
@@ -1246,6 +1236,13 @@ export default function App() {
           onNavigateHome={handleNavigateHome}
           onOpenSettings={handleOpenSettings}
           onOpenDownloads={() => handleOpenBrowse("downloads")}
+          onSearch={(q) => handleSearch(q)}
+          onOpenSearch={() => setIsSearchOpen(true)}
+          canGoBack={canNavigateBack}
+          canGoForward={canNavigateForward}
+          onNavigateBack={handleNavigateBack}
+          onNavigateForward={handleNavigateForward}
+          onNavigatePlaylist={handleNavigatePlaylist}
         />
       )}
 

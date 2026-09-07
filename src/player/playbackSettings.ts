@@ -33,15 +33,23 @@ function isPlaybackSettings(value: unknown): value is PlaybackSettings {
   );
 }
 
+export const DEFAULT_CROSSFADE_SEC = 4;
+
 export function readPlaybackSettings(): PlaybackSettings {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as unknown;
-    if (isPlaybackSettings(parsed)) return { ...parsed, playbackRate: 1 };
+    if (isPlaybackSettings(parsed)) {
+      return {
+        ...parsed,
+        playbackRate: 1,
+        crossfadeSec: parsed.crossfadeSec !== undefined ? parsed.crossfadeSec : DEFAULT_CROSSFADE_SEC,
+      };
+    }
   } catch {
     // Defaults below keep playback usable if local storage is unavailable.
   }
 
-  return { volume: 1, muted: false, playbackRate: 1, crossfadeSec: 0, gaplessEnabled: true };
+  return { volume: 1, muted: false, playbackRate: 1, crossfadeSec: DEFAULT_CROSSFADE_SEC, gaplessEnabled: true };
 }
 
 export function savePlaybackSettings(settings: PlaybackSettings): void {
@@ -49,7 +57,7 @@ export function savePlaybackSettings(settings: PlaybackSettings): void {
     volume: Math.min(1, Math.max(0, settings.volume)),
     muted: settings.muted,
     playbackRate: 1,
-    crossfadeSec: Math.min(MAX_CROSSFADE_SEC, Math.max(0, settings.crossfadeSec ?? 0)),
+    crossfadeSec: Math.min(MAX_CROSSFADE_SEC, Math.max(0, settings.crossfadeSec ?? DEFAULT_CROSSFADE_SEC)),
     gaplessEnabled: settings.gaplessEnabled ?? true,
   };
 

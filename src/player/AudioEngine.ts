@@ -778,7 +778,7 @@ export class AudioEngine {
     source: RustAudioSource,
     durationSec: number,
   ): Promise<void> {
-    if (!this.useRustAudio || !trackId || trackId === this.rustTrackId) return;
+    if (!this.useRustAudio || !trackId) return;
     if (this.rustStandbyTrackId === trackId) return;
 
     routeRustEnded();

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import {
+  DEFAULT_CROSSFADE_SEC,
   MAX_CROSSFADE_SEC,
   readPlaybackSettings,
   savePlaybackSettings,
@@ -15,7 +16,7 @@ import { playerController } from "../../player/playerStore";
  */
 const CHANGE_EVENT = "playback-transitions-change";
 
-export { MAX_CROSSFADE_SEC };
+export { MAX_CROSSFADE_SEC, DEFAULT_CROSSFADE_SEC };
 
 function subscribe(callback: () => void) {
   window.addEventListener(CHANGE_EVENT, callback);
@@ -31,7 +32,7 @@ function announce(): void {
 }
 
 export function readCrossfadeSec(): number {
-  return readPlaybackSettings().crossfadeSec ?? 0;
+  return readPlaybackSettings().crossfadeSec ?? DEFAULT_CROSSFADE_SEC;
 }
 
 export function readGaplessEnabled(): boolean {

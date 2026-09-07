@@ -389,19 +389,21 @@ export class PlayerController {
     this.finishPlayReport();
     const requestId = ++this.playTrackRequestId;
     logInternalInfo("PlayerController.playTrackById start", { videoId });
+    const hadLoadedTrack = this.loadedTrackId !== null;
+    const wasPlaying = this.state.status === "playing";
     /*
      * Stopping tears down the standby deck along with everything else, which would throw away
      * the very thing that makes the next track start instantly. When the track being asked for
      * is the one already cued, the transition in ensureTrackLoaded takes over the handover.
+     * When audio is actively playing on the Rust engine, we also keep it playing while the new
+     * track is resolved and decoded, then smoothly crossfade into it instead of a harsh cut.
      */
     if (!this.audioEngine.hasPreloaded(videoId)) {
-      this.audioEngine.stop();
-      this.audioEngine.silenceCompetingPlayback();
+      if (!this.audioEngine.usesRustAudio() || !wasPlaying) {
+        this.audioEngine.stop();
+        this.audioEngine.silenceCompetingPlayback();
+      }
     }
-    // Captured before the reset below: this is the only place that still knows whether a track
-    // was already loaded, and `warmNextTrack` below needs that to tell a cold start apart from
-    // an ordinary skip.
-    const hadLoadedTrack = this.loadedTrackId !== null;
     this.loadedTrackId = null;
     this.pendingSeekTime = null;
     try {
@@ -598,7 +600,7 @@ function findBestTrackMatch(
        * track actually lands, so a cold start is one warm behind rather than zero.
        */
       if (hadLoadedTrack) this.warmNextTrack();
-      await this.ensureTrackLoaded(track);
+      await this.ensureTrackLoaded(track, wasPlaying);
       if (requestId !== this.playTrackRequestId) return false;
 
       if (!this.isTabActive) {
@@ -1341,7 +1343,7 @@ function findBestTrackMatch(
     return shuffled;
   }
 
-  private async ensureTrackLoaded(track: Track): Promise<void> {
+  private async ensureTrackLoaded(track: Track, wasPlaying = false): Promise<void> {
     logInternalDebug("PlayerController.ensureTrackLoaded start", {
       trackId: track.id,
       loadedTrackId: this.loadedTrackId,
@@ -1478,6 +1480,29 @@ function findBestTrackMatch(
             track.durationSec,
           );
         } else {
+          if (
+            !isDownloaded
+            && this.audioEngine.usesRustAudio()
+            && wasPlaying
+            && audioData?.rustSource
+            && !this.audioEngine.hasPreloaded(track.id)
+          ) {
+            await this.audioEngine.preloadRustTrack(
+              track.id,
+              audioData.rustSource,
+              track.durationSec ?? 0,
+            );
+            const fadeMs = Math.max(1000, this.crossfadeSec * 1000);
+            const transitioned = await this.audioEngine.transitionToPreloaded(track.id, fadeMs);
+            if (transitioned) {
+              this.loadedTrackId = track.id;
+              this.pendingSeekTime = null;
+              this.claimWarmedStream(track.id);
+              this.warmNextTrack();
+              this.beginPlayReport(track);
+              return;
+            }
+          }
           await this.audioEngine.loadTrack(
             track.id,
             audioData?.bytes,
@@ -1566,10 +1591,17 @@ function findBestTrackMatch(
    * handing the deck to itself is not a transition.
    */
   private peekNextTrack(): Track | null {
-    if (this.playbackOrderMode === "repeat-one") return null;
+    if (this.playbackOrderMode === "repeat-one") {
+      return this.state.currentTrack;
+    }
 
     const next = this.queue.all[this.queue.currentIndex + 1] ?? null;
-    if (!next || next.id === this.state.currentTrack?.id) return null;
+    if (!next) {
+      if (this.playbackOrderMode === "repeat-all" && this.queue.all.length > 0) {
+        return this.queue.all[0];
+      }
+      return null;
+    }
     return next;
   }
 
