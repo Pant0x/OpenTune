@@ -53,15 +53,31 @@ interface HistoryDay {
  * of distinct albums. Here every play is its own row with the time it happened, because the
  * question this page answers is "what was that song I had on last night?".
  */
+import type { LibraryState } from "../../player/LibraryController";
+import { useLibraryState } from "../../player/playerStore";
+
+/**
+ * Everything you have played, newest first, grouped by day or from YouTube Music account history.
+ */
 export function HistoryPage({
   playerController,
+  libraryState: externalLibraryState,
 }: {
   playerController: PlayerControllerActions;
+  libraryState?: LibraryState;
 }) {
+  const localLibraryState = useLibraryState();
+  const libraryState = externalLibraryState ?? localLibraryState;
+  const ytHistoryTracks = libraryState.library?.recentlyPlayed ?? [];
   const entries = usePlayHistory();
   const { currentTrackId, isPlaying } = useNowPlaying();
   const { openTrackMenu, openPlaylistPicker } = useTrackContextMenu();
   const [confirmClear, setConfirmClear] = useState(false);
+
+  // Default to account history if available and signed in, otherwise device history
+  const [activeTab, setActiveTab] = useState<"account" | "device">(() =>
+    ytHistoryTracks.length > 0 ? "account" : "device"
+  );
 
   const days = useMemo<HistoryDay[]>(() => {
     const grouped: HistoryDay[] = [];
@@ -74,13 +90,20 @@ export function HistoryPage({
     return grouped;
   }, [entries]);
 
-  // Playing from history queues the rest of that day, so it keeps going the way it did then.
-  const playFrom = (day: HistoryDay, track: Track) => {
+  // Playing from device history queues the rest of that day
+  const playFromDay = (day: HistoryDay, track: Track) => {
     const queue = day.entries.map((entry) => entry.track);
-    void playerController.playTrackById(track.id, queue);
+    void playerController.playTrackById(track.id, queue, true);
   };
 
-  if (entries.length === 0) {
+  // Playing from account history queues the entire recently played list
+  const playFromAccount = (track: Track) => {
+    void playerController.playTrackById(track.id, ytHistoryTracks, true);
+  };
+
+  const hasAnyHistory = ytHistoryTracks.length > 0 || entries.length > 0;
+
+  if (!hasAnyHistory) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
         <span className="grid size-12 place-items-center rounded-full bg-card text-muted-foreground">
@@ -88,7 +111,7 @@ export function HistoryPage({
         </span>
         <p className="text-sm font-medium text-foreground">No listening history yet</p>
         <p className="max-w-xs text-sm text-muted-foreground">
-          Songs you play appear here with the time you played them.
+          Songs you play appear here with the time you played them, alongside your YouTube Music history.
         </p>
       </div>
     );
@@ -96,100 +119,150 @@ export function HistoryPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-0.5">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
           <h1 className="text-3xl font-bold tracking-[-0.02em] text-foreground">History</h1>
-          <p className="text-sm text-muted-foreground">
-            {entries.length} {entries.length === 1 ? "play" : "plays"} across {days.length}{" "}
-            {days.length === 1 ? "day" : "days"}
-          </p>
+          
+          {/* Segmented control to toggle Account vs Device history */}
+          <div className="flex items-center gap-2 mt-1">
+            {ytHistoryTracks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("account")}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+                  activeTab === "account"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-card text-muted-foreground hover:text-foreground hover:bg-card/80",
+                )}
+              >
+                YouTube Music ({ytHistoryTracks.length})
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("device")}
+              className={cn(
+                "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+                activeTab === "device"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-card text-muted-foreground hover:text-foreground hover:bg-card/80",
+              )}
+            >
+              This Device ({entries.length})
+            </button>
+          </div>
         </div>
 
-        {/* Two-step in place, like the playlist delete: destructive, but not worth a modal. */}
-        <button
-          type="button"
-          onClick={() => {
-            if (confirmClear) {
-              clearPlayHistory();
-              setConfirmClear(false);
-              return;
-            }
-            setConfirmClear(true);
-          }}
-          onBlur={() => setConfirmClear(false)}
-          className={cn(
-            "flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            confirmClear
-              ? "bg-destructive/10 text-destructive"
-              : "bg-card text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <TrashIcon size={16} aria-hidden="true" />
-          {confirmClear ? "Click again to clear" : "Clear history"}
-        </button>
+        {activeTab === "device" && entries.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (confirmClear) {
+                clearPlayHistory();
+                setConfirmClear(false);
+                return;
+              }
+              setConfirmClear(true);
+            }}
+            onBlur={() => setConfirmClear(false)}
+            className={cn(
+              "flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              confirmClear
+                ? "bg-destructive/10 text-destructive"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <TrashIcon size={16} aria-hidden="true" />
+            {confirmClear ? "Click again to clear" : "Clear device history"}
+          </button>
+        )}
       </header>
 
-      {days.map((day) => (
-        <section key={day.label} className="flex flex-col gap-2">
-          {/*
-            Sticky so the day you are scrolling through stays named.
+      {/* Account History View */}
+      {activeTab === "account" && (
+        <div className="flex flex-col gap-0.5">
+          {ytHistoryTracks.map((track, index) => (
+            <TrackRow
+              key={`yt:${track.id}:${index}`}
+              track={track}
+              index={index}
+              showAlbum
+              isCurrent={currentTrackId === track.id}
+              isPlaying={isPlaying && currentTrackId === track.id}
+              onSelect={() => playFromAccount(track)}
+              onContextMenu={(event) => openTrackMenu(event, track)}
+              onQuickAdd={() => openPlaylistPicker(track)}
+              showDownload
+              showRating
+              onQuickAddToQueue={() => playerController.addToQueue(track)}
+            />
+          ))}
+        </div>
+      )}
 
-            No `backdrop-blur`: a sticky element is by definition on screen for the whole
-            scroll, so its backdrop filter is re-evaluated every frame you scroll — and there
-            is one of these per day. At 85% opacity over the same colour the blur was
-            resolving to something nobody could have seen.
-          */}
-          <h2 className="sticky top-0 z-10 -mx-2 bg-background/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {day.label}
-          </h2>
-
-          <div className="flex flex-col gap-0.5">
-            {day.entries.map((entry, index) => (
-              <TrackRow
-                key={`${entry.playedAt}:${entry.track.id}`}
-                track={entry.track}
-                index={index}
-                showAlbum
-                isCurrent={currentTrackId === entry.track.id}
-                isPlaying={isPlaying && currentTrackId === entry.track.id}
-                onSelect={() => playFrom(day, entry.track)}
-                onContextMenu={(event) => openTrackMenu(event, entry.track)}
-                onQuickAdd={() => openPlaylistPicker(entry.track)}
-                showDownload
-
-                showRating
-                onQuickAddToQueue={() => playerController.addToQueue(entry.track)}
-                trailing={
-                  <span className="flex shrink-0 items-center gap-1">
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {formatTime(entry.playedAt)}
-                    </span>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Remove ${entry.track.title} from history`}
-                      className="grid size-7 place-items-center rounded-full text-muted-foreground opacity-0 transition hover:bg-background hover:text-foreground group-hover/row:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removePlayHistoryEntry(entry.playedAt);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        removePlayHistoryEntry(entry.playedAt);
-                      }}
-                    >
-                      <TrashIcon size={14} aria-hidden="true" />
-                    </span>
-                  </span>
-                }
-              />
-            ))}
+      {/* Device History View */}
+      {activeTab === "device" && (
+        entries.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+            <p className="text-sm">No songs played on this device yet</p>
           </div>
-        </section>
-      ))}
+        ) : (
+          days.map((day) => (
+            <section key={day.label} className="flex flex-col gap-2">
+              <h2 className="sticky top-0 z-10 -mx-2 bg-background/85 px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {day.label}
+              </h2>
+
+              <div className="flex flex-col gap-0.5">
+                {day.entries.map((entry, index) => (
+                  <TrackRow
+                    key={`${entry.playedAt}:${entry.track.id}`}
+                    track={entry.track}
+                    index={index}
+                    showAlbum
+                    isCurrent={currentTrackId === entry.track.id}
+                    isPlaying={isPlaying && currentTrackId === entry.track.id}
+                    onSelect={() => playFromDay(day, entry.track)}
+                    onContextMenu={(event) => openTrackMenu(event, entry.track)}
+                    onQuickAdd={() => openPlaylistPicker(entry.track)}
+                    showDownload
+                    showRating
+                    onQuickAddToQueue={() => playerController.addToQueue(entry.track)}
+                    trailing={
+                      <span className="flex shrink-0 items-center gap-1">
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {formatTime(entry.playedAt)}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Remove ${entry.track.title} from history`}
+                          className="grid size-7 place-items-center rounded-full text-muted-foreground opacity-0 transition hover:bg-background hover:text-foreground group-hover/row:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removePlayHistoryEntry(entry.playedAt);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            removePlayHistoryEntry(entry.playedAt);
+                          }}
+                        >
+                          <TrashIcon size={14} aria-hidden="true" />
+                        </span>
+                      </span>
+                    }
+                  />
+                ))}
+              </div>
+            </section>
+          ))
+        )
+      )}
     </div>
   );
 }

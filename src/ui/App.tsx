@@ -69,7 +69,8 @@ import {
   usePlayerSelector,
   shallowEqual,
 } from "../player/playerStore";
-import { clearAppSession, saveAppSession } from "../player/appSession";
+import { clearAppSession, hydrateAppSessionAsync, saveAppSession } from "../player/appSession";
+import { readSessionRestoreEnabled } from "./settings/sessionRestore";
 import { useMediaSession } from "../player/useMediaSession";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
@@ -304,6 +305,19 @@ export default function App() {
       if (cancelled) return;
       playerController.applyPlaybackSettings(settings);
     });
+
+    // If initial sync did not restore a track (e.g. localStorage was cold or uncommitted), hydrate from disk setting
+    if (readSessionRestoreEnabled() && !playerController.getState().currentTrack) {
+      void hydrateAppSessionAsync().then((diskSession) => {
+        if (cancelled || !diskSession?.player?.currentTrack) return;
+        if (!playerController.getState().currentTrack) {
+          playerController.restoreSession(diskSession.player);
+          if (diskSession.view && diskSession.view.view !== "home") {
+            setCurrentView(diskSession.view);
+          }
+        }
+      });
+    }
 
     return () => {
       cancelled = true;
@@ -1397,7 +1411,7 @@ export default function App() {
               />
             )}
             {currentView.view === "history" && (
-              <HistoryPage playerController={playerController} />
+              <HistoryPage playerController={playerController} libraryState={libraryState} />
             )}
             {currentView.view === "local-files" && (
               <LocalFilesPage

@@ -143,9 +143,13 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   }, [signedIn]);
 
   useEffect(() => {
-    refreshUnseen();
+    // Defer initial check by 2.5s so startup rendering and immediate clicks have priority
+    const initialTimer = window.setTimeout(refreshUnseen, 2500);
     const intervalId = window.setInterval(refreshUnseen, UNSEEN_POLL_MS);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(intervalId);
+    };
   }, [refreshUnseen]);
 
   const load = useCallback(() => {

@@ -89,7 +89,7 @@ function BrowseShelfSection({
   };
 
   const playShelfTrack = (shelfTracks: Track[], track: Track) => {
-    void playerController.playTrackById(track.id, shelfTracks);
+    void playerController.playTrackById(track.id, shelfTracks, true);
   };
 
   const hasMultipleItems =

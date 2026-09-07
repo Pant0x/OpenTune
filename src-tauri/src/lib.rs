@@ -1630,7 +1630,7 @@ fn close_or_hide_main_window(app: &tauri::AppHandle) {
     }
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(1000));
         app_handle.exit(0);
     });
 }

@@ -1,10 +1,10 @@
 import type { AppViewState } from "../ui/types/tab";
 import type { PlayerSession } from "./PlayerController";
-import { setAppSetting } from "../internal/appSettings";
+import { getAppSetting, setAppSetting } from "../internal/appSettings";
 
 const STORAGE_KEY_V2 = "amber.app-session.v2";
 const STORAGE_KEY_V1 = "amber.app-session.v1";
-const SETTING_KEY_V2 = "amber.app-session.v2";
+export const SETTING_KEY_V2 = "amber.app-session.v2";
 
 export interface AppSession {
   version: 2;
@@ -73,10 +73,37 @@ export function loadAppSession(): AppSession | null {
   }
 }
 
+/**
+ * Asynchronously checks disk setting for session when localStorage was empty or cold-started.
+ */
+export async function hydrateAppSessionAsync(): Promise<AppSession | null> {
+  try {
+    const fromDisk = await getAppSetting<AppSession>(SETTING_KEY_V2);
+    if (fromDisk?.version === 2 && fromDisk.view && fromDisk.player?.currentTrack) {
+      const restored = restoreWithoutAutoplay(fromDisk);
+      try {
+        localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(restored));
+      } catch {}
+      return restored;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 let lastWrittenSession: string | null = null;
 
 export function saveAppSession(session: AppSession): void {
   try {
+    // If incoming session has no track, do not overwrite a previously saved valid track
+    if (!session.player?.currentTrack) {
+      const existing = loadAppSession();
+      if (existing?.player?.currentTrack) {
+        return;
+      }
+    }
+
     const payload = JSON.stringify(session);
     if (payload === lastWrittenSession) return;
     localStorage.setItem(STORAGE_KEY_V2, payload);

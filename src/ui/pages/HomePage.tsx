@@ -94,16 +94,7 @@ function splitMixedShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
   return result;
 }
 
-function uniqueById<T extends { id?: string }>(items: readonly T[]): T[] {
-  const seen = new Set<string>();
-  const result: T[] = [];
-  for (const item of items) {
-    if (!item.id || seen.has(item.id)) continue;
-    seen.add(item.id);
-    result.push(item);
-  }
-  return result;
-}
+
 
 interface HomeSectionConfig {
   key: string;
@@ -154,12 +145,7 @@ export function HomePage({
       }
 
       try {
-        const [homePage, ...sectionResults] = await Promise.all([
-          libraryController.getBrowsePage("home").catch(() => null),
-          ...FEATURED_HOME_SECTIONS.map((sec) =>
-            searchController.searchCategory(sec.query, sec.type).catch(() => null)
-          ),
-        ]);
+        const homePage = await libraryController.getBrowsePage("home").catch(() => null);
 
         if (!active) return;
 
@@ -172,88 +158,51 @@ export function HomePage({
           );
         });
 
-        const usedYtIndices = new Set<number>();
-        const finalShelves: BrowseShelf[] = [];
+        let finalShelves: BrowseShelf[] = ytShelves.filter(
+          (s) => s.tracks.length > 0 || s.albums.length > 0 || s.playlists.length > 0 || s.artists.length > 0,
+        );
 
-        for (let i = 0; i < FEATURED_HOME_SECTIONS.length; i++) {
-          const sec = FEATURED_HOME_SECTIONS[i];
-          const searchRes = sectionResults[i];
+        // Only if YouTube returned no shelves at all (e.g., cold offline start), fetch minimal fallbacks
+        if (finalShelves.length === 0) {
+          const fallbackConfigs = FEATURED_HOME_SECTIONS.slice(0, 3);
+          const searchResults = await Promise.all(
+            fallbackConfigs.map((sec) => searchController.searchCategory(sec.query, sec.type).catch(() => null)),
+          );
 
-          const lowerSec = sec.title.toLowerCase();
-          const matchIdx = ytShelves.findIndex((ys, idx) => {
-            if (usedYtIndices.has(idx)) return false;
-            const lowerY = ys.title.toLowerCase();
-            return (
-              lowerY === lowerSec ||
-              lowerY.includes(lowerSec) ||
-              (lowerSec.includes("quick pick") && lowerY.includes("quick pick")) ||
-              (lowerSec.includes("trending") && (lowerY.includes("trending") || lowerY.includes("popular"))) ||
-              (lowerSec.includes("new release") && lowerY.includes("new release")) ||
-              (lowerSec.includes("featured playlist") && (lowerY.includes("featured playlist") || lowerY.includes("today's hit"))) ||
-              (lowerSec.includes("mixed for you") && (lowerY.includes("mixed") || lowerY.includes("mix"))) ||
-              (lowerSec.includes("albums for you") && lowerY.includes("album")) ||
-              (lowerSec.includes("forgotten") && (lowerY.includes("forgotten") || lowerY.includes("listen again"))) ||
-              (lowerSec.includes("community") && lowerY.includes("community"))
-            );
-          });
+          if (!active) return;
 
-          const matchingYt = matchIdx >= 0 ? ytShelves[matchIdx] : null;
-          if (matchIdx >= 0) usedYtIndices.add(matchIdx);
+          for (let i = 0; i < fallbackConfigs.length; i++) {
+            const sec = fallbackConfigs[i];
+            const searchRes = searchResults[i];
+            if (!searchRes) continue;
 
-          if (sec.type === "song") {
-            const combined = uniqueById([
-              ...(matchingYt?.tracks ?? []),
-              ...(searchRes?.tracks ?? []),
-            ]);
-            if (combined.length > 0) {
+            if (sec.type === "song" && searchRes.tracks.length > 0) {
               finalShelves.push({
                 title: sec.title,
-                tracks: combined.slice(0, 32),
+                tracks: searchRes.tracks.slice(0, 24),
                 albums: [],
                 playlists: [],
                 artists: [],
-                links: matchingYt?.links ?? [],
+                links: [],
               });
-            }
-          } else if (sec.type === "album") {
-            const combined = uniqueById([
-              ...(matchingYt?.albums ?? []),
-              ...(searchRes?.albums ?? []),
-            ]);
-            if (combined.length > 0) {
+            } else if (sec.type === "album" && searchRes.albums.length > 0) {
               finalShelves.push({
                 title: sec.title,
                 tracks: [],
-                albums: combined.slice(0, 24),
+                albums: searchRes.albums.slice(0, 16),
                 playlists: [],
                 artists: [],
-                links: matchingYt?.links ?? [],
+                links: [],
               });
-            }
-          } else if (sec.type === "playlist") {
-            const combined = uniqueById([
-              ...(matchingYt?.playlists ?? []),
-              ...(searchRes?.playlists ?? []),
-            ]);
-            if (combined.length > 0) {
+            } else if (sec.type === "playlist" && searchRes.playlists.length > 0) {
               finalShelves.push({
                 title: sec.title,
                 tracks: [],
                 albums: [],
-                playlists: combined.slice(0, 24),
+                playlists: searchRes.playlists.slice(0, 16),
                 artists: [],
-                links: matchingYt?.links ?? [],
+                links: [],
               });
-            }
-          }
-        }
-
-        // Add any remaining authentic YouTube Music shelves not matched above
-        for (let idx = 0; idx < ytShelves.length; idx++) {
-          if (!usedYtIndices.has(idx)) {
-            const s = ytShelves[idx];
-            if (s.tracks.length > 0 || s.albums.length > 0 || s.playlists.length > 0 || s.artists.length > 0) {
-              finalShelves.push(s);
             }
           }
         }

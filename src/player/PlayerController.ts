@@ -176,7 +176,7 @@ export class PlayerController {
   private loadedTrackId: string | null = null;
   private isTabActive = true;
   private playTrackRequestId = 0;
-  private autoplayEnabled = false;
+  private autoplayEnabled = true;
   private handlingTrackEnd = false;
   private pendingSeekTime: number | null = null;
   private radioQueueRequestId = 0;
@@ -381,7 +381,7 @@ export class PlayerController {
   async playTrackById(
     videoId: string,
     playbackQueue?: readonly Track[],
-    autoplayWhenQueueEnds = false,
+    autoplayWhenQueueEnds = true,
     shufflePlaylist = false,
   ): Promise<boolean> {
     // Close out whatever was playing first: this is the funnel every track change goes
@@ -409,7 +409,7 @@ export class PlayerController {
         const startIndex = playbackQueue.findIndex((track) => track.id === videoId);
         this.queue.set([...playbackQueue], startIndex >= 0 ? startIndex : 0);
         this.autoplayEnabled = autoplayWhenQueueEnds;
-        this.isPlaylistMode = !autoplayWhenQueueEnds && playbackQueue.length > 1;
+        this.isPlaylistMode = playbackQueue.length > 1;
         if (shufflePlaylist && this.isPlaylistMode) {
           this.queue.shuffleAll(this.queue.queuedManually);
         }
@@ -1095,15 +1095,11 @@ function findBestTrackMatch(
 
     try {
       if (this.playbackOrderMode === "repeat-one" && this.state.currentTrack) {
+        const loopTrack = this.state.currentTrack;
         logInternalInfo("PlayerController.handleTrackEnded looping single track", {
-          trackId: this.state.currentTrack.id,
+          trackId: loopTrack.id,
         });
-        this.audioEngine.seekTo(0);
-        if (this.isTabActive) {
-          await this.audioEngine.play();
-        }
-        this.setState({ status: "playing", error: null });
-        this.beginPlayReport(this.state.currentTrack);
+        await this.playTrackById(loopTrack.id);
         return;
       }
 
@@ -1125,7 +1121,7 @@ function findBestTrackMatch(
 
       const nextTrack = this.queue.next(false);
 
-      if (nextTrack && nextTrack.id !== this.state.currentTrack?.id) {
+      if (nextTrack) {
         this.refillAutomaticQueue();
         await this.playTrackById(nextTrack.id);
         return;
