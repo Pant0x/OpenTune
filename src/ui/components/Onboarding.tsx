@@ -45,29 +45,6 @@ function getStepContent(): Record<OnboardingStep, StepContent> {
       text: "Choose a result to start playing.",
       target: '[data-onboarding="search-panel"], [data-onboarding="search-results"]',
     },
-    "new-tab": {
-      title: "Open a second tab",
-      text: "Tabs each keep their own music, so this song carries on playing here.",
-      target: '[data-onboarding="new-tab"]',
-      shortcut: `${primaryModifierLabel} T`,
-    },
-    "type-second": {
-      title: "Search again",
-      text: "Find a different song in this new tab.",
-      target: '[data-onboarding="search-panel"]',
-      shortcut: `${primaryModifierLabel} Space`,
-    },
-    "play-second": {
-      title: "Play the second song",
-      text: "This tab now has music of its own.",
-      target: '[data-onboarding="search-panel"], [data-onboarding="search-results"]',
-    },
-    "switch-back": {
-      title: "Switch back",
-      text: "Your first song is exactly where you left it.",
-      target: '[data-onboarding="first-tab"]',
-      shortcut: `${primaryModifierLabel} 1, 2, 3…`,
-    },
   };
 }
 

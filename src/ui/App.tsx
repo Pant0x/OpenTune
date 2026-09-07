@@ -59,12 +59,11 @@ import { useNativeWindowControls } from "./settings/windowControls";
 /** Wide enough for a 44px cover plus breathing room, matching the sidebar rail's feel. */
 const COLLAPSED_QUEUE_WIDTH = 62;
 import { Layout } from "./components/Layout";
-import type { Tab, TabViewState } from "./types/tab";
+import type { AppViewState } from "./types/tab";
 import {
   libraryController,
   playerController,
   searchController,
-  tabManager,
   useLibraryState,
   usePlayerSession,
   usePlayerSelector,
@@ -100,7 +99,6 @@ import { setAutostartEnabled } from "./settings/autostart";
 import {
   eventMatchesShortcut,
   useKeyboardShortcuts,
-  type KeyboardShortcutAction,
 } from "./settings/keyboardShortcuts";
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
@@ -114,57 +112,23 @@ const LOADING_SCREEN_MIN_MS = 0;
 const MOUSE_BACK_BUTTON = 3;
 const MOUSE_FORWARD_BUTTON = 4;
 /** How often the session is written purely to keep the restored playback position fresh. */
-const SESSION_HEARTBEAT_MS = 5000;
+const SESSION_HEARTBEAT_MS = 2500;
 const SLEEP_RECOVERY_TIMER_INTERVAL_MS = 15000;
 const SLEEP_RECOVERY_TIMER_DRIFT_MS = 60000;
-const TAB_SHORTCUT_ACTIONS: KeyboardShortcutAction[] = [
-  "tab1",
-  "tab2",
-  "tab3",
-  "tab4",
-  "tab5",
-  "tab6",
-  "tab7",
-  "tab8",
-  "tab9",
-];
 
 /**
- * How many pages back a tab remembers.
- *
- * Each entry is a whole view — a playlist's entire track list, a page of search results — so an
- * uncapped stack grows by a hundred-odd KB per page navigated, per tab, for as long as the app
- * stays open. Nothing reads deeper than the user can click, and fifty is well past that.
+ * How many pages back navigation history remembers.
  */
 const MAX_NAVIGATION_HISTORY = 50;
 
 function pushNavigationState(
-  entries: readonly TabViewState[],
-  state: TabViewState,
-): TabViewState[] {
+  entries: readonly AppViewState[],
+  state: AppViewState,
+): AppViewState[] {
   return [...entries, state].slice(-MAX_NAVIGATION_HISTORY);
 }
 
-function getNavigationState(tab: Tab): TabViewState | null {
-  if (tab.view === "settings") return null;
-
-  return {
-    title: tab.title,
-    view: tab.view,
-    album: tab.album,
-    song: tab.song,
-    artist: tab.artist,
-    releases: tab.releases,
-    playlist: tab.playlist,
-    relatedTrack: tab.relatedTrack,
-    searchQuery: tab.searchQuery,
-    searchResults: tab.searchResults,
-    mixedSearchResults: tab.mixedSearchResults,
-    searchLoading: tab.searchLoading,
-  };
-}
-
-function getNavigationKey(state: TabViewState): string {
+function getNavigationKey(state: AppViewState): string {
   switch (state.view) {
     case "album":
       return `album:${state.album?.id ?? ""}`;
@@ -192,31 +156,9 @@ function getNavigationKey(state: TabViewState): string {
       return "library";
     case "local-files":
       return "local-files";
+    case "settings":
+      return "settings";
   }
-}
-
-function applyNavigationState(tab: Tab, state: TabViewState): Tab {
-  return {
-    ...tab,
-    title: state.title,
-    view: state.view,
-    album: state.album,
-    song: state.song,
-    artist: state.artist,
-    releases: state.releases,
-    playlist: state.playlist,
-    relatedTrack: state.relatedTrack,
-    searchQuery: state.searchQuery,
-    searchResults: state.searchResults,
-    mixedSearchResults: state.mixedSearchResults,
-    searchLoading: state.searchLoading,
-  };
-}
-
-function stripNavigationHistory(tab: Tab): Tab {
-  const { navigationHistory, ...sessionTab } = tab;
-  void navigationHistory;
-  return sessionTab;
 }
 
 
@@ -327,14 +269,14 @@ const playerSession = usePlayerSession();
       });
   }, [playerUIState.isLyricsFullscreen]);
 
-  const [tabs, setTabs] = useState<Tab[]>(
-    () => restoredSession?.tabs.map(stripNavigationHistory) ?? [{ id: "1", view: "home" }],
+  const [currentView, setCurrentView] = useState<AppViewState>(
+    () => restoredSession?.view ?? { view: "home" },
   );
-  const [activeTabId, setActiveTabId] = useState(
-    () => restoredSession?.activeTabId ?? "1",
+  const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>(
+    () => restoredSession?.history ?? [],
   );
-  const [nextTabId, setNextTabId] = useState(
-    () => restoredSession?.nextTabId ?? 2,
+  const [forwardHistory, setForwardHistory] = useState<AppViewState[]>(
+    () => restoredSession?.forwardHistory ?? [],
   );
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   /*
@@ -351,8 +293,6 @@ const playerSession = usePlayerSession();
     readLocalOnboardingComplete() ? true : null
   );
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(null);
-  const [onboardingFirstTabId, setOnboardingFirstTabId] = useState(activeTabId);
-  const [onboardingSecondTabId, setOnboardingSecondTabId] = useState<string | null>(null);
   const [, setOnboardingSearchQuery] = useState("");
   const [showOnboardingComplete, setShowOnboardingComplete] = useState(false);
   const [showKeychainNotice, setShowKeychainNotice] = useState(
@@ -364,7 +304,7 @@ const playerSession = usePlayerSession();
     let cancelled = false;
     void hydratePlaybackSettings().then((settings) => {
       if (cancelled) return;
-      tabManager.applyPlaybackSettings(settings);
+      playerController.applyPlaybackSettings(settings);
     });
 
     return () => {
@@ -389,33 +329,72 @@ const playerSession = usePlayerSession();
       cleanup?.();
     };
   }, []);
-  const [isExpandedPlayerBar,setIsExpandedPlayerBar]=  useState(false)
-const loadingScreenDismissedRef = useRef(false);
+  const [isExpandedPlayerBar, setIsExpandedPlayerBar] = useState(false);
+  const loadingScreenDismissedRef = useRef(false);
   const loadingScreenStartedAtRef = useRef(performance.now());
   const lastErrorAlertRef = useRef<string | null>(null);
-  const sessionStateRef = useRef({ tabs, activeTabId, nextTabId });
+  const sessionStateRef = useRef({ currentView, navigationHistory, forwardHistory });
   const sessionPersistenceDisabledRef = useRef(false);
   const sleepRecoveryLastTickRef = useRef(Date.now());
   const sleepRecoveryReloadingRef = useRef(false);
-  sessionStateRef.current = { tabs, activeTabId, nextTabId };
+  sessionStateRef.current = { currentView, navigationHistory, forwardHistory };
   const persistAppSession = useCallback(() => {
     if (sessionPersistenceDisabledRef.current) return;
     const current = sessionStateRef.current;
     saveAppSession({
-      version: 1,
-      tabs: current.tabs.map((tab) => ({
-        ...stripNavigationHistory(tab),
+      version: 2,
+      view: {
+        ...current.currentView,
         searchLoading: false,
-      })),
-      activeTabId: current.activeTabId,
-      nextTabId: current.nextTabId,
-      player: tabManager.exportSession(),
+      },
+      history: current.navigationHistory.slice(-10),
+      forwardHistory: current.forwardHistory.slice(-10),
+      player: playerController.exportSession(),
     });
   }, []);
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const canNavigateBack = (activeTab?.navigationHistory?.back.length ?? 0) > 0;
-  const canNavigateForward = (activeTab?.navigationHistory?.forward.length ?? 0) > 0;
+  const canNavigateBack = navigationHistory.length > 0;
+  const canNavigateForward = forwardHistory.length > 0;
+
+  const navigateToView = useCallback((nextState: AppViewState) => {
+    playerUIStore.setLyricsOpen(false);
+    setCurrentView((current) => {
+      if (getNavigationKey(current) === getNavigationKey(nextState)) {
+        return nextState;
+      }
+      setNavigationHistory((prev) => pushNavigationState(prev, current));
+      setForwardHistory([]);
+      return nextState;
+    });
+  }, []);
+
+  const handleNavigateBack = useCallback(() => {
+    playerUIStore.setLyricsOpen(false);
+    setNavigationHistory((prevBack) => {
+      if (prevBack.length === 0) return prevBack;
+      const previous = prevBack[prevBack.length - 1];
+      const newBack = prevBack.slice(0, -1);
+      setCurrentView((current) => {
+        setForwardHistory((prevForward) => [current, ...prevForward]);
+        return previous;
+      });
+      return newBack;
+    });
+  }, []);
+
+  const handleNavigateForward = useCallback(() => {
+    playerUIStore.setLyricsOpen(false);
+    setForwardHistory((prevForward) => {
+      if (prevForward.length === 0) return prevForward;
+      const next = prevForward[0];
+      const newForward = prevForward.slice(1);
+      setCurrentView((current) => {
+        setNavigationHistory((prevBack) => pushNavigationState(prevBack, current));
+        return next;
+      });
+      return newForward;
+    });
+  }, []);
 
   const dismissLoadingScreen = useCallback(() => {
     if (loadingScreenDismissedRef.current) return;
@@ -473,123 +452,18 @@ const loadingScreenDismissedRef = useRef(false);
     };
   }, [markOnboardingComplete, showKeychainNotice]);
 
-  const navigateTab = useCallback((tabId: string, nextState: TabViewState) => {
-    setTabs((prevTabs) =>
-      prevTabs.map((tab) => {
-        if (tab.id !== tabId) return tab;
-        const currentState = getNavigationState(tab);
-        if (!currentState) return applyNavigationState(tab, nextState);
-
-        const nextTab = applyNavigationState(tab, nextState);
-        if (getNavigationKey(currentState) === getNavigationKey(nextState)) {
-          return nextTab;
-        }
-
-        return {
-          ...nextTab,
-          navigationHistory: {
-            back: pushNavigationState(tab.navigationHistory?.back ?? [], currentState),
-            forward: [],
-          },
-        };
-      })
-    );
-  }, []);
-
-  const updateSearchTab = useCallback((tabId: string, query: string, nextState: TabViewState) => {
-    setTabs((prevTabs) =>
-      prevTabs.map((tab) => {
-        if (tab.id !== tabId) return tab;
-
-        const updateHistoryState = (state: TabViewState) =>
-          state.view === "search" && state.searchQuery === query
-            ? nextState
-            : state;
-        const navigationHistory = tab.navigationHistory
-          ? {
-              back: tab.navigationHistory.back.map(updateHistoryState),
-              forward: tab.navigationHistory.forward.map(updateHistoryState),
-            }
-          : undefined;
-
-        if (tab.searchQuery !== query) {
-          return {
-            ...tab,
-            navigationHistory,
-          };
-        }
-
-        return {
-          ...applyNavigationState(tab, nextState),
-          navigationHistory,
-        };
-      })
-    );
-  }, []);
-
-  const handleNavigateBack = useCallback(() => {
-    playerUIStore.setLyricsOpen(false);
-    setTabs((prevTabs) =>
-      prevTabs.map((tab) => {
-        if (tab.id !== activeTabId) return tab;
-
-        const currentState = getNavigationState(tab);
-        const back = tab.navigationHistory?.back ?? [];
-        if (!currentState || back.length === 0) return tab;
-
-        const previousState = back[back.length - 1];
-        const nextTab = applyNavigationState(tab, previousState);
-        return {
-          ...nextTab,
-          navigationHistory: {
-            back: back.slice(0, -1),
-            forward: [currentState, ...(tab.navigationHistory?.forward ?? [])],
-          },
-        };
-      })
-    );
-  }, [activeTabId]);
-
-  const handleNavigateForward = useCallback(() => {
-    playerUIStore.setLyricsOpen(false);
-    setTabs((prevTabs) =>
-      prevTabs.map((tab) => {
-        if (tab.id !== activeTabId) return tab;
-
-        const currentState = getNavigationState(tab);
-        const forward = tab.navigationHistory?.forward ?? [];
-        if (!currentState || forward.length === 0) return tab;
-
-        const nextState = forward[0];
-        const nextTab = applyNavigationState(tab, nextState);
-        return {
-          ...nextTab,
-          navigationHistory: {
-            back: pushNavigationState(tab.navigationHistory?.back ?? [], currentState),
-            forward: forward.slice(1),
-          },
-        };
-      })
-    );
-  }, [activeTabId]);
-
-useMediaSession(playerState, playerController);
+  useMediaSession(playerState, playerController);
 
   const activeViewKey = [
-    activeTabId,
-    activeTab?.view,
-    activeTab?.album?.id,
-    activeTab?.artist?.id,
-    activeTab?.playlist?.id,
-    activeTab?.searchQuery,
+    currentView.view,
+    currentView.album?.id,
+    currentView.artist?.id,
+    currentView.playlist?.id,
+    currentView.searchQuery,
   ].filter(Boolean).join(":");
 
   const handleNavigateHome = () => {
-    playerUIStore.setLyricsOpen(false);
-    navigateTab(activeTabId, {
-      title: activeTab?.title,
-      view: "home",
-    });
+    navigateToView({ view: "home" });
   };
 
   useEffect(() => {
@@ -695,7 +569,7 @@ useMediaSession(playerState, playerController);
 
   useEffect(() => {
     persistAppSession();
-  }, [activeTabId, nextTabId, persistAppSession, playerSession, tabs]);
+  }, [currentView, persistAppSession, playerSession]);
 
   useEffect(() => {
     const unlistenPromise = listen("main-window-recovery-reload", persistAppSession);
@@ -713,6 +587,13 @@ useMediaSession(playerState, playerController);
     });
     return () => {
       unlisten?.();
+    };
+  }, [persistAppSession]);
+
+  useEffect(() => {
+    const unlistenPromise = listen("os-close-requested", persistAppSession);
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, [persistAppSession]);
 
@@ -759,10 +640,9 @@ useMediaSession(playerState, playerController);
     setShowOnboardingComplete(false);
     setShowOnboardingWelcome(false);
 
-    tabManager.reset("1");
-    setTabs([{ id: "1", view: "home" }]);
-    setActiveTabId("1");
-    setNextTabId(2);
+    setCurrentView({ view: "home" });
+    setNavigationHistory([]);
+    setForwardHistory([]);
     setSidebarWidth(240);
     setQueuePanelWidth(340);
     clearAppSession();
@@ -788,26 +668,6 @@ useMediaSession(playerState, playerController);
   }, []);
 
   useEffect(() => {
-    const tabId = tabManager.getActivePlayerId();
-    if (!tabId) return;
-
-    setTabs((prevTabs) => {
-      let changed = false;
-      const nextTabs = prevTabs.map((tab) => {
-        if (tab.id === tabId && tab.view !== "settings") {
-          const nextTitle = playerState.currentTrack?.title;
-          if (nextTitle && tab.title !== nextTitle) {
-            changed = true;
-            return { ...tab, title: nextTitle };
-          }
-        }
-        return tab;
-      });
-      return changed ? nextTabs : prevTabs;
-    });
-  }, [playerState.currentTrack?.title]);
-
-  useEffect(() => {
     if (!playerState.currentTrack && playerUIState.isLyricsOpen) {
       playerUIStore.setLyricsOpen(false);
     }
@@ -819,53 +679,27 @@ useMediaSession(playerState, playerController);
   const handleNavigateAlbum = (album: Album) => {
     playerUIStore.setLyricsOpen(false);
     playerUIStore.setNowPlayingFullscreen(false);
-    navigateTab(activeTabId, {
-      title: activeTab?.title,
+    navigateToView({
+      title: album.title,
       view: "album",
       album,
     });
   };
 
-  const handleNavigateSong = (song: Track, openInNewTab = false) => {
+  const handleNavigateSong = (song: Track) => {
     playerUIStore.setLyricsOpen(false);
     playerUIStore.setNowPlayingFullscreen(false);
-    if (openInNewTab) {
-      const newId = nextTabId.toString();
-      tabManager.createTab(newId);
-      void tabManager.setActive(newId);
-      setTabs((prevTabs) => [
-        ...prevTabs,
-        { id: newId, view: "song", song, title: song.title },
-      ]);
-      setActiveTabId(newId);
-      setNextTabId((currentId) => currentId + 1);
-      return;
-    }
-    navigateTab(activeTabId, {
+    navigateToView({
       title: song.title,
       view: "song",
       song,
     });
   };
 
-
   /**
    * Opens the album a track belongs to.
-   *
-   * `Track.album` is a name with no id, so there is nothing to navigate to directly — the album
-   * has to be looked up. The top album result for "<album> <artist>" is the right one in
-   * practice; when nothing matches, the search page is a more useful landing place than an
-   * error, since the query is already the thing the listener asked about.
    */
   const handleNavigateAlbumForTrack = async (track: Track) => {
-    /*
-     * The linked id, whenever the row carried one.
-     *
-     * Searching for "<album> <artist>" and taking the first hit is a guess, and it guesses
-     * wrong on compilations, remasters and singles that share a title. The id names the album
-     * outright — the header fills itself in once the page loads, the same way a pasted album
-     * link is handled.
-     */
     if (track.albumId) {
       handleNavigateAlbum({
         id: track.albumId,
@@ -892,14 +726,14 @@ useMediaSession(playerState, playerController);
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    handleSearch(query, false);
+    handleSearch(query);
   };
 
-  const handleNavigateArtist = (artist: Artist, openInNewTab = false) => {
+  const handleNavigateArtist = (artist: Artist) => {
     playerUIStore.setLyricsOpen(false);
     playerUIStore.setNowPlayingFullscreen(false);
     if (!artist.id) {
-      const fallbackToSearch = () => handleSearch(artist.name, openInNewTab);
+      const fallbackToSearch = () => handleSearch(artist.name);
       void searchController.search(artist.name)
         .then((results) => {
           const normalizedName = artist.name.trim().toLocaleLowerCase();
@@ -912,7 +746,7 @@ useMediaSession(playerState, playerController);
           }) ?? results.artists[0];
 
           if (resolved) {
-            handleNavigateArtist(resolved, openInNewTab);
+            handleNavigateArtist(resolved);
             return;
           }
 
@@ -921,20 +755,8 @@ useMediaSession(playerState, playerController);
         .catch(fallbackToSearch);
       return;
     }
-    if (openInNewTab) {
-      const newId = nextTabId.toString();
-      tabManager.createTab(newId);
-      void tabManager.setActive(newId);
-      setTabs((prevTabs) => [
-        ...prevTabs,
-        { id: newId, view: "artist", artist, title: artist.name },
-      ]);
-      setActiveTabId(newId);
-      setNextTabId((currentId) => currentId + 1);
-      return;
-    }
 
-    navigateTab(activeTabId, {
+    navigateToView({
       view: "artist",
       artist,
       title: artist.name,
@@ -943,7 +765,7 @@ useMediaSession(playerState, playerController);
 
   const handleNavigateDiscography = (artist: Artist, releases?: Album[]) => {
     playerUIStore.setLyricsOpen(false);
-    navigateTab(activeTabId, {
+    navigateToView({
       title: `${artist.name} - Discography`,
       view: "discography",
       artist,
@@ -951,20 +773,14 @@ useMediaSession(playerState, playerController);
     });
   };
 
-  /*
-   * Memoized because `PlayerBar` hangs its whole connectivity chain off this identity:
-   * `updateConnectionState` → `checkConnection` → the effect that calls it on mount. A fresh
-   * function each render re-ran that effect on every render, firing a live connectivity probe
-   * each time — several per track change.
-   */
   const handleConnectionRestored = useCallback(async () => {
     await libraryController.recoverConnection();
   }, []);
 
   const handleNavigatePlaylist = (playlist: Playlist) => {
     playerUIStore.setLyricsOpen(false);
-    navigateTab(activeTabId, {
-      title: activeTab?.title,
+    navigateToView({
+      title: playlist.title,
       view: "playlist",
       playlist,
     });
@@ -972,58 +788,22 @@ useMediaSession(playerState, playerController);
 
   const handleNavigateRelated = (track: Track) => {
     playerUIStore.setLyricsOpen(false);
-    navigateTab(activeTabId, {
+    navigateToView({
       title: `Related to ${track.title}`,
       view: "related",
       relatedTrack: track,
     });
   };
 
-  const createTab = () => {
-    playerUIStore.setLyricsOpen(false);
-    const newId = nextTabId.toString();
-    tabManager.createTab(newId);
-    void tabManager.setActive(newId);
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "home" },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
-    if (onboardingStep === "new-tab") {
-      setOnboardingSecondTabId(newId);
-      setOnboardingSearchQuery("");
-      setOnboardingStep("type-second");
-      setIsSearchOpen(true);
-    }
-  };
-
-  const handleCreateTab = () => createTab();
-
   const handleSignIn = async () => {
     await libraryController.signIn();
     if (libraryController.getState().status !== "ready") return;
 
     playerUIStore.setLyricsOpen(false);
-    const newId = nextTabId.toString();
-    tabManager.createTab(newId);
-    await tabManager.setActive(newId);
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "home" },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "home" });
   };
 
-  /**
-   * Opens a pasted YouTube link instead of searching for its text.
-   *
-   * Searching for a URL returns nothing useful, so a link in the search box is treated as a
-   * request to go there. Anything that fails to resolve falls through to an ordinary search,
-   * which is the behaviour without this.
-   */
-  const handleOpenLink = async (url: string, openInNewTab: boolean): Promise<boolean> => {
+  const handleOpenLink = async (url: string): Promise<boolean> => {
     let resolved: Awaited<ReturnType<typeof libraryController.resolveLink>> = null;
     try {
       resolved = await libraryController.resolveLink(url);
@@ -1040,16 +820,11 @@ useMediaSession(playerState, playerController);
 
     if (resolved.kind === "artist") {
       const page = await libraryController.getArtist(resolved.id);
-      handleNavigateArtist(page.artist, openInNewTab);
+      handleNavigateArtist(page.artist);
       return true;
     }
 
     if (resolved.kind === "album") {
-      /*
-       * The link carries an id and nothing else, so the header would read "Album" until the
-       * page loaded. Fetching the tracks first — a request the album view then serves from
-       * cache — supplies a real title and cover from the first row.
-       */
       const stub: Album = { id: resolved.id, title: "Album", artist: "" };
       const tracks = await libraryController.getAlbumTracks(stub).catch(() => [] as Track[]);
       handleNavigateAlbum({
@@ -1061,8 +836,6 @@ useMediaSession(playerState, playerController);
       return true;
     }
 
-    // ponytail: a playlist link has no title until its page loads, and the tracks do not
-    // carry one. Fetch the playlist header here if the placeholder ever becomes a complaint.
     const saved = libraryController.getState().library?.playlists.find(
       (item) => item.id.replace(/^VL/, "") === resolved.id.replace(/^VL/, ""),
     );
@@ -1074,257 +847,93 @@ useMediaSession(playerState, playerController);
     return true;
   };
 
-  const handleSearch = (query: string, openInNewTab: boolean) => {
+  const handleSearch = (query: string) => {
     playerUIStore.setLyricsOpen(false);
 
     if (looksLikeYouTubeLink(query)) {
-      void handleOpenLink(query, openInNewTab).then((opened) => {
-        // Not a link Amber can open after all — fall back to searching for the text, so a
-        // paste that resolves to nothing still does something.
-        if (!opened) runSearch(query, openInNewTab);
+      void handleOpenLink(query).then((opened) => {
+        if (!opened) runSearch(query);
       });
       return;
     }
 
-    runSearch(query, openInNewTab);
+    runSearch(query);
   };
 
-  const runSearch = (query: string, openInNewTab: boolean) => {
-    let targetTabId = activeTabId;
+  const runSearch = (query: string) => {
+    navigateToView({
+      view: "search",
+      title: query,
+      searchQuery: query,
+      searchResults: [],
+      mixedSearchResults: { artists: [], tracks: [], albums: [], playlists: [] },
+      searchLoading: true,
+    });
 
-    if (openInNewTab) {
-      targetTabId = nextTabId.toString();
-      tabManager.createTab(targetTabId);
-      void tabManager.setActive(targetTabId);
-      setTabs((prevTabs) => [
-        ...prevTabs,
-        {
-          id: targetTabId,
-          view: "search",
-          title: query,
-          searchQuery: query,
-          searchResults: [],
-          mixedSearchResults: { artists: [], tracks: [], albums: [], playlists: [] },
-          searchLoading: true,
-        },
-      ]);
-      setActiveTabId(targetTabId);
-      setNextTabId((currentId) => currentId + 1);
-    } else {
-      navigateTab(targetTabId, {
-        view: "search",
-        title: query,
-        searchQuery: query,
-        searchResults: [],
-        mixedSearchResults: { artists: [], tracks: [], albums: [], playlists: [] },
-        searchLoading: true,
-      });
-    }
-
-    const searchTabId = targetTabId;
     if (onboardingStep === "type-first") setOnboardingStep("play-first");
-    if (onboardingStep === "type-second") setOnboardingStep("play-second");
     const applySearchResults = (results: SearchResults) => {
-      updateSearchTab(searchTabId, query, {
-        view: "search",
-        title: query,
-        searchQuery: query,
-        searchResults: results.tracks,
-        mixedSearchResults: results,
-        searchLoading: false,
+      setCurrentView((current) => {
+        if (current.view === "search" && current.searchQuery === query) {
+          return {
+            ...current,
+            searchResults: results.tracks,
+            mixedSearchResults: results,
+            searchLoading: false,
+          };
+        }
+        return current;
       });
     };
 
     void searchController.search(query, applySearchResults)
       .then(applySearchResults)
       .catch(() => {
-        updateSearchTab(searchTabId, query, {
-          view: "search",
-          title: query,
-          searchQuery: query,
-          searchResults: [],
-          mixedSearchResults: { artists: [], tracks: [], albums: [], playlists: [] },
-          searchLoading: false,
+        setCurrentView((current) => {
+          if (current.view === "search" && current.searchQuery === query) {
+            return {
+              ...current,
+              searchLoading: false,
+            };
+          }
+          return current;
         });
       });
   };
 
   const handleOpenSettings = () => {
     playerUIStore.setLyricsOpen(false);
-    const settingsTab = tabs.find((tab) => tab.view === "settings");
-    if (settingsTab) {
-      setActiveTabId(settingsTab.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "settings" },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "settings" });
   };
 
-  /* Reuses an open History tab the way Settings does — it is a single destination, not
-     something you want three copies of. */
   const handleOpenHistory = () => {
     playerUIStore.setLyricsOpen(false);
-    const historyTab = tabs.find((tab) => tab.view === "history");
-    if (historyTab) {
-      setActiveTabId(historyTab.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [...prevTabs, { id: newId, view: "history", title: "History" }]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "history", title: "History" });
   };
 
   const handleOpenLibrary = () => {
     playerUIStore.setLyricsOpen(false);
-    const libraryTab = tabs.find((tab) => tab.view === "library");
-    if (libraryTab) {
-      setActiveTabId(libraryTab.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [...prevTabs, { id: newId, view: "library", title: "Library" }]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "library", title: "Library" });
   };
 
   const handleOpenBrowse = (requestedTab: string = "explore") => {
     playerUIStore.setLyricsOpen(false);
-    const existing = tabs.find((tab) => tab.view === "browse");
-    if (existing) {
-      if (existing.browseTab !== requestedTab) {
-        setTabs((prevTabs) =>
-          prevTabs.map((tab) => (tab.id === existing.id ? { ...tab, browseTab: requestedTab } : tab)));
-      }
-      setActiveTabId(existing.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "browse", title: "Browse", browseTab: requestedTab },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "browse", title: "Browse", browseTab: requestedTab });
   };
 
   const handleOpenLocalFiles = () => {
     playerUIStore.setLyricsOpen(false);
-    const existing = tabs.find((tab) => tab.view === "local-files");
-    if (existing) {
-      setActiveTabId(existing.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "local-files", title: "Local Files" },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
+    navigateToView({ view: "local-files", title: "Local Files" });
   };
 
   const handleOpenReleases = () => {
     playerUIStore.setLyricsOpen(false);
-    const existing = tabs.find((tab) => tab.view === "releases");
-    if (existing) {
-      setActiveTabId(existing.id);
-      return;
-    }
-
-    const newId = nextTabId.toString();
-    setTabs((prevTabs) => [
-      ...prevTabs,
-      { id: newId, view: "releases", title: "Releases" },
-    ]);
-    setActiveTabId(newId);
-    setNextTabId((currentId) => currentId + 1);
-  };
-
-  const handleCloseTab = (tabId: string) => {
-    playerUIStore.setLyricsOpen(false);
-    if (tabs.length === 1) return;
-    // Settings/Library/History/Browse tabs never get a tabManager entry, so `tabs.length` above
-    // can be >1 while this is still the last actual music tab — block that too, or TabManager
-    // is left with zero tabs and every playback control throws "No active music tab."
-    if (tabManager.isOnlyTab(tabId)) return;
-
-    const closedTab = tabs.find((tab) => tab.id === tabId);
-    if (!closedTab) return;
-
-    const newTabs = tabs.filter((tab) => tab.id !== tabId);
-
-    const closedIndex = tabs.findIndex((tab) => tab.id === tabId);
-    const replacementMusicTab =
-      tabs
-        .slice(0, closedIndex)
-        .reverse()
-        .find((tab) => tab.id !== tabId && tab.view !== "settings") ??
-      tabs
-        .slice(closedIndex + 1)
-        .find((tab) => tab.view !== "settings");
-
-    if (closedTab.view !== "settings" && tabManager.getActiveId() === tabId) {
-      if (replacementMusicTab) {
-        void tabManager.setActive(replacementMusicTab.id);
-      }
-    }
-
-    if (activeTabId === tabId) {
-      const playingTabId = tabManager.getActiveId();
-      const playingTab = newTabs.find((tab) => tab.id === playingTabId);
-
-      if (closedTab.view === "settings" && playingTab) {
-        setActiveTabId(playingTab.id);
-      } else {
-        const nextTab = replacementMusicTab ?? newTabs[Math.max(0, closedIndex - 1)];
-        if (nextTab.view !== "settings" && tabManager.getActiveId() !== nextTab.id) {
-          void tabManager.setActive(nextTab.id);
-        }
-        setActiveTabId(nextTab.id);
-      }
-    }
-
-    if (closedTab.view !== "settings") {
-      tabManager.removeTab(tabId);
-    }
-    setTabs(newTabs);
-  };
-
-  const handleSwitchTab = (tabId: string) => {
-    playerUIStore.setLyricsOpen(false);
-    const tab = tabs.find((item) => item.id === tabId);
-    if (tab?.view !== "settings") {
-      void tabManager.setActive(tabId);
-    }
-    setActiveTabId(tabId);
-    if (onboardingStep === "switch-back" && tabId === onboardingFirstTabId) {
-      markOnboardingComplete(true);
-    }
+    navigateToView({ view: "releases", title: "Releases" });
   };
 
   const finishOnboarding = () => {
     markOnboardingComplete(false);
   };
 
-  /*
-   * Skipping advances the tour without performing the step.
-   *
-   * Deliberately not "do it for them": creating the tab or playing the track on their behalf
-   * would make Skip an action button, and someone skipping a step is saying they do not want
-   * that thing to happen. Later steps may then have nothing to point at, which is fine — they
-   * are skippable too, and the last one finishes the tour.
-   */
   const skipOnboardingStep = () => {
     if (!onboardingStep) return;
     const next = nextOnboardingStep(onboardingStep);
@@ -1332,63 +941,45 @@ useMediaSession(playerState, playerController);
     else markOnboardingComplete(true);
   };
 
-const backOnboardingStep = () => {
+  const backOnboardingStep = () => {
     if (!onboardingStep) return;
     const previous = previousOnboardingStep(onboardingStep);
     if (previous) setOnboardingStep(previous);
   };
 
   const handlePlaySearchResult = async (track: Track) => {
-    const stepAtStart = onboardingStep;
-    const tabAtStart = activeTabId;
     const started = await playerController.playTrackById(track.id, [track], true);
     if (!started) return;
 
-    if (stepAtStart === "play-first" && tabAtStart === onboardingFirstTabId) {
-      setOnboardingStep("new-tab");
-    }
-    if (stepAtStart === "play-second" && tabAtStart === onboardingSecondTabId) {
-      setOnboardingStep("switch-back");
+    if (onboardingStep === "play-first") {
+      markOnboardingComplete(true);
     }
   };
 
   const dismissSearch = () => {
     setIsSearchOpen(false);
-    if (
-      onboardingStep === "type-first"
-      || onboardingStep === "play-first"
-      || onboardingStep === "type-second"
-      || onboardingStep === "play-second"
-    ) {
+    if (onboardingStep === "type-first" || onboardingStep === "play-first") {
       setOnboardingSearchQuery("");
       setOnboardingStep("open-search");
     }
   };
 
   const restartOnboarding = () => {
-    const firstMusicTab = tabs.find((tab) => tab.view !== "settings");
-    if (!firstMusicTab) return;
     clearLocalOnboardingComplete();
     setOnboardingComplete(false);
-    setOnboardingFirstTabId(firstMusicTab.id);
-    setOnboardingSecondTabId(null);
     setOnboardingSearchQuery("");
     setOnboardingStep("open-search");
     setShowOnboardingWelcome(false);
     void removeAppSetting(ONBOARDING_COMPLETE_SETTING_KEY);
-    handleSwitchTab(firstMusicTab.id);
+    handleNavigateHome();
   };
 
   useEffect(() => {
     if (onboardingStep === "open-search" && isSearchOpen) {
       setOnboardingSearchQuery("");
-      setOnboardingStep(
-        onboardingSecondTabId && activeTabId === onboardingSecondTabId
-          ? "type-second"
-          : "type-first"
-      );
+      setOnboardingStep("type-first");
     }
-  }, [activeTabId, isSearchOpen, onboardingSecondTabId, onboardingStep]);
+  }, [isSearchOpen, onboardingStep]);
 
   useEffect(() => {
     if (!showOnboardingComplete) return;
@@ -1403,20 +994,7 @@ const backOnboardingStep = () => {
   }, [loadingScreenState, showOnboardingWelcome]);
 
   const handleToggleLyrics = () => {
-    if (playerUIState.isLyricsOpen) {
-      playerUIStore.setLyricsOpen(false);
-      return;
-    }
-
-    const playbackTabId = tabManager.getPlaybackOwnerId();
-    if (playbackTabId && playbackTabId !== activeTabId) {
-      const playbackTab = tabs.find((tab) => tab.id === playbackTabId);
-      if (playbackTab) {
-        void tabManager.setActive(playbackTabId);
-        setActiveTabId(playbackTabId);
-      }
-    }
-    playerUIStore.setLyricsOpen(true);
+    playerUIStore.setLyricsOpen(!playerUIState.isLyricsOpen);
   };
 
   const handleToggleQueue = () => {
@@ -1426,28 +1004,6 @@ const backOnboardingStep = () => {
   const handleKeychainNoticeContinue = () => {
     localStorage.setItem(KEYCHAIN_NOTICE_COMPLETE_KEY, "true");
     setShowKeychainNotice(false);
-  };
-
-  const handleReorderTab = (
-    draggedTabId: string,
-    targetTabId: string,
-    insertAfter: boolean,
-  ) => {
-    setTabs((currentTabs) => {
-      const draggedIndex = currentTabs.findIndex((tab) => tab.id === draggedTabId);
-      const targetIndex = currentTabs.findIndex((tab) => tab.id === targetTabId);
-      if (draggedIndex < 0 || targetIndex < 0 || draggedIndex === targetIndex) {
-        return currentTabs;
-      }
-
-      const nextTabs = [...currentTabs];
-      const [draggedTab] = nextTabs.splice(draggedIndex, 1);
-      const adjustedTargetIndex = nextTabs.findIndex((tab) => tab.id === targetTabId);
-      nextTabs.splice(adjustedTargetIndex + (insertAfter ? 1 : 0), 0, draggedTab);
-      return nextTabs;
-    });
-    // Persist immediately so tab order survives app restart
-    window.setTimeout(persistAppSession, 0);
   };
 
   useEffect(() => {
@@ -1497,7 +1053,7 @@ const backOnboardingStep = () => {
           playerUIStore.setLyricsOpen(false);
           return;
         }
-        if (isSearchOpen && activeTab?.view !== "settings") {
+        if (isSearchOpen && currentView.view !== "settings") {
           event.preventDefault();
           setIsSearchOpen(false);
           return;
@@ -1531,13 +1087,14 @@ const backOnboardingStep = () => {
       window.removeEventListener("auxclick", preventAuxNavigation);
     };
   }, [
-    activeTab?.view,
     canNavigateBack,
     canNavigateForward,
+    currentView.view,
     handleNavigateBack,
     handleNavigateForward,
     isSearchOpen,
     playerUIState.isLyricsOpen,
+    playerUIState.isNowPlayingFullscreen,
   ]);
 
   useEffect(() => {
@@ -1552,24 +1109,11 @@ const backOnboardingStep = () => {
       if (event.repeat) return;
       if (event.defaultPrevented) return;
       const textEntry = isTextEntry(event.target);
-
-      if (!textEntry) {
-        const tabShortcutIndex = TAB_SHORTCUT_ACTIONS.findIndex((action) =>
-          eventMatchesShortcut(event, keyboardShortcuts[action])
-        );
-        const tab = tabs[tabShortcutIndex];
-        if (tabShortcutIndex >= 0 && tab) {
-          event.preventDefault();
-          handleSwitchTab(tab.id);
-        }
-        if (tabShortcutIndex >= 0) return;
-      }
-
       if (textEntry) return;
 
       if (
         eventMatchesShortcut(event, keyboardShortcuts.search)
-        && activeTab?.view !== "settings"
+        && currentView.view !== "settings"
       ) {
         event.preventDefault();
         if (isSearchOpen) dismissSearch();
@@ -1577,20 +1121,8 @@ const backOnboardingStep = () => {
         return;
       }
 
-      if (eventMatchesShortcut(event, keyboardShortcuts.newTab)) {
-        event.preventDefault();
-        createTab();
-        return;
-      }
-
-      if (eventMatchesShortcut(event, keyboardShortcuts.closeTab)) {
-        event.preventDefault();
-        handleCloseTab(activeTabId);
-        return;
-      }
-
       if (eventMatchesShortcut(event, keyboardShortcuts.navigateBack)) {
-        if (isSearchOpen && activeTab?.view !== "settings") {
+        if (isSearchOpen && currentView.view !== "settings") {
           event.preventDefault();
           setIsSearchOpen(false);
           return;
@@ -1657,45 +1189,25 @@ const backOnboardingStep = () => {
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
   }, [
-    activeTab?.view,
-    activeTabId,
     canNavigateBack,
     canNavigateForward,
+    currentView.view,
     handleNavigateBack,
     handleNavigateForward,
     isSearchOpen,
     keyboardShortcuts,
-    nextTabId,
-    onboardingStep,
     playerState.currentTrack,
     playerState.status,
-    tabs,
   ]);
 
-
-  const handlePlayerBarClick=()=>{
-    setIsExpandedPlayerBar(!isExpandedPlayerBar)
-  }
-
-
-
-/*
- * The window exists only while it is on screen.
- *
- * It used to be created on mount and merely hidden on return, which left an idle WebView2
- * renderer resident for the whole session — ~32 MB, plus its share of the shared GPU process,
- * paid by everyone including the users who never background the app. Creation is deferred to
- * the moment it is shown and the window is destroyed when the main window comes back; only
- * destroying returns the memory.
- *
- * The cost is a cold webview start on each show. That is paid while the user is looking at
- * another application, which is the one moment it does not read as lag.
-*/
+  const handlePlayerBarClick = () => {
+    setIsExpandedPlayerBar(!isExpandedPlayerBar);
+  };
 
   return (
     <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
     <AlbumNavigationProvider onNavigate={handleNavigateAlbum}>
-    <SongNavigationProvider onNavigate={(song, openInNewTab) => handleNavigateSong(song, openInNewTab)}>
+    <SongNavigationProvider onNavigate={(song) => handleNavigateSong(song)}>
     <ArtistNavigationProvider onNavigate={handleNavigateArtist}>
     <TrackContextMenuProvider
       libraryController={libraryController}
@@ -1711,38 +1223,17 @@ const backOnboardingStep = () => {
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
       }`}
     >
- {/*    {!paperPcMode && <StarField />}
-    <span
-      className="pointer-events-none absolute inset-x-0 top-0 z-50 h-px bg-linear-to-r from-transparent via-[var(--window-edge-highlight)] to-transparent"
-      aria-hidden="true"
-    /> */}
-      {/* Dropped entirely in full-screen lyrics, not just visually hidden: the window is
-          real OS fullscreen at that point, so there is no frame left to drag or minimize. */}
       {!playerUIState.isLyricsFullscreen && (
-      <TitleBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        playingTabId={
-          playerState.status === "playing"
-            ? tabManager.getActivePlayerId()
-            : null
-        }
-        nonClosableTabId={tabs.find((tab) => tabManager.isOnlyTab(tab.id))?.id ?? null}
-        sidebarWidth={sidebarWidth}
-        isHomeActive={activeTab?.view === "home"}
-        onNavigateHome={handleNavigateHome}
-        onCreateTab={handleCreateTab}
-        onCloseTab={handleCloseTab}
-        onSwitchTab={handleSwitchTab}
-        onReorderTab={handleReorderTab}
-        onOpenSettings={handleOpenSettings}
-        onOpenDownloads={() => handleOpenBrowse("downloads")}
-        onboardingFirstTabId={onboardingStep ? onboardingFirstTabId : undefined}
-      />
+        <TitleBar
+          sidebarWidth={sidebarWidth}
+          isHomeActive={currentView.view === "home"}
+          onNavigateHome={handleNavigateHome}
+          onOpenSettings={handleOpenSettings}
+          onOpenDownloads={() => handleOpenBrowse("downloads")}
+        />
       )}
 
       <div className="flex min-h-0 flex-1 flex-col">
-
         <Layout
           sidebarWidth={sidebarWidth}
           onSidebarWidthChange={setSidebarWidth}
@@ -1755,8 +1246,8 @@ const backOnboardingStep = () => {
           onNavigateDownloads={() => handleOpenBrowse("downloads")}
           onNavigateReleases={handleOpenReleases}
           onNavigateLocalFiles={handleOpenLocalFiles}
-          onSearch={(q, openInNewTab = false) => handleSearch(q, openInNewTab)}
-          showSearchBar={activeTab?.view !== "settings" && !playerUIState.isLyricsOpen}
+          onSearch={(q) => handleSearch(q)}
+          showSearchBar={currentView.view !== "settings" && !playerUIState.isLyricsOpen}
           onOpenSearch={() => setIsSearchOpen(true)}
           canGoBack={canNavigateBack}
           canGoForward={canNavigateForward}
@@ -1766,38 +1257,26 @@ const backOnboardingStep = () => {
           hideSidebar={playerUIState.isLyricsFullscreen}
           showTransientScrollbar={
             !playerUIState.isLyricsOpen
-            && (activeTab?.view === "playlist" || activeTab?.view === "album")
+            && (currentView.view === "playlist" || currentView.view === "album")
           }
           rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} /> : undefined}
           rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
           onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : setQueuePanelWidth}
           scrollKey={activeViewKey}
         >
-{/* <ExpandedPlayerBar 
-        isOpen={isExpandedPlayerBar} 
-        onClose={() => setIsExpandedPlayerBar(false)} 
-      /> */}
-
-          {/* Chunks resolve off local disk in single-digit ms, so an empty fallback reads as
-              an instant transition rather than a flash of spinner. */}
-          {/*
-            Keyed on the view so navigating away clears a caught error: a page that failed on
-            one album's malformed response must not stay broken for the next one. The player
-            bar and sidebar sit outside, so a dead page still leaves playback controllable.
-          */}
           <ErrorBoundary
             key={`boundary:${activeViewKey}`}
             label="This page"
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen && activeTab?.view !== "settings" ? (
+          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen && currentView.view !== "settings" ? (
             <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
           ) : (
           <div key={activeViewKey} className="min-h-0 flex-1">
-            {activeTab?.view === "home" && (
+            {currentView.view === "home" && (
               <HomePage
-                tabId={activeTabId}
+                tabId="1"
                 playerController={playerController}
                 libraryController={libraryController}
                 libraryState={libraryState}
@@ -1814,9 +1293,9 @@ const backOnboardingStep = () => {
                 onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
-            {activeTab?.view === "album" && (
+            {currentView.view === "album" && (
               <AlbumView
-                album={activeTab?.album}
+                album={currentView.album}
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
@@ -1824,9 +1303,9 @@ const backOnboardingStep = () => {
                 onOpenDiscography={handleNavigateDiscography}
               />
             )}
-            {activeTab?.view === "song" && (
+            {currentView.view === "song" && (
               <SongPage
-                song={activeTab?.song}
+                song={currentView.song}
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
@@ -1834,9 +1313,9 @@ const backOnboardingStep = () => {
                 onOpenSong={handleNavigateSong}
               />
             )}
-            {activeTab?.view === "artist" && (
+            {currentView.view === "artist" && (
               <ArtistView
-                artist={activeTab.artist}
+                artist={currentView.artist}
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
@@ -1846,56 +1325,56 @@ const backOnboardingStep = () => {
                 onOpenDiscography={handleNavigateDiscography}
               />
             )}
-            {activeTab?.view === "discography" && (
+            {currentView.view === "discography" && (
               <DiscographyPage
-                artist={activeTab.artist}
-                releases={activeTab.releases}
+                artist={currentView.artist}
+                releases={currentView.releases}
                 onOpenAlbum={handleNavigateAlbum}
               />
             )}
-            {activeTab?.view === "releases" && (
+            {currentView.view === "releases" && (
               <ReleasesPage
-                artist={activeTab?.artist}
-                releases={activeTab?.releases}
+                artist={currentView.artist}
+                releases={currentView.releases}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
               />
             )}
-            {activeTab?.view === "playlist" && (
+            {currentView.view === "playlist" && (
               <PlaylistView
-                playlist={activeTab.playlist}
+                playlist={currentView.playlist}
                 playerController={playerController}
                 libraryController={libraryController}
               />
             )}
-            {activeTab?.view === "related" && activeTab.relatedTrack && (
+            {currentView.view === "related" && currentView.relatedTrack && (
               <RelatedPage
-                track={activeTab.relatedTrack}
+                track={currentView.relatedTrack}
                 playerController={playerController}
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
                 onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
-            {activeTab?.view === "search" && (
-                <SearchResultsPage
-                query={activeTab.searchQuery ?? ""}
-                results={activeTab.mixedSearchResults ?? {
+            {currentView.view === "search" && (
+              <SearchResultsPage
+                query={currentView.searchQuery ?? ""}
+                results={currentView.mixedSearchResults ?? {
                   artists: [],
-                  tracks: activeTab.searchResults ?? [],
+                  tracks: currentView.searchResults ?? [],
                   albums: [],
                   playlists: [],
                 }}
-                isLoading={activeTab.searchLoading ?? false}
-                  playerController={playerController}
-                    onPlayTrack={handlePlaySearchResult}
+                isLoading={currentView.searchLoading ?? false}
+                playerController={playerController}
+                onPlayTrack={handlePlaySearchResult}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenPlaylist={handleNavigatePlaylist}
-                />
+              />
             )}
-            {activeTab?.view === "library" && (
+            {currentView.view === "library" && (
               <LibraryPage
                 libraryState={libraryState}
                 playerController={playerController}
@@ -1904,10 +1383,10 @@ const backOnboardingStep = () => {
                 onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
-            {activeTab?.view === "browse" && (
+            {currentView.view === "browse" && (
               <BrowsePage
-                key={activeTab.browseTab ?? "explore"}
-                initialTab={(activeTab.browseTab ?? "explore") as never}
+                key={currentView.browseTab ?? "explore"}
+                initialTab={(currentView.browseTab ?? "explore") as never}
                 playerController={playerController}
                 libraryController={libraryController}
                 onOpenAlbum={handleNavigateAlbum}
@@ -1915,16 +1394,16 @@ const backOnboardingStep = () => {
                 onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
-            {activeTab?.view === "history" && (
+            {currentView.view === "history" && (
               <HistoryPage playerController={playerController} />
             )}
-            {activeTab?.view === "local-files" && (
+            {currentView.view === "local-files" && (
               <LocalFilesPage
                 playerController={playerController}
                 onNavigatePlaylist={handleNavigatePlaylist}
               />
             )}
-            {activeTab?.view === "settings" && (
+            {currentView.view === "settings" && (
               <SettingsPage
                 libraryController={libraryController}
                 libraryState={libraryState}

@@ -10,8 +10,6 @@ import {
   isTilingWindowManager,
   subscribeTilingWindowManager,
 } from "../platform";
-import { MusicTabs } from "./MusicTabs";
-import type { Tab } from "../types/tab";
 import {
   useForceWindowControls,
   useNativeWindowControls,
@@ -29,20 +27,11 @@ import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
 
 interface TitleBarProps {
-  tabs: Tab[];
-  activeTabId: string;
-  playingTabId: string | null;
-  nonClosableTabId?: string | null;
   sidebarWidth: number;
   isHomeActive: boolean;
   onNavigateHome: () => void;
-  onCreateTab: () => void;
-  onCloseTab: (tabId: string) => void;
-  onSwitchTab: (tabId: string) => void;
-  onReorderTab: (draggedTabId: string, targetTabId: string, insertAfter: boolean) => void;
   onOpenSettings: () => void;
   onOpenDownloads?: () => void;
-  onboardingFirstTabId?: string;
 }
 
 const ACCOUNT_PANEL_ITEM =
@@ -53,20 +42,11 @@ const WINDOW_BUTTON_BASE =
   "flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function TitleBar({
-  tabs,
-  activeTabId,
-  playingTabId,
-  nonClosableTabId,
   sidebarWidth,
   isHomeActive,
   onNavigateHome,
-  onCreateTab,
-  onCloseTab,
-  onSwitchTab,
-  onReorderTab,
   onOpenSettings,
   onOpenDownloads,
-  onboardingFirstTabId,
 }: TitleBarProps) {
   const appWindow = getCurrentWindow();
   const libraryState = useLibraryState();
@@ -215,18 +195,6 @@ export function TitleBar({
         /> 
         {!hideHomeText && <h3 >amber_</h3>}
       </button>
-
-      <MusicTabs
-        tabs={tabs}
-        activeTabId={activeTabId}
-        playingTabId={playingTabId}
-        nonClosableTabId={nonClosableTabId}
-        onCreateTab={onCreateTab}
-        onCloseTab={onCloseTab}
-        onSwitchTab={onSwitchTab}
-        onReorderTab={onReorderTab}
-        onboardingFirstTabId={onboardingFirstTabId}
-      />
 
       <div
         data-tauri-drag-region=""

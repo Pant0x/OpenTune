@@ -174,7 +174,7 @@ export class PlayerController {
   private readonly listeners = new Set<Listener>();
   private readonly recommendationHistory = new Map<string, string[]>();
   private loadedTrackId: string | null = null;
-  private isTabActive = false;
+  private isTabActive = true;
   private playTrackRequestId = 0;
   private autoplayEnabled = false;
   private handlingTrackEnd = false;
@@ -312,6 +312,7 @@ export class PlayerController {
     this.shuffleEnabled =
       session.shuffleEnabled ?? wasLegacyShuffleMode(session.playbackOrderMode);
     this.isPlaylistMode = session.isPlaylistMode ?? false;
+    this.isTabActive = true;
     this.state = {
       status: session.currentTrack ? session.status : "idle",
       currentTrack: session.currentTrack,
@@ -2043,6 +2044,9 @@ function findBestTrackMatch(
   }
 
   getCurrentTime(): number {
+    if (this.loadedTrackId === null && this.pendingSeekTime !== null) {
+      return this.pendingSeekTime;
+    }
     return this.audioEngine.getCurrentTime();
   }
 
@@ -2051,7 +2055,9 @@ function findBestTrackMatch(
   }
 
   getDuration(): number {
-    return this.audioEngine.getDuration();
+    const engineDuration = this.audioEngine.getDuration();
+    if (engineDuration > 0) return engineDuration;
+    return this.state.currentTrack?.durationSec ?? 0;
   }
 
   getVolume(): number {

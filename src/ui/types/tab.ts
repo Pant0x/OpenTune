@@ -2,10 +2,11 @@ import type { Album, Artist, Playlist, SearchResults, Track } from "../../dataso
 
 export type TabView = "home" | "album" | "song" | "artist" | "discography" | "playlist" | "related" | "search" | "history" | "browse" | "library" | "settings" | "local-files" | "releases";
 export type NavigableTabView = Exclude<TabView, "settings">;
+export type AppViewType = TabView;
 
-export interface TabViewState {
+export interface AppViewState {
   title?: string;
-  view: NavigableTabView;
+  view: AppViewType;
   album?: Album;
   song?: Track;
   artist?: Artist;
@@ -20,6 +21,8 @@ export interface TabViewState {
   /** Which Browse tab to open on. Only meaningful when `view` is "browse". */
   browseTab?: string;
 }
+
+export type TabViewState = AppViewState;
 
 export interface TabNavigationHistory {
   back: TabViewState[];

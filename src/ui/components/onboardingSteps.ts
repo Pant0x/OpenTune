@@ -8,24 +8,15 @@
 export type OnboardingStep =
   | "open-search"
   | "type-first"
-  | "play-first"
-  | "new-tab"
-  | "type-second"
-  | "play-second"
-  | "switch-back";
+  | "play-first";
 
 /**
- * The tour in order. Single source for both progress ("3 of 7") and step skipping, since
- * deriving that from a scattered set of transitions is how the two drift apart.
+ * The tour in order. Single source for both progress and step skipping.
  */
 export const ONBOARDING_STEPS: readonly OnboardingStep[] = [
   "open-search",
   "type-first",
   "play-first",
-  "new-tab",
-  "type-second",
-  "play-second",
-  "switch-back",
 ];
 
 export function nextOnboardingStep(step: OnboardingStep): OnboardingStep | null {

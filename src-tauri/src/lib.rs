@@ -1625,7 +1625,14 @@ fn close_or_hide_main_window(app: &tauri::AppHandle) {
         eprintln!("[internal][tauri][info] main window hidden to tray");
         return;
     }
-    app.exit(0);
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("os-close-requested", ());
+    }
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        app_handle.exit(0);
+    });
 }
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {

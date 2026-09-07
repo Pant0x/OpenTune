@@ -4,7 +4,7 @@ import {
   readPlaybackSettings,
   savePlaybackSettings,
 } from "../../player/playbackSettings";
-import { tabManager } from "../../player/playerStore";
+import { playerController } from "../../player/playerStore";
 
 /**
  * The two settings that govern how one track becomes the next.
@@ -42,13 +42,13 @@ export function setCrossfadeSec(seconds: number): void {
   const clamped = Math.min(MAX_CROSSFADE_SEC, Math.max(0, Math.round(seconds)));
   savePlaybackSettings({ ...readPlaybackSettings(), crossfadeSec: clamped });
   // Every tab has its own player, and each keeps the setting on itself.
-  tabManager.applyPlaybackSettings({ ...readPlaybackSettings(), crossfadeSec: clamped });
+  playerController.applyPlaybackSettings({ ...readPlaybackSettings(), crossfadeSec: clamped });
   announce();
 }
 
 export function setGaplessEnabled(enabled: boolean): void {
   savePlaybackSettings({ ...readPlaybackSettings(), gaplessEnabled: enabled });
-  tabManager.applyPlaybackSettings({ ...readPlaybackSettings(), gaplessEnabled: enabled });
+  playerController.applyPlaybackSettings({ ...readPlaybackSettings(), gaplessEnabled: enabled });
   announce();
 }
 
