@@ -1,5 +1,5 @@
 import type { DataSource } from "../datasource/DataSource";
-import type { SearchResults, Track } from "../datasource/types";
+import type { SearchCategory, SearchResults, Track } from "../datasource/types";
 
 export class SearchController {
   constructor(private readonly dataSource: DataSource) {}
@@ -19,6 +19,14 @@ export class SearchController {
       onUpdate?.({ artists: [], tracks: items, albums: [], playlists: [] });
     });
     return { artists: [], tracks, albums: [], playlists: [] };
+  }
+
+  async searchCategory(query: string, category: SearchCategory): Promise<SearchResults> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery || !this.dataSource.searchCategory) {
+      return { artists: [], tracks: [], albums: [], playlists: [] };
+    }
+    return this.dataSource.searchCategory(normalizedQuery, category);
   }
 
   async searchTracks(query: string, onUpdate?: (tracks: Track[]) => void): Promise<Track[]> {

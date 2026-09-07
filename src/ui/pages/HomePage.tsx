@@ -94,6 +94,38 @@ function splitMixedShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
   return result;
 }
 
+function uniqueById<T extends { id?: string }>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (!item.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
+interface HomeSectionConfig {
+  key: string;
+  title: string;
+  query: string;
+  type: "song" | "album" | "playlist";
+}
+
+const FEATURED_HOME_SECTIONS: HomeSectionConfig[] = [
+  { key: "quick-picks", title: "Quick picks", query: "trending top songs hits", type: "song" },
+  { key: "trending-songs", title: "Trending songs for you", query: "trending top songs hits", type: "song" },
+  { key: "new-releases", title: "New releases", query: "new releases albums", type: "album" },
+  { key: "featured-playlists", title: "Featured playlists for you", query: "featured playlists today hits", type: "playlist" },
+  { key: "mixed-for-you", title: "Mixed for you", query: "My Mix Supermix Chill Mix Energy Mix playlist", type: "playlist" },
+  { key: "albums-for-you", title: "Albums for you", query: "popular recommended albums", type: "album" },
+  { key: "daily-discover", title: "Your daily discover", query: "discover weekly daily mix songs", type: "song" },
+  { key: "forgotten-favorites", title: "Forgotten favorites", query: "forgotten favorites nostalgic hits", type: "song" },
+  { key: "from-community", title: "From community", query: "community playlists trending fan", type: "playlist" },
+  { key: "covers-remixes", title: "Covers and remixes", query: "acoustic cover remix slowed reverb", type: "song" },
+  { key: "long-listens", title: "Long listens", query: "extended mix lofi live dj set", type: "song" },
+];
+
 export function HomePage({
   tabId: _tabId,
   playerController,
@@ -122,10 +154,16 @@ export function HomePage({
       }
 
       try {
-        const homePage = await libraryController.getBrowsePage("home");
+        const [homePage, ...sectionResults] = await Promise.all([
+          libraryController.getBrowsePage("home").catch(() => null),
+          ...FEATURED_HOME_SECTIONS.map((sec) =>
+            searchController.searchCategory(sec.query, sec.type).catch(() => null)
+          ),
+        ]);
+
         if (!active) return;
 
-        const ytShelves = splitMixedShelves(homePage.shelves).filter((s) => {
+        const ytShelves = (homePage ? splitMixedShelves(homePage.shelves) : []).filter((s) => {
           const lower = s.title.toLowerCase();
           return (
             !lower.includes("music video") &&
@@ -134,39 +172,100 @@ export function HomePage({
           );
         });
 
-        const displayable = ytShelves.filter(
-          (s) =>
-            s.tracks.length > 0 ||
-            s.albums.length > 0 ||
-            s.playlists.length > 0 ||
-            s.artists.length > 0,
-        );
+        const usedYtIndices = new Set<number>();
+        const finalShelves: BrowseShelf[] = [];
 
-        if (displayable.length > 0) {
-          cachedRealHomeShelves = displayable;
-          setHomeShelves(displayable);
-        } else if (!cachedRealHomeShelves || cachedRealHomeShelves.length === 0) {
-          // Fallback if YouTube Music returned empty feed (e.g. offline)
-          const fallbackTracks = await searchController.searchTracks("top hits popular songs").catch(() => []);
-          if (fallbackTracks.length > 0 && active) {
-            const fallbackShelf: BrowseShelf = {
-              title: "Quick picks",
-              tracks: fallbackTracks.slice(0, 20),
-              albums: [],
-              playlists: [],
-              artists: [],
-              links: [],
-            };
-            cachedRealHomeShelves = [fallbackShelf];
-            setHomeShelves([fallbackShelf]);
+        for (let i = 0; i < FEATURED_HOME_SECTIONS.length; i++) {
+          const sec = FEATURED_HOME_SECTIONS[i];
+          const searchRes = sectionResults[i];
+
+          const lowerSec = sec.title.toLowerCase();
+          const matchIdx = ytShelves.findIndex((ys, idx) => {
+            if (usedYtIndices.has(idx)) return false;
+            const lowerY = ys.title.toLowerCase();
+            return (
+              lowerY === lowerSec ||
+              lowerY.includes(lowerSec) ||
+              (lowerSec.includes("quick pick") && lowerY.includes("quick pick")) ||
+              (lowerSec.includes("trending") && (lowerY.includes("trending") || lowerY.includes("popular"))) ||
+              (lowerSec.includes("new release") && lowerY.includes("new release")) ||
+              (lowerSec.includes("featured playlist") && (lowerY.includes("featured playlist") || lowerY.includes("today's hit"))) ||
+              (lowerSec.includes("mixed for you") && (lowerY.includes("mixed") || lowerY.includes("mix"))) ||
+              (lowerSec.includes("albums for you") && lowerY.includes("album")) ||
+              (lowerSec.includes("forgotten") && (lowerY.includes("forgotten") || lowerY.includes("listen again"))) ||
+              (lowerSec.includes("community") && lowerY.includes("community"))
+            );
+          });
+
+          const matchingYt = matchIdx >= 0 ? ytShelves[matchIdx] : null;
+          if (matchIdx >= 0) usedYtIndices.add(matchIdx);
+
+          if (sec.type === "song") {
+            const combined = uniqueById([
+              ...(matchingYt?.tracks ?? []),
+              ...(searchRes?.tracks ?? []),
+            ]);
+            if (combined.length > 0) {
+              finalShelves.push({
+                title: sec.title,
+                tracks: combined.slice(0, 32),
+                albums: [],
+                playlists: [],
+                artists: [],
+                links: matchingYt?.links ?? [],
+              });
+            }
+          } else if (sec.type === "album") {
+            const combined = uniqueById([
+              ...(matchingYt?.albums ?? []),
+              ...(searchRes?.albums ?? []),
+            ]);
+            if (combined.length > 0) {
+              finalShelves.push({
+                title: sec.title,
+                tracks: [],
+                albums: combined.slice(0, 24),
+                playlists: [],
+                artists: [],
+                links: matchingYt?.links ?? [],
+              });
+            }
+          } else if (sec.type === "playlist") {
+            const combined = uniqueById([
+              ...(matchingYt?.playlists ?? []),
+              ...(searchRes?.playlists ?? []),
+            ]);
+            if (combined.length > 0) {
+              finalShelves.push({
+                title: sec.title,
+                tracks: [],
+                albums: [],
+                playlists: combined.slice(0, 24),
+                artists: [],
+                links: matchingYt?.links ?? [],
+              });
+            }
           }
         }
-      } catch {
-        // Retain existing cached shelves on error
-      } finally {
-        if (active) {
-          setIsLoadingHomeShelves(false);
+
+        // Add any remaining authentic YouTube Music shelves not matched above
+        for (let idx = 0; idx < ytShelves.length; idx++) {
+          if (!usedYtIndices.has(idx)) {
+            const s = ytShelves[idx];
+            if (s.tracks.length > 0 || s.albums.length > 0 || s.playlists.length > 0 || s.artists.length > 0) {
+              finalShelves.push(s);
+            }
+          }
         }
+
+        if (finalShelves.length > 0) {
+          cachedRealHomeShelves = finalShelves;
+          setHomeShelves(finalShelves);
+        }
+      } catch {
+        // Retain existing cached shelves
+      } finally {
+        if (active) setIsLoadingHomeShelves(false);
       }
     }
 
@@ -197,34 +296,38 @@ export function HomePage({
     setIsLoadingMood(true);
     try {
       if (chip.query) {
-        const results = await searchController.search(chip.query);
+        const [tracksRes, albumsRes, playlistsRes] = await Promise.all([
+          searchController.searchCategory(chip.query, "song").catch(() => null),
+          searchController.searchCategory(chip.query, "album").catch(() => null),
+          searchController.searchCategory(chip.query, "playlist").catch(() => null),
+        ]);
         const shelves: BrowseShelf[] = [];
-        if (results.tracks.length > 0) {
+        if (tracksRes && tracksRes.tracks.length > 0) {
           shelves.push({
             title: `${chip.label} — Top Songs`,
-            tracks: results.tracks,
+            tracks: tracksRes.tracks.slice(0, 32),
             albums: [],
             playlists: [],
             artists: [],
             links: [],
           });
         }
-        if (results.albums.length > 0) {
+        if (albumsRes && albumsRes.albums.length > 0) {
           shelves.push({
             title: `${chip.label} — Albums`,
             tracks: [],
-            albums: results.albums,
+            albums: albumsRes.albums.slice(0, 24),
             playlists: [],
             artists: [],
             links: [],
           });
         }
-        if (results.playlists.length > 0) {
+        if (playlistsRes && playlistsRes.playlists.length > 0) {
           shelves.push({
             title: `${chip.label} — Playlists`,
             tracks: [],
             albums: [],
-            playlists: results.playlists,
+            playlists: playlistsRes.playlists.slice(0, 24),
             artists: [],
             links: [],
           });
