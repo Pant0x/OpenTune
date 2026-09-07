@@ -63,7 +63,6 @@ import {
   type AudioQuality,
 } from "../../internal/audioQuality";
 import {
-  usesAuthenticatedStreaming,
   usesYouTubeScrobbling,
 } from "../../ui/settings/youtubeAccount";
 import { usesRustAudioEngine } from "../../ui/settings/audioEngine";
@@ -6429,52 +6428,12 @@ export class YouTubeMusicDataSource extends DataSource {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
 
     const targetId = await this.resolveTopicSongTargetId(track);
-
-    for (const label of ["music", "web", "download"] as ClientLabel[]) {
-      try {
-        const yt = await this.getClient(label);
-        let url: string | undefined;
-        try {
-          const format = await yt.getStreamingData(targetId, { type: "audio", quality: "best" });
-          url = this.withSessionClientVersion((format as any).url as string, yt);
-        } catch {
-          const resolved = await this.resolveStream({ ...track, id: targetId }, "high", [label]);
-          url = resolved.url;
-        }
-
-        if (!url) {
-          throw new Error("YouTube.js returned an empty stream URL.");
-        }
-
-        logInternalInfo("YouTubeMusicDataSource.getStreamUrl success", {
-          trackId: targetId,
-          client: label,
-          urlLength: url.length,
-        });
-
-        return url;
-      } catch (error) {
-        logInternalWarn("YouTubeMusicDataSource.getStreamUrl client failed", {
-          trackId: targetId,
-          client: label,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    try {
-      const resolved = await this.resolveStream({ ...track, id: targetId }, "normal", ["music", "web", "download"]);
-      if (resolved.url) return resolved.url;
-    } catch {
-      // ignore
-    }
-
-    logInternalError(
-      "YouTubeMusicDataSource.getStreamUrl failed",
-      new Error("No YouTube client returned a playable audio URL."),
-      { trackId: targetId },
+    const resolved = await this.resolveStream(
+      { ...track, id: targetId },
+      "high",
+      ["download", "music", "web"],
     );
-    throw new Error("Unable to resolve a playable YouTube audio stream.");
+    return resolved.url;
   }
 
   /**
@@ -6491,6 +6450,7 @@ export class YouTubeMusicDataSource extends DataSource {
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
     let streamUrl: string | null = null;
     let streamMimeType = "audio/mp4";
+    let winningClient: ClientLabel | null = null;
 
     /*
      * The walk itself holds no policy — the order is handed in. Whichever client comes first is
@@ -6588,6 +6548,7 @@ export class YouTubeMusicDataSource extends DataSource {
         } else {
           await resolveWithClient();
         }
+        winningClient = label;
         break;
       } catch (error) {
         logInternalWarn("YouTubeMusicDataSource.getStreamData client failed", {
@@ -6605,25 +6566,21 @@ export class YouTubeMusicDataSource extends DataSource {
     return {
       url: streamUrl,
       mimeType: streamMimeType,
-      cookie: this.musicCookie ?? undefined,
+      cookie: winningClient === "music" ? (this.musicCookie ?? undefined) : undefined,
     };
   }
 
   /**
    * Resolves a URL for *playback*.
    *
-   * The only place the authenticated-streaming preference is read. On, the signed-in music
-   * client goes first — the one a Premium entitlement could be read from, and the one proven to
-   * serve whole files without a PO token. Off keeps the anonymous attested client in front,
-   * which is the long-standing behaviour.
+   * The anonymous attested client goes first because that is the only client whose URL is
+   * ungated past 1 MiB with a video-bound PO token. Music and web are fallbacks.
    */
   async resolveStreamUrl(
     track: Track,
     quality: AudioQuality = getStreamingQuality(),
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
-    const order: ClientLabel[] = usesAuthenticatedStreaming()
-      ? ["music", "download", "web"]
-      : ["download", "music", "web"];
+    const order: ClientLabel[] = ["download", "music", "web"];
     const targetId = await this.resolveTopicSongTargetId(track);
     return this.resolveStream({ ...track, id: targetId }, quality, order);
   }
@@ -7248,7 +7205,7 @@ export class YouTubeMusicDataSource extends DataSource {
     const { url, mimeType, cookie } = await this.resolveStream(
       { ...track, id: targetId },
       "high",
-      ["music", "web", "download"],
+      ["download", "music", "web"],
     );
     logInternalInfo("YouTubeMusicDataSource.getRustStreamData resolved", {
       trackId: targetId,
