@@ -791,14 +791,21 @@ useMediaSession(playerState, playerController);
     const tabId = tabManager.getActivePlayerId();
     if (!tabId) return;
 
-    setTabs((prevTabs) =>
-      prevTabs.map((tab) =>
-        tab.id === tabId && tab.view !== "settings"
-          ? { ...tab, title: playerState.currentTrack?.title }
-          : tab
-      )
-    );
-  }, [playerState.currentTrack, playerState.status]);
+    setTabs((prevTabs) => {
+      let changed = false;
+      const nextTabs = prevTabs.map((tab) => {
+        if (tab.id === tabId && tab.view !== "settings") {
+          const nextTitle = playerState.currentTrack?.title;
+          if (nextTitle && tab.title !== nextTitle) {
+            changed = true;
+            return { ...tab, title: nextTitle };
+          }
+        }
+        return tab;
+      });
+      return changed ? nextTabs : prevTabs;
+    });
+  }, [playerState.currentTrack?.title]);
 
   useEffect(() => {
     if (!playerState.currentTrack && playerUIState.isLyricsOpen) {

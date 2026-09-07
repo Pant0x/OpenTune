@@ -1,23 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { Album, Artist, BrowseShelf, Playlist, Track } from "../../datasource/types";
+import type { Album, Artist, BrowseShelf, Playlist } from "../../datasource/types";
 import type { LibraryController, LibraryState } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import type { SearchController } from "../../player/SearchController";
 import { BrowseShelves } from "../components/BrowseShelves";
 import type { HomeDestinationHandlers } from "../components/HomeDestinations";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
-import { usePlayHistory } from "../../player/playHistory";
 import { AlbumGridSkeleton } from "../components/Skeleton";
-
-const FALLBACK_QUERIES = [
-  "new music",
-  "popular songs",
-  "indie mix",
-  "electronic mix",
-  "late night music",
-  "discover weekly",
-];
 
 interface HomeMoodChip {
   id: string;
@@ -39,31 +29,8 @@ const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "workout", label: "Workout", query: "workout gym motivation pump up" },
 ];
 
-const suggestionCache = new Map<string, Track[]>();
-const suggestionLoads = new Map<string, Promise<Track[]>>();
 const cachedMoodShelves = new Map<string, BrowseShelf[]>();
 let cachedRealHomeShelves: BrowseShelf[] | null = null;
-const EMPTY_TRACKS: Track[] = [];
-
-const MAX_SUGGESTION_ENTRIES = 20;
-
-function readSuggestionCache(key: string): Track[] | undefined {
-  const hit = suggestionCache.get(key);
-  if (hit === undefined) return undefined;
-  suggestionCache.delete(key);
-  suggestionCache.set(key, hit);
-  return hit;
-}
-
-function writeSuggestionCache(key: string, tracks: Track[]): void {
-  suggestionCache.delete(key);
-  suggestionCache.set(key, tracks);
-
-  for (const coldest of [...suggestionCache.keys()]) {
-    if (suggestionCache.size <= MAX_SUGGESTION_ENTRIES) break;
-    suggestionCache.delete(coldest);
-  }
-}
 
 interface HomePageProps {
   tabId: string;
@@ -76,19 +43,6 @@ interface HomePageProps {
   onOpenAlbum?: (album: Album) => void;
   onOpenArtist?: (artist: Artist) => void;
   onOpenPlaylist?: (playlist: Playlist) => void;
-}
-
-function shuffle<T>(items: readonly T[]): T[] {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
-  }
-  return result;
-}
-
-function uniqueTracks(tracks: readonly Track[]): Track[] {
-  return [...new Map(tracks.map((track) => [track.id, track])).values()];
 }
 
 function splitMixedShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
@@ -140,30 +94,8 @@ function splitMixedShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
   return result;
 }
 
-interface StaticSectionDef {
-  key: string;
-  title: string;
-  query: string;
-  type: "tracks" | "albums" | "playlists";
-}
-
-const STATIC_HOME_SECTIONS: StaticSectionDef[] = [
-  { key: "quick-picks", title: "Quick picks", query: "", type: "tracks" },
-  { key: "new-releases", title: "New releases", query: "new releases albums", type: "albums" },
-  { key: "albums-for-you", title: "Albums for you", query: "popular recommended albums", type: "albums" },
-  { key: "forgotten-favorites", title: "Forgotten favorites", query: "forgotten favorites nostalgic hits", type: "tracks" },
-  { key: "from-community", title: "From community", query: "community playlists trending fan", type: "playlists" },
-  { key: "featured-playlists", title: "Featured playlists for you", query: "featured playlists today hits", type: "playlists" },
-  { key: "mixed-for-you", title: "Mixed for you", query: "My Mix Supermix Chill Mix Energy Mix playlist", type: "playlists" },
-  { key: "trending-songs", title: "Trending songs for you", query: "trending top songs hits", type: "tracks" },
-  { key: "daily-discover", title: "Your daily discover", query: "discover weekly daily mix songs", type: "tracks" },
-  { key: "covers-remixes", title: "Covers and remixes", query: "acoustic cover remix slowed reverb", type: "tracks" },
-  { key: "long-listens", title: "Long listens", query: "extended mix lofi live dj set", type: "tracks" },
-  { key: "heard-shorts", title: "Heard in Shorts", query: "viral shorts songs tiktok sounds", type: "tracks" },
-];
-
 export function HomePage({
-  tabId,
+  tabId: _tabId,
   playerController,
   libraryController,
   libraryState,
@@ -179,251 +111,66 @@ export function HomePage({
   const [moodShelves, setMoodShelves] = useState<BrowseShelf[] | null>(null);
   const [isLoadingMood, setIsLoadingMood] = useState(false);
   const [homeShelves, setHomeShelves] = useState<BrowseShelf[]>(() => cachedRealHomeShelves ?? []);
-  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(() => !cachedRealHomeShelves);
+  const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(() => !cachedRealHomeShelves || cachedRealHomeShelves.length === 0);
 
-  const recentlyPlayed = useMemo(
-    () => libraryState.library?.recentlyPlayed ?? EMPTY_TRACKS,
-    [libraryState.library],
-  );
-  const recentTrackKey = recentlyPlayed.map((track) => track.id).join(":");
-  const suggestionCacheKey = recentlyPlayed.length > 0
-    ? `${tabId}:recent:${recentTrackKey}`
-    : `${tabId}:${libraryState.status}:empty`;
-  const [suggestions, setSuggestions] = useState<Track[]>(
-    () => readSuggestionCache(suggestionCacheKey) ?? [],
-  );
-  const loadIdRef = useRef(0);
-
-  const playHistory = usePlayHistory();
-  const recentPlays = useMemo(
-    () => uniqueTracks([...playHistory.map((entry) => entry.track), ...recentlyPlayed]),
-    [playHistory, recentlyPlayed],
-  );
-
-  useEffect(() => {
-    const loadId = ++loadIdRef.current;
-
-    let loadPromise = suggestionLoads.get(suggestionCacheKey);
-    if (!loadPromise) {
-      loadPromise = (async () => {
-        const likedSongs = libraryState.library?.likedSongs ?? [];
-        const candidatePool = [...recentlyPlayed, ...likedSongs];
-        const seeds = shuffle(candidatePool).slice(0, 4);
-        let loaded: Track[] = [];
-
-        if (seeds.length > 0) {
-          const recommendationSets = await Promise.allSettled(
-            seeds.map((seed) => libraryController.getRecommendations(seed)),
-          );
-          loaded = recommendationSets.flatMap((result) =>
-            result.status === "fulfilled" ? result.value : []
-          );
-        }
-
-        if (loaded.length < 12) {
-          const query = FALLBACK_QUERIES[Math.floor(Math.random() * FALLBACK_QUERIES.length)];
-          try {
-            loaded.push(...await searchController.searchTracks(query));
-          } catch {
-            // Recent tracks fallback
-          }
-        }
-
-        return shuffle(uniqueTracks([...loaded, ...recentlyPlayed])).slice(0, 36);
-      })();
-      suggestionLoads.set(suggestionCacheKey, loadPromise);
-    }
-
-    void loadPromise.then((loadedSuggestions) => {
-      writeSuggestionCache(suggestionCacheKey, loadedSuggestions);
-      suggestionLoads.delete(suggestionCacheKey);
-      if (loadId !== loadIdRef.current) return;
-      setSuggestions(loadedSuggestions);
-    });
-  }, [
-    libraryController,
-    recentlyPlayed,
-    searchController,
-    suggestionCacheKey,
-    libraryState.library,
-  ]);
-
-  // Load and hydrate all 16 static sections
   useEffect(() => {
     let active = true;
 
-    async function loadAllStaticHomeSections() {
-      if (cachedRealHomeShelves && cachedRealHomeShelves.length > 0) {
-        setHomeShelves(cachedRealHomeShelves);
-        setIsLoadingHomeShelves(false);
-      } else {
+    async function loadHomeFeed() {
+      if (!cachedRealHomeShelves || cachedRealHomeShelves.length === 0) {
         setIsLoadingHomeShelves(true);
       }
 
       try {
-        const homePage = await libraryController.getBrowsePage("home").catch(() => null);
-        const ytShelves = (homePage ? splitMixedShelves(homePage.shelves) : [])
-          .filter((s) => {
-            const lower = s.title.toLowerCase();
-            return !lower.includes("music video") && !lower.includes("recommended music video") && lower !== "videos";
-          });
-
-        const quickPicksTracks = suggestions.length > 0 ? suggestions : recentPlays;
-
-        // Map the 12 static sections to either a matching YouTube shelf or mark for search fallback
-        const initialShelves: (BrowseShelf | null)[] = new Array(STATIC_HOME_SECTIONS.length).fill(null);
-        const missingIndices: number[] = [];
-        const usedYtShelfIndices = new Set<number>();
-
-        for (let i = 0; i < STATIC_HOME_SECTIONS.length; i++) {
-          const sectionDef = STATIC_HOME_SECTIONS[i];
-
-          if (sectionDef.key === "quick-picks") {
-            const ytQuickPicksIndex = ytShelves.findIndex(
-              (s) =>
-                s.title.toLowerCase().includes("quick pick") ||
-                s.title.toLowerCase().includes("picks for you"),
-            );
-            if (ytQuickPicksIndex >= 0 && ytShelves[ytQuickPicksIndex].tracks.length >= 4) {
-              usedYtShelfIndices.add(ytQuickPicksIndex);
-              initialShelves[i] = {
-                title: sectionDef.title,
-                tracks: ytShelves[ytQuickPicksIndex].tracks.slice(0, 20),
-                albums: [],
-                playlists: [],
-                artists: [],
-                links: ytShelves[ytQuickPicksIndex].links,
-              };
-            } else {
-              initialShelves[i] = {
-                title: sectionDef.title,
-                tracks: quickPicksTracks.slice(0, 20),
-                albums: [],
-                playlists: [],
-                artists: [],
-                links: [],
-              };
-            }
-            continue;
-          }
-
-          const lowerKey = sectionDef.title.toLowerCase();
-          const existingYtShelfIndex = ytShelves.findIndex((s, idx) => {
-            if (usedYtShelfIndices.has(idx)) return false;
-            const lowerTitle = s.title.toLowerCase();
-            return (
-              lowerTitle === lowerKey ||
-              lowerTitle.includes(lowerKey) ||
-              (lowerKey.includes("new release") && lowerTitle.includes("new release")) ||
-              (lowerKey.includes("albums for you") && (lowerTitle.includes("albums for you") || (lowerTitle.includes("album") && !lowerTitle.includes("single")))) ||
-              (lowerKey.includes("forgotten") && (lowerTitle.includes("forgotten") || lowerTitle.includes("favorite") || lowerTitle.includes("listen again"))) ||
-              (lowerKey.includes("community") && lowerTitle.includes("community")) ||
-              (lowerKey.includes("featured playlist") && (lowerTitle.includes("featured playlist") || lowerTitle.includes("today's hit"))) ||
-              (lowerKey.includes("mixed for you") && (lowerTitle.includes("mixed for you") || lowerTitle.includes("mix"))) ||
-              (lowerKey.includes("trending") && (lowerTitle.includes("trending") || lowerTitle.includes("popular"))) ||
-              (lowerKey.includes("discover") && (lowerTitle.includes("discover") || lowerTitle.includes("daily"))) ||
-              (lowerKey.includes("cover") && (lowerTitle.includes("cover") || lowerTitle.includes("remix"))) ||
-              (lowerKey.includes("long listen") && lowerTitle.includes("long listen")) ||
-              (lowerKey.includes("shorts") && lowerTitle.includes("shorts"))
-            );
-          });
-
-          if (existingYtShelfIndex >= 0) {
-            const existingYtShelf = ytShelves[existingYtShelfIndex];
-            if (
-              existingYtShelf.tracks.length > 0 ||
-              existingYtShelf.albums.length > 0 ||
-              existingYtShelf.playlists.length > 0
-            ) {
-              usedYtShelfIndices.add(existingYtShelfIndex);
-              initialShelves[i] = {
-                title: sectionDef.title,
-                tracks: existingYtShelf.tracks,
-                albums: existingYtShelf.albums,
-                playlists: existingYtShelf.playlists,
-                artists: existingYtShelf.artists,
-                links: existingYtShelf.links,
-              };
-              continue;
-            }
-          }
-
-          if (sectionDef.query) {
-            missingIndices.push(i);
-          }
-        }
-
-        // Remaining YT shelves not matched to any of the 12 pinned sections
-        const extraYtShelves = ytShelves.filter((_, idx) => !usedYtShelfIndices.has(idx));
-
-        const getDisplayableShelves = (pinned: (BrowseShelf | null)[]) => {
-          const filled = pinned.filter((s): s is BrowseShelf => s !== null && (s.tracks.length > 0 || s.albums.length > 0 || s.playlists.length > 0));
-          return [...filled, ...extraYtShelves];
-        };
-
+        const homePage = await libraryController.getBrowsePage("home");
         if (!active) return;
-        const currentShelves = getDisplayableShelves(initialShelves);
-        if (currentShelves.length > 0) {
-          setHomeShelves(currentShelves);
-          setIsLoadingHomeShelves(false);
-        }
 
-        // Background pass: hydrate any missing pinned sections via search
-        if (missingIndices.length > 0) {
-          await Promise.allSettled(
-            missingIndices.map(async (secIdx) => {
-              const sec = STATIC_HOME_SECTIONS[secIdx];
-              try {
-                const res = await searchController.search(sec.query);
-                let shelf: BrowseShelf | null = null;
-                if (sec.type === "albums" && res.albums.length > 0) {
-                  shelf = {
-                    title: sec.title,
-                    tracks: [],
-                    albums: res.albums.slice(0, 20),
-                    playlists: [],
-                    artists: [],
-                    links: [],
-                  };
-                } else if (sec.type === "playlists" && res.playlists.length > 0) {
-                  shelf = {
-                    title: sec.title,
-                    tracks: [],
-                    albums: [],
-                    playlists: res.playlists.slice(0, 20),
-                    artists: [],
-                    links: [],
-                  };
-                } else if (res.tracks.length > 0) {
-                  shelf = {
-                    title: sec.title,
-                    tracks: res.tracks.slice(0, 20),
-                    albums: [],
-                    playlists: [],
-                    artists: [],
-                    links: [],
-                  };
-                }
-                if (shelf && active) {
-                  initialShelves[secIdx] = shelf;
-                  const updated = getDisplayableShelves(initialShelves);
-                  cachedRealHomeShelves = updated;
-                  setHomeShelves(updated);
-                }
-              } catch {
-                // Ignore search error for single shelf
-              }
-            })
+        const ytShelves = splitMixedShelves(homePage.shelves).filter((s) => {
+          const lower = s.title.toLowerCase();
+          return (
+            !lower.includes("music video") &&
+            !lower.includes("recommended music video") &&
+            lower !== "videos"
           );
+        });
+
+        const displayable = ytShelves.filter(
+          (s) =>
+            s.tracks.length > 0 ||
+            s.albums.length > 0 ||
+            s.playlists.length > 0 ||
+            s.artists.length > 0,
+        );
+
+        if (displayable.length > 0) {
+          cachedRealHomeShelves = displayable;
+          setHomeShelves(displayable);
+        } else if (!cachedRealHomeShelves || cachedRealHomeShelves.length === 0) {
+          // Fallback if YouTube Music returned empty feed (e.g. offline)
+          const fallbackTracks = await searchController.searchTracks("top hits popular songs").catch(() => []);
+          if (fallbackTracks.length > 0 && active) {
+            const fallbackShelf: BrowseShelf = {
+              title: "Quick picks",
+              tracks: fallbackTracks.slice(0, 20),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            };
+            cachedRealHomeShelves = [fallbackShelf];
+            setHomeShelves([fallbackShelf]);
+          }
         }
       } catch {
-        // Fallback
+        // Retain existing cached shelves on error
       } finally {
-        if (active) setIsLoadingHomeShelves(false);
+        if (active) {
+          setIsLoadingHomeShelves(false);
+        }
       }
     }
 
-    void loadAllStaticHomeSections();
+    void loadHomeFeed();
 
     return () => {
       active = false;
@@ -431,8 +178,6 @@ export function HomePage({
   }, [
     libraryController,
     searchController,
-    suggestions,
-    recentPlays,
     libraryState.status,
     libraryState.library?.account?.name,
   ]);
