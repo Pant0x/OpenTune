@@ -104,6 +104,9 @@ export function TrackContextMenuProvider({
   const [batchTracks, setBatchTracks] = useState<Track[] | null>(null);
   /** Playlists YouTube says already hold this song, as answered for the open picker. */
   const [remoteMembership, setRemoteMembership] = useState<ReadonlySet<string>>(NO_MEMBERSHIP);
+  const [isCreatingNewPlaylist, setIsCreatingNewPlaylist] = useState(false);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
+  const [isSubmittingNewPlaylist, setIsSubmittingNewPlaylist] = useState(false);
 
   const localPlaylists = useSyncExternalStore(
     subscribeToLocalPlaylists,
@@ -350,7 +353,40 @@ export function TrackContextMenuProvider({
     setError(null);
     setQuery("");
     setSelectedPlaylistIndex(null);
+    setIsCreatingNewPlaylist(false);
+    setNewPlaylistTitle("");
+    setIsSubmittingNewPlaylist(false);
     setIsPickerOpen(true);
+  };
+
+  const createAndAddToNewPlaylist = async () => {
+    const trimmed = newPlaylistTitle.trim();
+    if (!trimmed || !track || isSubmittingNewPlaylist) return;
+    setIsSubmittingNewPlaylist(true);
+    setError(null);
+    showPersistentToast("Creating playlist...");
+    try {
+      const selectedTrack = track;
+      const batch = batchTracks;
+      const trackIds = batch ? batch.map((t) => t.id) : [selectedTrack.id];
+      const isLocal = selectedTrack.source === "local";
+
+      await libraryController.createPlaylist(trimmed, {
+        local: isLocal,
+        trackIds,
+      });
+
+      setIsPickerOpen(false);
+      setIsCreatingNewPlaylist(false);
+      setNewPlaylistTitle("");
+      showToast(`Created and added to "${trimmed}"`);
+    } catch (createErr) {
+      logInternalError("TrackContextMenu: failed to create playlist", createErr);
+      setError(createErr instanceof Error ? createErr.message : "Unable to create playlist.");
+      showToast("Unable to create playlist.", 4000);
+    } finally {
+      setIsSubmittingNewPlaylist(false);
+    }
   };
 
   const removeFromPlaylist = async () => {
@@ -763,6 +799,60 @@ export function TrackContextMenuProvider({
                 aria-label="Find a playlist"
               />
             </label>
+
+            {/* Quick Create New Playlist Button / Inline Creator */}
+            {!isCreatingNewPlaylist ? (
+              <button
+                type="button"
+                onClick={() => setIsCreatingNewPlaylist(true)}
+                disabled={Boolean(addingPlaylistId) || isSubmittingNewPlaylist}
+                className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+              >
+                <PlaylistAddIcon size={16} aria-hidden="true" />
+                <span>Create new playlist</span>
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-lg bg-card p-2 border border-border/40 animate-in fade-in zoom-in-95 duration-100">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newPlaylistTitle}
+                  onChange={(e) => setNewPlaylistTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void createAndAddToNewPlaylist();
+                    if (e.key === "Escape") {
+                      setIsCreatingNewPlaylist(false);
+                      setNewPlaylistTitle("");
+                    }
+                  }}
+                  placeholder="Playlist name"
+                  aria-label="Playlist name"
+                  disabled={isSubmittingNewPlaylist}
+                  className="w-full min-w-0 rounded-md bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewPlaylist(false);
+                      setNewPlaylistTitle("");
+                    }}
+                    disabled={isSubmittingNewPlaylist}
+                    className="rounded-full px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void createAndAddToNewPlaylist()}
+                    disabled={isSubmittingNewPlaylist || !newPlaylistTitle.trim()}
+                    className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:scale-[1.02] active:scale-95 transition-transform disabled:opacity-50"
+                  >
+                    {isSubmittingNewPlaylist ? "Creating..." : "Create"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 

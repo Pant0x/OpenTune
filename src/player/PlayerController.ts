@@ -445,7 +445,12 @@ export class PlayerController {
             ...queuedTrack,
             durationSec: fetched.durationSec ?? queuedTrack.durationSec,
             artworkUrl: queuedTrack.artworkUrl ?? fetched.artworkUrl,
-            artists: queuedTrack.artists ?? fetched.artists,
+            artists: (queuedTrack.artists && queuedTrack.artists.length > 0) ? queuedTrack.artists : fetched.artists,
+            artist: (queuedTrack.artist && queuedTrack.artist !== "Unknown artist") ? queuedTrack.artist : fetched.artist,
+            year: queuedTrack.year ?? fetched.year,
+            releaseDate: queuedTrack.releaseDate ?? fetched.releaseDate,
+            viewCount: queuedTrack.viewCount ?? fetched.viewCount,
+            viewCountText: queuedTrack.viewCountText ?? fetched.viewCountText,
           }
         : fetched);
 
@@ -654,6 +659,8 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
       this.setState({ status: "playing", error: null });
       saveLastPlayedTrack(track);
+      // Immediately warm next track so standby deck is ready and Next skip is instant
+      this.warmNextTrack();
       logInternalInfo("PlayerController.playTrackById success", {
         trackId: track.id,
         title: track.title,
@@ -1017,8 +1024,9 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     });
     if (!nextTrack || nextTrack.id === this.state.currentTrack?.id) return;
     this.refillAutomaticQueue();
+    const isPreloaded = this.audioEngine.hasPreloaded(nextTrack.id);
     if (shouldResume) {
-      await this.playTrackById(nextTrack.id);
+      await this.playTrackById(nextTrack.id, undefined, true, isPreloaded, isPreloaded);
     } else {
       await this.loadTrack(nextTrack);
     }

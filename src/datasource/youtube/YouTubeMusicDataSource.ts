@@ -806,26 +806,31 @@ export class YouTubeMusicDataSource extends DataSource {
       || item.authors?.map((author) => author.name).filter(Boolean).join(", ")
       || item.author?.name
       || item.subtitle?.runs
-        ?.filter((run) => run.endpoint?.payload?.browseId?.startsWith("UC"))
+        ?.filter((run) => {
+          const bId = this.findBrowseId((run as any).endpoint) ?? this.findBrowseId((run as any).navigationEndpoint);
+          return (typeof bId === "string" && bId.startsWith("UC"))
+            || (run.endpoint as any)?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === "MUSIC_PAGE_TYPE_ARTIST";
+        })
         .map((run) => run.text)
         .filter(Boolean)
-        .join(", ")
-      || item.subtitle?.toString();
+        .join(", ");
 
     if (!raw && item.flex_columns && item.flex_columns.length > 1) {
-      for (let c = 1; c < item.flex_columns.length; c++) {
-        const col = item.flex_columns[c];
-        const runs = col?.title?.runs || [];
-        const artistRuns = runs.filter((r) => {
-          const bId = this.findBrowseId(r.endpoint) ?? this.findBrowseId(r.navigationEndpoint);
-          return (typeof bId === "string" && bId.startsWith("UC"))
-            || (r.endpoint as any)?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === "MUSIC_PAGE_TYPE_ARTIST";
-        });
-        if (artistRuns.length > 0) {
-          raw = artistRuns.map((r) => r.text).filter(Boolean).join(", ");
-          break;
-        }
+      // ONLY check column 1 (subtitle column) for artists, NEVER later columns which contain mixes/chips
+      const col = item.flex_columns[1];
+      const runs = col?.title?.runs || [];
+      const artistRuns = runs.filter((r) => {
+        const bId = this.findBrowseId((r as any).endpoint) ?? this.findBrowseId((r as any).navigationEndpoint);
+        return (typeof bId === "string" && bId.startsWith("UC"))
+          || (r.endpoint as any)?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === "MUSIC_PAGE_TYPE_ARTIST";
+      });
+      if (artistRuns.length > 0) {
+        raw = artistRuns.map((r) => r.text).filter(Boolean).join(", ");
       }
+    }
+
+    if (!raw) {
+      raw = item.subtitle?.toString();
     }
 
     const cleaned = this.cleanArtistNameCandidate(raw);
@@ -840,7 +845,7 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private getArtists(item: MusicItem): ArtistReference[] | undefined {
-    const toArtistReference = (value: unknown) => {
+    const toArtistReference = (value: unknown): ArtistReference => {
       const candidate = value as {
         name?: string;
         text?: string;
@@ -856,30 +861,56 @@ export class YouTubeMusicDataSource extends DataSource {
         name: this.cleanArtistNameCandidate(candidate.name ?? candidate.text ?? ""),
       };
     };
-    const flexRuns = (item.flex_columns ?? []).slice(1).flatMap((c) => c.title?.runs ?? []);
-    const candidates = [
-      ...(item.artists?.length ? item.artists : []),
-      ...(item.authors?.length ? item.authors : []),
-      ...(item.author ? [item.author] : []),
-      ...flexRuns,
-    ];
-    const artists = candidates
+
+    const dedupe = (list: ArtistReference[]): ArtistReference[] => {
+      const seen = new Set<string>();
+      const result: ArtistReference[] = [];
+      for (const a of list) {
+        const key = a.name.trim().toLowerCase();
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          result.push(a);
+        }
+      }
+      return result;
+    };
+
+    // Priority 1: Direct item.artists
+    if (item.artists && item.artists.length > 0) {
+      const parsed = item.artists
+        .map(toArtistReference)
+        .filter((a) => this.isValidArtistString(a.name));
+      if (parsed.length > 0) return dedupe(parsed);
+    }
+
+    // Priority 2: Direct item.authors
+    if (item.authors && item.authors.length > 0) {
+      const parsed = item.authors
+        .map(toArtistReference)
+        .filter((a) => this.isValidArtistString(a.name));
+      if (parsed.length > 0) return dedupe(parsed);
+    }
+
+    // Priority 3: Direct item.author
+    if (item.author) {
+      const parsed = toArtistReference(item.author);
+      if (this.isValidArtistString(parsed.name)) return [parsed];
+    }
+
+    // Priority 4: ONLY subtitle column (flex_columns[1]), never subsequent recommendation columns
+    const subtitleRuns = item.flex_columns?.[1]?.title?.runs ?? item.subtitle?.runs ?? [];
+    const fromSubtitle = subtitleRuns
+      .filter((r) => {
+        const bId = this.findBrowseId((r as any).endpoint) ?? this.findBrowseId((r as any).navigationEndpoint);
+        return (typeof bId === "string" && bId.startsWith("UC"))
+          || (r.endpoint as any)?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === "MUSIC_PAGE_TYPE_ARTIST";
+      })
       .map(toArtistReference)
-      .filter((artist) => artist.id.startsWith("UC") && this.isValidArtistString(artist.name));
+      .filter((a) => this.isValidArtistString(a.name));
 
-    if (artists.length > 0) return artists;
+    if (fromSubtitle.length > 0) return dedupe(fromSubtitle);
 
-    const unlinkedArtists = candidates
-      .map(toArtistReference)
-      .filter((artist) => this.isValidArtistString(artist.name));
-
-    if (unlinkedArtists.length > 0) return unlinkedArtists;
-
-    const runs = item.subtitle?.runs ?? [];
-    const fromRuns = runs
-      .map(toArtistReference)
-      .filter((artist) => artist.id.startsWith("UC") && this.isValidArtistString(artist.name));
-    return fromRuns.length > 0 ? fromRuns : undefined;
+    return undefined;
   }
 
   private findBrowseId(root: unknown): string | undefined {
@@ -1867,6 +1898,28 @@ export class YouTubeMusicDataSource extends DataSource {
     await setCachedJson(LIBRARY_CACHE_KEY, {
       ...cachedLibrary,
       albums,
+    });
+  }
+
+  private async updateCachedPlaylistSaved(playlist: Playlist, saved: boolean): Promise<void> {
+    const cachedLibrary = await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
+    if (!cachedLibrary) return;
+
+    const normalizedId = playlist.id.replace(/^VL/, "");
+    const playlists = saved
+      ? [
+          { ...playlist, isSaved: true, isEditable: playlist.isEditable ?? false },
+          ...cachedLibrary.playlists.filter(
+            (item) => item.id.replace(/^VL/, "") !== normalizedId,
+          ),
+        ]
+      : cachedLibrary.playlists.filter(
+          (item) => item.id.replace(/^VL/, "") !== normalizedId,
+        );
+
+    await setCachedJson(LIBRARY_CACHE_KEY, {
+      ...cachedLibrary,
+      playlists,
     });
   }
 
@@ -3768,7 +3821,9 @@ export class YouTubeMusicDataSource extends DataSource {
       try {
         const spMeta = await SpotifyService.getAlbumMetadata(album.id);
         if (spMeta && spMeta.tracks.length > 0) {
-          const spYear = spMeta.releaseDate?.match(/^\d{4}/)?.[0];
+          const spYear = typeof spMeta.releaseDate === "string"
+            ? spMeta.releaseDate.match(/^\d{4}/)?.[0]
+            : undefined;
           return spMeta.tracks.map((st, idx) => ({
             id: `spotify:${st.id}`,
             title: st.title,
@@ -4919,6 +4974,7 @@ export class YouTubeMusicDataSource extends DataSource {
         playlistId,
         saved,
       });
+      await this.updateCachedPlaylistSaved(playlist, saved);
       return;
     } catch (directError) {
       logInternalWarn("YouTubeMusicDataSource.setPlaylistSaved direct like command failed", {
@@ -4947,7 +5003,10 @@ export class YouTubeMusicDataSource extends DataSource {
         const rawToggle = this.findRawLibraryToggle(response);
         if (!rawToggle) continue;
 
-        if (rawToggle.isToggled === saved) return;
+        if (rawToggle.isToggled === saved) {
+          await this.updateCachedPlaylistSaved(playlist, saved);
+          return;
+        }
         const endpoint = saved
           ? rawToggle.defaultServiceEndpoint
           : rawToggle.toggledServiceEndpoint;
@@ -4968,6 +5027,7 @@ export class YouTubeMusicDataSource extends DataSource {
         if (updateResponse.success === false) {
           throw new Error(`Playlist library update returned HTTP ${updateResponse.status_code}.`);
         }
+        await this.updateCachedPlaylistSaved(playlist, saved);
         return;
       }
 
@@ -4976,7 +5036,10 @@ export class YouTubeMusicDataSource extends DataSource {
       if (!toggle) {
         throw new Error("YouTube Music did not return a library command for this playlist.");
       }
-      if (toggle.isToggled === saved) return;
+      if (toggle.isToggled === saved) {
+        await this.updateCachedPlaylistSaved(playlist, saved);
+        return;
+      }
 
       const endpoint = saved ? toggle.endpoint : toggle.toggledEndpoint;
       if (!endpoint) {
@@ -4995,6 +5058,7 @@ export class YouTubeMusicDataSource extends DataSource {
       if (response.success === false) {
         throw new Error(`Playlist library update returned HTTP ${response.status_code}.`);
       }
+      await this.updateCachedPlaylistSaved(playlist, saved);
     } catch (error) {
       logInternalError("YouTubeMusicDataSource.setPlaylistSaved failed", error, {
         playlistId,
@@ -5813,6 +5877,21 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     const artwork = selectArtworkUrl(collectArtworkCandidates(trackBasic?.thumbnail));
+    const rawUploadDate = (trackBasic as any)?.upload_date ?? (trackBasic as any)?.publish_date;
+    let year: number | undefined;
+    if (rawUploadDate && typeof rawUploadDate === "string") {
+      const match = rawUploadDate.match(/\b(19\d{2}|20\d{2})\b/);
+      if (match) year = parseInt(match[1], 10);
+    }
+    const viewCount = typeof (trackBasic as any)?.view_count === "number"
+      ? (trackBasic as any).view_count
+      : typeof (trackBasic as any)?.views === "number"
+        ? (trackBasic as any).views
+        : undefined;
+    const viewCountText = viewCount
+      ? `${viewCount.toLocaleString()} plays`
+      : undefined;
+
     const track: Track = {
       id: trackIdToUse,
       source: "youtube",
@@ -5823,6 +5902,10 @@ export class YouTubeMusicDataSource extends DataSource {
         : undefined,
       durationSec: trackBasic?.duration,
       artworkUrl: artwork,
+      year: year ? String(year) : undefined,
+      releaseDate: typeof rawUploadDate === "string" ? rawUploadDate : undefined,
+      viewCount,
+      viewCountText,
     };
 
     logInternalInfo("YouTubeMusicDataSource.getTrack success", {

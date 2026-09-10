@@ -279,7 +279,7 @@ export function Layout({
           {ambientArtwork ? (
             <span
               key={ambientArtwork}
-              className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,background_25%,transparent)]"
+              className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,background_25%,transparent)] [transform:translateZ(0)] will-change-transform"
               aria-hidden="true"
               data-fx="ambient"
             >
@@ -293,7 +293,7 @@ export function Layout({
                 well past the clipped box on three sides, so the scale was adding composited
                 area to hide edges that were never reachable.
               */}
-              <span className="absolute -inset-x-1/4 -top-1/2 bottom-0 opacity-40 blur-[32px] saturate-[2]">
+              <span className="absolute -inset-x-1/4 -top-1/2 bottom-0 opacity-40 blur-[32px] saturate-[2] [transform:translateZ(0)]">
                 {/*
                   Deliberately the smallest variant: this is blurred and dropped to 40% opacity,
                   so nothing above 120px survives to be seen — it only costs texture.
@@ -313,7 +313,7 @@ export function Layout({
               <div
                 ref={pageContentRef}
                 className={cn(
-                  "h-full overflow-y-auto overscroll-contain rounded-xl pb-28 scroll-pb-28",
+                  "h-full overflow-y-auto overscroll-contain rounded-xl pb-28 scroll-pb-28 [will-change:scroll-position] transform-gpu",
                   fullBleedContent ? "p-0" : "px-4 pt-1",
                 )}
                 data-page-scroll-root

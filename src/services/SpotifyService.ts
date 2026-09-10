@@ -749,7 +749,10 @@ class SpotifyServiceManager {
           return true;
         });
 
-      let releaseDate: string | undefined = entity?.releaseDate;
+      let releaseDate: string | undefined =
+        typeof entity?.releaseDate === "string"
+          ? entity.releaseDate
+          : (entity?.releaseDate?.isoString || entity?.releaseDate?.text || (typeof entity?.releaseDate?.year === "number" ? String(entity.releaseDate.year) : undefined));
       if (!releaseDate) {
         const datePublishedMatch = pageHtml.match(/"datePublished":\s*"([^"]+)"/);
         if (datePublishedMatch) {
@@ -761,7 +764,7 @@ class SpotifyServiceManager {
       }
 
       let formattedReleaseDate: string | undefined;
-      if (releaseDate) {
+      if (typeof releaseDate === "string" && releaseDate.length > 0) {
         try {
           const parts = releaseDate.split("T")[0].split("-");
           if (parts.length >= 2) {

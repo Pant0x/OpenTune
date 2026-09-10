@@ -700,7 +700,6 @@ export class LibraryController {
 
     try {
       await this.dataSource.setAlbumSaved(album, saved);
-      void this.refresh();
     } catch (error) {
       this.setState({ library: previousLibrary });
       throw error;
@@ -1043,7 +1042,6 @@ export class LibraryController {
 
     try {
       await this.dataSource.setPlaylistSaved(playlist, saved);
-      void this.refresh();
     } catch (error) {
       this.setState({ library: previousLibrary });
       throw error;

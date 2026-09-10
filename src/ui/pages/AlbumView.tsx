@@ -376,8 +376,13 @@ export function AlbumView({
   }, [album?.id, tracks.length > 0]);
 
   const formattedMonthYear = useMemo(() => {
-    const rawDate = album?.releaseDate || spotifyAlbumMeta?.releaseDate;
-    if (rawDate) {
+    const rawDate =
+      typeof album?.releaseDate === "string"
+        ? album.releaseDate
+        : typeof spotifyAlbumMeta?.releaseDate === "string"
+          ? spotifyAlbumMeta.releaseDate
+          : (spotifyAlbumMeta?.releaseDate as any)?.isoString || (spotifyAlbumMeta?.releaseDate as any)?.text;
+    if (typeof rawDate === "string" && rawDate.length > 0) {
       try {
         const parts = rawDate.split("T")[0].split("-");
         if (parts.length >= 2) {
@@ -388,15 +393,23 @@ export function AlbumView({
         }
       } catch {}
     }
-    const spYear = spotifyAlbumMeta?.releaseDate?.match(/^\d{4}/)?.[0];
+    const spRaw = typeof spotifyAlbumMeta?.releaseDate === "string"
+      ? spotifyAlbumMeta.releaseDate
+      : (spotifyAlbumMeta?.releaseDate as any)?.isoString;
+    const spYear = typeof spRaw === "string" ? spRaw.match(/^\d{4}/)?.[0] : undefined;
     const y = album?.year || spYear;
     return y ? String(y) : null;
   }, [album?.releaseDate, spotifyAlbumMeta?.releaseDate, album?.year]);
 
   const formattedReleaseDate = useMemo(() => {
     if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
-    const rawDate = album?.releaseDate || spotifyAlbumMeta?.releaseDate;
-    if (rawDate) {
+    const rawDate =
+      typeof album?.releaseDate === "string"
+        ? album.releaseDate
+        : typeof spotifyAlbumMeta?.releaseDate === "string"
+          ? spotifyAlbumMeta.releaseDate
+          : (spotifyAlbumMeta?.releaseDate as any)?.isoString || (spotifyAlbumMeta?.releaseDate as any)?.text;
+    if (typeof rawDate === "string" && rawDate.length > 0) {
       try {
         const parts = rawDate.split("T")[0].split("-");
         if (parts.length >= 3) {
@@ -415,7 +428,7 @@ export function AlbumView({
         }
       } catch {}
     }
-    return formattedMonthYear || album?.year || null;
+    return formattedMonthYear || (album?.year ? String(album.year) : null);
   }, [spotifyAlbumMeta?.formattedReleaseDate, spotifyAlbumMeta?.releaseDate, album?.releaseDate, album?.year, formattedMonthYear]);
 
   const cleanedCopyrights = useMemo(() => {
@@ -562,24 +575,11 @@ export function AlbumView({
     }
   };
 
-  const releaseTypeLabel = album.releaseType
-    ? (album.releaseType === "ep" ? "EP" : album.releaseType === "single" ? "Single" : "Album")
-    : tracks.length === 1
-      ? "Single"
-      : tracks.length > 1 && tracks.length <= 6
-        ? "EP"
-        : "Album";
 
   return (
     <div className="flex flex-col gap-8 pb-16">
       <MediaHeader
-        eyebrow={
-          formattedMonthYear
-            ? `${releaseTypeLabel} • ${formattedMonthYear}`
-            : album.year
-              ? `${releaseTypeLabel} • ${album.year}`
-              : releaseTypeLabel
-        }
+        eyebrow={formatCollectionMeta(tracks) || undefined}
         title={album.title}
         subtitle={
           <ArtistLinks
@@ -593,11 +593,7 @@ export function AlbumView({
             fallback={displayArtistName || (!isInvalidArtist(album.artist) ? album.artist : undefined)}
           />
         }
-        meta={
-          formattedMonthYear
-            ? `${formattedMonthYear} • ${formatCollectionMeta(tracks)}`
-            : formatCollectionMeta(tracks)
-        }
+        meta={formattedMonthYear || (album.year ? String(album.year) : undefined)}
         artworkUrl={album.artworkUrl || tracks[0]?.artworkUrl}
         artworkVariant="album"
         actionsDisabled={tracks.length === 0}
