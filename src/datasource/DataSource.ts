@@ -157,6 +157,10 @@ export abstract class DataSource {
     track: Track,
     playlist: Playlist,
   ): Promise<"added" | "already-present">;
+  addTracksToPlaylist?(
+    tracks: Track[],
+    playlist: Playlist,
+  ): Promise<{ added: number; alreadyPresent: number; failed: number }>;
   /**
    * Ids of the playlists that already contain this track.
    *

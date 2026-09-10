@@ -99,6 +99,13 @@ type MusicColumn = {
   };
 };
 
+const knownAlbumArtworkCache = new Map<string, string>();
+
+function isVideoThumbnailUrl(url?: string): boolean {
+  if (!url) return false;
+  return /i\d?\.ytimg\.com\/vi(?:_webp)?\//i.test(url) || /img\.youtube\.com\/vi\//i.test(url);
+}
+
 function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -1123,16 +1130,65 @@ export class YouTubeMusicDataSource extends DataSource {
    * remasters and same-named singles often enough to be wrong in normal use.
    */
   private getTrackAlbum(item: MusicItem): { name?: string; id?: string } {
+    // 1. Direct item.album
+    const rawAlbum = (item as any).album;
+    if (rawAlbum) {
+      const albumObj = rawAlbum as { name?: string; title?: string; id?: string; endpoint?: unknown };
+      const name = albumObj.name || albumObj.title || (typeof rawAlbum === "string" ? rawAlbum : undefined);
+      const id = albumObj.id || this.findBrowseId(albumObj.endpoint);
+      if (name && typeof name === "string" && name.trim()) {
+        return { name: name.trim(), id: id || undefined };
+      }
+    }
+
+    // 2. Search runs in flex_columns and subtitle for album endpoints
+    const allRuns = [
+      ...(item.flex_columns ?? []).flatMap((c) => c.title?.runs ?? []),
+      ...(item.subtitle?.runs ?? []),
+    ];
+    for (const run of allRuns) {
+      const browseId = this.findBrowseId((run as any).endpoint) ?? this.findBrowseId((run as any).navigationEndpoint);
+      const pageType = (run as any)?.endpoint?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+      if (
+        (typeof browseId === "string" && (browseId.startsWith("MPRE") || browseId.startsWith("OLAK")))
+        || pageType === "MUSIC_PAGE_TYPE_ALBUM"
+        || pageType === "MUSIC_PAGE_TYPE_AUDIOBOOK"
+      ) {
+        const text = run.text?.trim();
+        if (text && !/^\d+$/.test(text) && !/^(?:album|single|ep|song|video)$/i.test(text)) {
+          return { name: text, id: browseId || undefined };
+        }
+      }
+    }
+
+    // 3. Check menu items for "Go to album"
+    const menuItems = (item.menu as any)?.items || [];
+    for (const mi of menuItems) {
+      const text = (mi.text?.toString() || mi.text || "").toLowerCase();
+      if (text.includes("album")) {
+        const id = this.findBrowseId(mi.endpoint) ?? this.findBrowseId(mi.navigationEndpoint);
+        if (id) {
+          const col2 = item.flex_columns?.[2]?.title?.toString();
+          if (col2 && !/\b(?:views?|plays?|\d+:\d+)\b/i.test(col2)) {
+            return { name: col2.trim(), id };
+          }
+          return { id };
+        }
+      }
+    }
+
+    // 4. Linked album column
     const linkedAlbum = (item.flex_columns ?? [])
       .slice(1)
       .find((column) => this.isAlbumColumn(column));
-    if (!linkedAlbum) return {};
+    if (linkedAlbum) {
+      const id = linkedAlbum.title?.runs
+        ?.map((run) => this.findBrowseId(run.endpoint) ?? this.findBrowseId(run.navigationEndpoint))
+        .find((browseId) => browseId?.startsWith("MPRE") || browseId?.startsWith("OLAK"));
+      return { name: this.getColumnText(linkedAlbum)?.trim() || undefined, id: id ?? undefined };
+    }
 
-    const id = linkedAlbum.title?.runs
-      ?.map((run) => this.findBrowseId(run.endpoint) ?? this.findBrowseId(run.navigationEndpoint))
-      .find((browseId) => browseId?.startsWith("MPRE"));
-
-    return { name: this.getColumnText(linkedAlbum)?.trim() || undefined, id: id ?? undefined };
+    return {};
   }
 
   private getTitle(item: MusicItem): string | null {
@@ -1192,13 +1248,19 @@ export class YouTubeMusicDataSource extends DataSource {
     const artist = this.isValidArtistString(rawArtist) ? rawArtist : "Unknown artist";
     const artists = this.getArtists(item)?.filter((a) => this.isValidArtistString(a.name));
 
+    const artworkUrl = this.getArtwork(item);
+    if (artworkUrl && !isVideoThumbnailUrl(artworkUrl)) {
+      if (id) knownAlbumArtworkCache.set(id, artworkUrl);
+      if (title) knownAlbumArtworkCache.set(title.toLowerCase().trim(), artworkUrl);
+    }
+
     return {
       id,
       playlistId: this.findAlbumPlaylistId(item),
       title,
       artist,
       artists: artists?.length ? artists : undefined,
-      artworkUrl: this.getArtwork(item),
+      artworkUrl,
       year: yearMatch ? yearMatch[1] : undefined,
     };
   }
@@ -1305,6 +1367,18 @@ export class YouTubeMusicDataSource extends DataSource {
     const artist = this.isValidArtistString(rawArtist) ? rawArtist : "Unknown artist";
     const artists = this.getArtists(item)?.filter((a) => this.isValidArtistString(a.name));
 
+    let artworkUrl = this.getArtwork(item) ?? getVideoArtworkFallback(id);
+    if (artworkUrl && !isVideoThumbnailUrl(artworkUrl)) {
+      if (album.id) knownAlbumArtworkCache.set(album.id, artworkUrl);
+      if (album.name) knownAlbumArtworkCache.set(album.name.toLowerCase().trim(), artworkUrl);
+    } else if (artworkUrl && isVideoThumbnailUrl(artworkUrl)) {
+      const square = (album.id && knownAlbumArtworkCache.get(album.id))
+        || (album.name && knownAlbumArtworkCache.get(album.name.toLowerCase().trim()));
+      if (square) {
+        artworkUrl = square;
+      }
+    }
+
     return {
       id,
       source: "youtube",
@@ -1313,7 +1387,7 @@ export class YouTubeMusicDataSource extends DataSource {
       artists: artists?.length ? artists : undefined,
       album: album.name,
       albumId: album.id,
-      artworkUrl: this.getArtwork(item) ?? getVideoArtworkFallback(id),
+      artworkUrl,
       playlistItemId: this.getPlaylistItemId(item),
       viewCount: this.parseViewCount(viewCountText),
       viewCountText,
@@ -1886,11 +1960,16 @@ export class YouTubeMusicDataSource extends DataSource {
     const cachedLibrary = await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
     if (!cachedLibrary) return;
 
+    const normalize = (str?: string) => str?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+    const targetTitle = normalize(album.title);
+    const targetArtist = normalize(album.artist);
+
     const sameAlbum = (item: Album) =>
       item.id === album.id
       || Boolean(album.playlistId && item.playlistId === album.playlistId)
       || Boolean(album.playlistId && item.id === album.playlistId)
-      || Boolean(item.playlistId && item.playlistId === album.id);
+      || Boolean(item.playlistId && item.playlistId === album.id)
+      || (Boolean(targetTitle && normalize(item.title) === targetTitle) && (!targetArtist || !item.artist || normalize(item.artist) === targetArtist));
     const albums = saved
       ? [album, ...cachedLibrary.albums.filter((item) => !sameAlbum(item))]
       : cachedLibrary.albums.filter((item) => !sameAlbum(item));
@@ -4780,13 +4859,15 @@ export class YouTubeMusicDataSource extends DataSource {
       trackCount: trackIds.length,
     });
 
-    return {
+    const created: Playlist = {
       id: result.playlist_id,
       title,
       owner: this.musicAccountName,
       isEditable: true,
       isSaved: true,
     };
+    await this.updateCachedPlaylistSaved(created, true);
+    return created;
   }
 
   async renamePlaylist(playlist: Playlist, title: string): Promise<void> {
@@ -4956,6 +5037,59 @@ export class YouTubeMusicDataSource extends DataSource {
         playlistId: playlist.id,
       });
       throw new Error("YouTube Music could not add this song to the playlist.");
+    }
+  }
+
+  async addTracksToPlaylist(
+    tracks: Track[],
+    playlist: Playlist,
+  ): Promise<{ added: number; alreadyPresent: number; failed: number }> {
+    if (!this.musicCookie) {
+      throw new Error("Sign in to YouTube Music before adding songs to playlists.");
+    }
+    if (tracks.length === 0) {
+      return { added: 0, alreadyPresent: 0, failed: 0 };
+    }
+
+    logInternalInfo("YouTubeMusicDataSource.addTracksToPlaylist start", {
+      trackCount: tracks.length,
+      playlistId: playlist.id,
+    });
+
+    try {
+      const client = await this.getMusicClient();
+      const cacheKey = this.getPlaylistTrackCacheKey(playlist.id);
+      const cachedTracks = await getCachedJson<Track[]>(cacheKey);
+      const existingTracks = cachedTracks ?? (await this.collectPlaylistTracks(client, playlist.id));
+      const existingIds = new Set(existingTracks.map((item) => item.id));
+
+      const tracksToAdd = tracks.filter((t) => !existingIds.has(t.id));
+      const alreadyPresent = tracks.length - tracksToAdd.length;
+
+      if (tracksToAdd.length === 0) {
+        if (!cachedTracks) await setCachedJson(cacheKey, existingTracks);
+        return { added: 0, alreadyPresent, failed: 0 };
+      }
+
+      const trackIdsToAdd = tracksToAdd.map((t) => t.id);
+      await client.playlist.addVideos(this.editablePlaylistId(playlist.id), trackIdsToAdd);
+
+      const updatedTracks = [...existingTracks, ...tracksToAdd];
+      await setCachedJson(cacheKey, updatedTracks);
+
+      logInternalInfo("YouTubeMusicDataSource.addTracksToPlaylist success", {
+        added: tracksToAdd.length,
+        alreadyPresent,
+        playlistId: playlist.id,
+      });
+
+      return { added: tracksToAdd.length, alreadyPresent, failed: 0 };
+    } catch (error) {
+      logInternalError("YouTubeMusicDataSource.addTracksToPlaylist failed", error, {
+        trackCount: tracks.length,
+        playlistId: playlist.id,
+      });
+      throw new Error("YouTube Music could not add songs to the playlist.");
     }
   }
 

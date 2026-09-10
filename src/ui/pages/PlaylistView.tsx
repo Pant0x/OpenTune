@@ -81,6 +81,11 @@ function getTrackRenderKey(track: Track, index: number): string {
   return track.playlistItemId ?? `${track.id}:${index}`;
 }
 
+function isVideoThumbnailUrl(url?: string): boolean {
+  if (!url) return false;
+  return /i\d?\.ytimg\.com\/vi(?:_webp)?\//i.test(url) || /img\.youtube\.com\/vi\//i.test(url);
+}
+
 function getUniqueNewTracks(current: Track[], next: Track[]): Track[] {
   const existingIds = new Set(current.map((track) => track.id));
   return next.filter((track) => {
@@ -483,11 +488,56 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     return () => window.removeEventListener("keydown", handlePageSearchKeyDown);
   }, [error, isLoading, keyboardShortcuts, playlist, tracks.length]);
 
+  const enrichedTracks = useMemo(() => {
+    const albumArtworkMap = new Map<string, string>();
+    for (const t of tracks) {
+      if (t.artworkUrl && !isVideoThumbnailUrl(t.artworkUrl)) {
+        if (t.albumId) albumArtworkMap.set(t.albumId, t.artworkUrl);
+        if (t.album) albumArtworkMap.set(t.album.toLowerCase().trim(), t.artworkUrl);
+      }
+    }
+
+    if (albumArtworkMap.size === 0) return tracks;
+
+    return tracks.map((t) => {
+      if (isVideoThumbnailUrl(t.artworkUrl) || !t.artworkUrl) {
+        const square = (t.albumId && albumArtworkMap.get(t.albumId))
+          || (t.album && albumArtworkMap.get(t.album.toLowerCase().trim()));
+        if (square) {
+          return { ...t, artworkUrl: square };
+        }
+      }
+      return t;
+    });
+  }, [tracks]);
+
+  const quarterSplitArtworks = useMemo(() => {
+    const seen = new Set<string>();
+    const arts: string[] = [];
+    for (const t of enrichedTracks) {
+      if (t.artworkUrl && !isVideoThumbnailUrl(t.artworkUrl) && !seen.has(t.artworkUrl)) {
+        seen.add(t.artworkUrl);
+        arts.push(t.artworkUrl);
+        if (arts.length === 4) break;
+      }
+    }
+    if (arts.length < 4) {
+      for (const t of enrichedTracks) {
+        if (t.artworkUrl && !seen.has(t.artworkUrl)) {
+          seen.add(t.artworkUrl);
+          arts.push(t.artworkUrl);
+          if (arts.length === 4) break;
+        }
+      }
+    }
+    return arts;
+  }, [enrichedTracks]);
+
   const sortedTracks = useMemo(() => {
     if (sort === "dateAdded") {
-      return sortDirection === "desc" ? tracks : [...tracks].reverse();
+      return sortDirection === "desc" ? enrichedTracks : [...enrichedTracks].reverse();
     }
-    const sorted = [...tracks].sort((left, right) => {
+    const sorted = [...enrichedTracks].sort((left, right) => {
       if (sort === "name") {
         return compareText(left.title, right.title)
           || compareText(left.artist, right.artist)
@@ -498,7 +548,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
         || compareText(left.artist, right.artist);
     });
     return sortDirection === "asc" ? sorted : sorted.reverse();
-  }, [sort, sortDirection, tracks]);
+  }, [sort, sortDirection, enrichedTracks]);
 
   const sortedTracksRef = useRef(sortedTracks);
   sortedTracksRef.current = sortedTracks;
@@ -655,20 +705,20 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
   };
 
   const playInOrder = async () => {
-    const firstTrack = tracks[0];
+    const firstTrack = enrichedTracks[0];
     if (!firstTrack) return;
 
-    const started = await playerController.playTrackById(firstTrack.id, tracks);
+    const started = await playerController.playTrackById(firstTrack.id, enrichedTracks);
     if (started) markPlaylistPlayed(playlist.id);
   };
 
   const playInLoop = async () => {
-    const firstTrack = tracks[0];
+    const firstTrack = enrichedTracks[0];
     if (!firstTrack) return;
 
     // Set before starting, so a very short first track cannot end before the mode applies.
     playerController.setPlaybackOrderMode("repeat-all");
-    const started = await playerController.playTrackById(firstTrack.id, tracks);
+    const started = await playerController.playTrackById(firstTrack.id, enrichedTracks);
     if (started) markPlaylistPlayed(playlist.id);
   };
 
@@ -680,10 +730,10 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
    * "original" order *is* the shuffle, so there is nothing to restore.
    */
   const playShuffled = async () => {
-    const firstTrack = shuffleTracks(tracks)[0];
+    const firstTrack = shuffleTracks(enrichedTracks)[0];
     if (!firstTrack) return;
 
-    const started = await playerController.playTrackById(firstTrack.id, tracks, false, true);
+    const started = await playerController.playTrackById(firstTrack.id, enrichedTracks, false, true);
     if (!started) return;
     playerController.setShuffleEnabled(true);
     markPlaylistPlayed(playlist.id);
@@ -750,7 +800,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
             )
           }
           meta={formatCollectionMeta(tracks, hasMoreTracks)}
-          artworkUrl={playlist.artworkUrl}
+          artworkUrl={quarterSplitArtworks.length >= 4 ? quarterSplitArtworks[0] : playlist.artworkUrl}
           artworkVariant="playlist"
           artworkSlot={isLikedSongs ? (
             <img
@@ -758,6 +808,18 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
               src={likedSongsCover}
               alt=""
             />
+          ) : quarterSplitArtworks.length >= 4 ? (
+            <div className="size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 grid grid-cols-2 grid-rows-2 bg-neutral-900">
+              {quarterSplitArtworks.slice(0, 4).map((art, idx) => (
+                <img
+                  key={idx}
+                  src={art}
+                  alt=""
+                  className="size-full object-cover"
+                  loading="eager"
+                />
+              ))}
+            </div>
           ) : undefined}
           {...(isLocalPlaylistView
             ? {

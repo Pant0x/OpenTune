@@ -559,7 +559,7 @@ export const TrackRow = memo(function TrackRow({
       {showAlbum && (
         <span className="hidden min-w-0 flex-1 basis-0 truncate text-xs text-muted-foreground lg:block">
           {(() => {
-            const releaseLabel = track.album || track.title;
+            const releaseLabel = track.album?.trim();
             if (!releaseLabel) return null;
             return openAlbumForTrack && track.source !== "local" ? (
               <span

@@ -125,6 +125,27 @@ function getYouTubeMusicTrackUrl(track: Track): string | undefined {
   return `https://music.youtube.com/watch?v=${encodeURIComponent(track.id)}`;
 }
 
+function cleanArtistText(name?: string): string {
+  if (!name) return "";
+  let cleaned = name.trim();
+  cleaned = cleaned.replace(/^EsDeeKid\s*[-–—]?\s*(?=[A-Za-z\u0600-\u06FF])/i, "");
+  return cleaned.trim() || name;
+}
+
+function sanitizeTrackArtists(track: Track): Track {
+  const cleanedArtist = cleanArtistText(track.artist);
+  const cleanedArtists = track.artists?.map((a) => ({
+    ...a,
+    name: cleanArtistText(a.name),
+  })).filter((a) => a.name && a.name !== "Unknown artist");
+
+  return {
+    ...track,
+    artist: cleanedArtist || track.artist,
+    artists: cleanedArtists && cleanedArtists.length > 0 ? cleanedArtists : track.artists,
+  };
+}
+
 function getYouTubeMusicArtistUrl(track: Track): string | undefined {
   if (track.source !== "youtube") return undefined;
 
@@ -439,20 +460,33 @@ export class PlayerController {
        * abandoning playback.
        */
       const knownTrack = queuedTrack ?? getOfflineTrack(videoId);
-      const mergeWithQueued = (fetched: Track): Track => (queuedTrack
-        ? {
-            ...fetched,
-            ...queuedTrack,
-            durationSec: fetched.durationSec ?? queuedTrack.durationSec,
-            artworkUrl: queuedTrack.artworkUrl ?? fetched.artworkUrl,
-            artists: (queuedTrack.artists && queuedTrack.artists.length > 0) ? queuedTrack.artists : fetched.artists,
-            artist: (queuedTrack.artist && queuedTrack.artist !== "Unknown artist") ? queuedTrack.artist : fetched.artist,
-            year: queuedTrack.year ?? fetched.year,
-            releaseDate: queuedTrack.releaseDate ?? fetched.releaseDate,
-            viewCount: queuedTrack.viewCount ?? fetched.viewCount,
-            viewCountText: queuedTrack.viewCountText ?? fetched.viewCountText,
-          }
-        : fetched);
+      const mergeWithQueued = (fetched: Track): Track => {
+        if (!queuedTrack) return sanitizeTrackArtists(fetched);
+        const preferredArtist = (fetched.artist && fetched.artist !== "Unknown artist" && !fetched.artist.includes("EsDeeKid"))
+          ? fetched.artist
+          : queuedTrack.artist;
+        const preferredArtists = (fetched.artists && fetched.artists.length > 0)
+          ? fetched.artists
+          : queuedTrack.artists;
+        const preferredAlbum = fetched.album || queuedTrack.album;
+        const preferredAlbumId = fetched.albumId || queuedTrack.albumId;
+
+        const merged: Track = {
+          ...queuedTrack,
+          ...fetched,
+          durationSec: fetched.durationSec ?? queuedTrack.durationSec,
+          artworkUrl: queuedTrack.artworkUrl ?? fetched.artworkUrl,
+          artists: preferredArtists,
+          artist: preferredArtist,
+          album: preferredAlbum,
+          albumId: preferredAlbumId,
+          year: fetched.year ?? queuedTrack.year,
+          releaseDate: fetched.releaseDate ?? queuedTrack.releaseDate,
+          viewCount: fetched.viewCount ?? queuedTrack.viewCount,
+          viewCountText: fetched.viewCountText ?? queuedTrack.viewCountText,
+        };
+        return sanitizeTrackArtists(merged);
+      };
 
       /*
        * Metadata is fetched *alongside* the audio, not before it.

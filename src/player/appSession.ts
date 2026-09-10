@@ -18,10 +18,31 @@ export interface AppSession {
   player: PlayerSession;
 }
 
+function cleanArtistText(name?: string): string {
+  if (!name) return "";
+  let cleaned = name.trim();
+  cleaned = cleaned.replace(/^EsDeeKid\s*[-–—]?\s*(?=[A-Za-z\u0600-\u06FF])/i, "");
+  return cleaned.trim() || name;
+}
+
+function sanitizeTrack(track: Track): Track {
+  const cleanedArtist = cleanArtistText(track.artist);
+  const cleanedArtists = track.artists?.map((a) => ({
+    ...a,
+    name: cleanArtistText(a.name),
+  })).filter((a) => a.name && a.name !== "Unknown artist");
+
+  return {
+    ...track,
+    artist: cleanedArtist || track.artist,
+    artists: cleanedArtists && cleanedArtists.length > 0 ? cleanedArtists : track.artists,
+  };
+}
+
 function restoreWithoutAutoplay(session: AppSession): AppSession {
   const currentTrack = session.player.currentTrack;
   const artworkUrl = currentTrack?.artworkUrl || (currentTrack?.id ? getVideoArtworkFallback(currentTrack.id) : undefined);
-  const trackWithArt = currentTrack ? { ...currentTrack, artworkUrl } : null;
+  const trackWithArt = currentTrack ? sanitizeTrack({ ...currentTrack, artworkUrl }) : null;
 
   return {
     ...session,
@@ -38,7 +59,7 @@ function restoreWithoutAutoplay(session: AppSession): AppSession {
 export function saveLastPlayedTrack(track: Track): void {
   try {
     const artworkUrl = track.artworkUrl || getVideoArtworkFallback(track.id);
-    const trackWithArt = { ...track, artworkUrl };
+    const trackWithArt = sanitizeTrack({ ...track, artworkUrl });
     const payload = JSON.stringify(trackWithArt);
     localStorage.setItem(LAST_PLAYED_TRACK_STORAGE_KEY, payload);
     void setAppSetting(LAST_PLAYED_TRACK_STORAGE_KEY, trackWithArt);
@@ -50,7 +71,7 @@ export function loadLastPlayedTrack(): Track | null {
     const raw = localStorage.getItem(LAST_PLAYED_TRACK_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed?.id && parsed?.title) return parsed as Track;
+      if (parsed?.id && parsed?.title) return sanitizeTrack(parsed as Track);
     }
   } catch {}
   return null;
@@ -60,10 +81,11 @@ export async function hydrateLastPlayedTrackAsync(): Promise<Track | null> {
   try {
     const fromDisk = await getAppSetting<Track>(LAST_PLAYED_TRACK_STORAGE_KEY);
     if (fromDisk?.id && fromDisk?.title) {
+      const sanitized = sanitizeTrack(fromDisk);
       try {
-        localStorage.setItem(LAST_PLAYED_TRACK_STORAGE_KEY, JSON.stringify(fromDisk));
+        localStorage.setItem(LAST_PLAYED_TRACK_STORAGE_KEY, JSON.stringify(sanitized));
       } catch {}
-      return fromDisk;
+      return sanitized;
     }
   } catch {}
   return null;

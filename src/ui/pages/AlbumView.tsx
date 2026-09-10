@@ -376,12 +376,15 @@ export function AlbumView({
   }, [album?.id, tracks.length > 0]);
 
   const formattedMonthYear = useMemo(() => {
+    const trackWithDate = tracks.find((t) => t.releaseDate || t.year);
     const rawDate =
-      typeof album?.releaseDate === "string"
+      (typeof album?.releaseDate === "string" && album.releaseDate)
         ? album.releaseDate
-        : typeof spotifyAlbumMeta?.releaseDate === "string"
+        : (typeof spotifyAlbumMeta?.releaseDate === "string" && spotifyAlbumMeta.releaseDate)
           ? spotifyAlbumMeta.releaseDate
-          : (spotifyAlbumMeta?.releaseDate as any)?.isoString || (spotifyAlbumMeta?.releaseDate as any)?.text;
+          : (spotifyAlbumMeta?.releaseDate as any)?.isoString
+            || (spotifyAlbumMeta?.releaseDate as any)?.text
+            || trackWithDate?.releaseDate;
     if (typeof rawDate === "string" && rawDate.length > 0) {
       try {
         const parts = rawDate.split("T")[0].split("-");
@@ -397,9 +400,9 @@ export function AlbumView({
       ? spotifyAlbumMeta.releaseDate
       : (spotifyAlbumMeta?.releaseDate as any)?.isoString;
     const spYear = typeof spRaw === "string" ? spRaw.match(/^\d{4}/)?.[0] : undefined;
-    const y = album?.year || spYear;
+    const y = album?.year || spYear || trackWithDate?.year;
     return y ? String(y) : null;
-  }, [album?.releaseDate, spotifyAlbumMeta?.releaseDate, album?.year]);
+  }, [album?.releaseDate, spotifyAlbumMeta?.releaseDate, album?.year, tracks]);
 
   const formattedReleaseDate = useMemo(() => {
     if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
@@ -511,13 +514,24 @@ export function AlbumView({
   const libraryState = useLibraryState();
   const isSaved = useMemo(() => {
     if (!album || !libraryState.library) return false;
-    const sameAlbum = (item: Album) =>
-      item.id === album.id
-      || Boolean(album.playlistId && item.playlistId === album.playlistId)
-      || Boolean(album.playlistId && item.id === album.playlistId)
-      || Boolean(item.playlistId && item.playlistId === album.id);
+    const normalize = (str?: string) => str?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+    const targetTitle = normalize(album.title);
+    const targetArtist = normalize(resolvedArtistName || album.artist);
+
+    const sameAlbum = (item: Album) => {
+      if (item.id === album.id) return true;
+      if (album.playlistId && (item.playlistId === album.playlistId || item.id === album.playlistId)) return true;
+      if (item.playlistId && (item.playlistId === album.id || item.id === album.id)) return true;
+      if (targetTitle && normalize(item.title) === targetTitle) {
+        const itemArtist = normalize(item.artist);
+        if (!targetArtist || !itemArtist || itemArtist === targetArtist || itemArtist.includes(targetArtist) || targetArtist.includes(itemArtist)) {
+          return true;
+        }
+      }
+      return false;
+    };
     return libraryState.library.albums.some(sameAlbum);
-  }, [album, libraryState.library]);
+  }, [album, libraryState.library, resolvedArtistName]);
   const [isSaving, setIsSaving] = useState(false);
 
   const toggleSaveAlbum = async () => {

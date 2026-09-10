@@ -688,11 +688,15 @@ export class LibraryController {
     }
 
     const previousLibrary = this.state.library;
+    const normalize = (str?: string) => str?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+    const targetTitle = normalize(album.title);
+    const targetArtist = normalize(album.artist);
     const sameAlbum = (item: Album) =>
       item.id === album.id
       || Boolean(album.playlistId && item.playlistId === album.playlistId)
       || Boolean(album.playlistId && item.id === album.playlistId)
-      || Boolean(item.playlistId && item.playlistId === album.id);
+      || Boolean(item.playlistId && item.playlistId === album.id)
+      || (Boolean(targetTitle && normalize(item.title) === targetTitle) && (!targetArtist || !item.artist || normalize(item.artist) === targetArtist));
     const albums = saved
       ? [album, ...previousLibrary.albums.filter((item) => !sameAlbum(item))]
       : previousLibrary.albums.filter((item) => !sameAlbum(item));
@@ -807,6 +811,23 @@ export class LibraryController {
     playlist: Playlist,
     onProgress?: (done: number, total: number) => void,
   ): Promise<{ added: number; alreadyPresent: number; failed: number }> {
+    if (
+      !isLocalPlaylist(playlist)
+      && tracks.every((t) => t.source !== "local")
+      && this.dataSource.addTracksToPlaylist
+    ) {
+      if (this.state.status === "signed-out" || !this.state.library) {
+        throw new Error("Sign in to YouTube Music before adding songs to playlists.");
+      }
+      onProgress?.(0, tracks.length);
+      const result = await this.dataSource.addTracksToPlaylist(tracks, playlist);
+      for (const track of tracks) {
+        rememberTrackInPlaylist(track, playlist);
+      }
+      onProgress?.(tracks.length, tracks.length);
+      return result;
+    }
+
     let added = 0;
     let alreadyPresent = 0;
     let failed = 0;
@@ -894,7 +915,6 @@ export class LibraryController {
     // appear reads as a failure.
     const library = this.state.library;
     this.setState({ library: { ...library, playlists: [created, ...library.playlists] } });
-    void this.refresh();
     return created;
   }
 

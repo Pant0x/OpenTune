@@ -107,8 +107,15 @@ export interface ParsedArtistFeature {
   featuredArtists: ArtistReference[];
 }
 
+export function cleanArtistName(name?: string): string {
+  if (!name) return "";
+  let cleaned = name.trim();
+  cleaned = cleaned.replace(/^EsDeeKid\s*[-–—]?\s*(?=[A-Za-z\u0600-\u06FF])/i, "");
+  return cleaned.trim() || name;
+}
+
 export function isValidArtistName(name: string): boolean {
-  const trimmed = name.trim();
+  const trimmed = cleanArtistName(name);
   if (!trimmed || trimmed === "Unknown artist") return false;
   // Filter out 4-digit years like 2019, 2024, 1999
   if (/^(?:19|20)\d{2}$/.test(trimmed)) return false;
@@ -133,7 +140,7 @@ export function parseTrackArtistsWithFeatures(
     rawFeatNames.push(
       ...titleMatch[1]
         .split(/,\s*|\s*&\s*|\s+and\s+/i)
-        .map((s) => s.trim())
+        .map(cleanArtistName)
         .filter(isValidArtistName),
     );
   }
@@ -141,7 +148,7 @@ export function parseTrackArtistsWithFeatures(
     rawFeatNames.push(
       ...artistMatch[1]
         .split(/,\s*|\s*&\s*|\s+and\s+/i)
-        .map((s) => s.trim())
+        .map(cleanArtistName)
         .filter(isValidArtistName),
     );
   }
@@ -152,10 +159,12 @@ export function parseTrackArtistsWithFeatures(
       : artistFallback
           .replace(featRegex, "")
           .split(/,\s*|\s*&\s*|\s+and\s+|•/i)
-          .map((s) => s.trim())
+          .map(cleanArtistName)
           .filter(isValidArtistName)
           .map((name) => ({ id: "", name }))
-  ).filter((a) => isValidArtistName(a.name));
+  )
+    .map((a) => ({ ...a, name: cleanArtistName(a.name) }))
+    .filter((a) => isValidArtistName(a.name));
 
   const mainArtists: ArtistReference[] = [];
   const featuredArtists: ArtistReference[] = [];
@@ -182,7 +191,27 @@ export function parseTrackArtistsWithFeatures(
     mainArtists.push(existingArtists[0]);
   }
 
-  return { mainArtists, featuredArtists };
+  const dedupeArtists = (list: ArtistReference[]): ArtistReference[] => {
+    const map = new Map<string, ArtistReference>();
+    for (const item of list) {
+      const cleanName = cleanArtistName(item.name);
+      if (!isValidArtistName(cleanName)) continue;
+      const key = cleanName.toLowerCase();
+      const existing = map.get(key);
+      const updatedItem = { ...item, name: cleanName };
+      if (!existing) {
+        map.set(key, updatedItem);
+      } else if (!existing.id && updatedItem.id) {
+        map.set(key, updatedItem);
+      }
+    }
+    return Array.from(map.values());
+  };
+
+  return {
+    mainArtists: dedupeArtists(mainArtists),
+    featuredArtists: dedupeArtists(featuredArtists),
+  };
 }
 
 export function ArtistLinks({
