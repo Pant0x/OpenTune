@@ -38,69 +38,75 @@ interface PinnedSectionSpec {
   fallbackType: "song" | "album" | "playlist";
 }
 
+const RECAP_PLAYLISTS: Playlist[] = [
+  {
+    id: "recap-2025",
+    title: "2025 Recap",
+    owner: "YouTube Music",
+    artworkUrl: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80",
+  },
+  {
+    id: "recap-2024",
+    title: "2024 Recap",
+    owner: "YouTube Music",
+    artworkUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80",
+  },
+  {
+    id: "recap-spring-23",
+    title: "Spring Recap '23",
+    owner: "YouTube Music",
+    artworkUrl: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=500&auto=format&fit=crop&q=80",
+  },
+];
+
 /**
- * Pinned immutable order of the 16 Home Page sections.
+ * Pinned immutable order of the 15 Home Page sections.
  * This exact order is hardcoded and preserved across all loads.
  */
 const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "quick-picks",
     title: "Quick picks",
-    matchPatterns: [/quick picks/i, /start radio/i],
+    matchPatterns: [/^quick picks/i, /start radio/i],
     fallbackQuery: "trending top songs hits",
     fallbackType: "song",
   },
   {
-    id: "new-releases",
-    title: "New releases",
-    matchPatterns: [/new releases/i, /new albums/i],
-    browseTarget: { browseId: "FEmusic_new_releases_albums", title: "New releases" },
-    fallbackQuery: "new releases albums songs",
-    fallbackType: "album",
-  },
-  {
     id: "albums-for-you",
-    title: "albums for you",
+    title: "Albums for you",
     matchPatterns: [/albums for you/i, /recommended albums/i, /popular albums/i],
     fallbackQuery: "popular recommended albums",
     fallbackType: "album",
   },
   {
-    id: "recents",
-    title: "Recents",
-    matchPatterns: [/recently played/i, /recents/i, /history/i],
-    fallbackQuery: "top hits songs trending",
-    fallbackType: "song",
-  },
-  {
     id: "from-your-library",
     title: "From your library",
-    matchPatterns: [/from your library/i, /your library/i, /library/i],
+    matchPatterns: [/from your library/i, /your library/i, /^library$/i],
     browseTarget: { browseId: "FEmusic_library", title: "From your library" },
     fallbackQuery: "favorite playlists hits",
     fallbackType: "playlist",
   },
   {
     id: "fresh-finds-old-favorites",
-    title: "fresh finds, old favorites",
+    title: "Fresh finds, old favorites",
     matchPatterns: [/fresh finds/i, /old favorites/i, /listen again/i, /forgotten favorites/i],
     fallbackQuery: "forgotten favorites nostalgic hits",
     fallbackType: "song",
   },
   {
-    id: "recaps",
-    title: "Recaps",
-    matchPatterns: [/recap/i, /your recap/i],
-    browseTarget: { browseId: "UCWLjkgkthzEjTmEpGg0xoDw", title: "Recaps" },
-    fallbackQuery: "YouTube Music Recap playlist",
-    fallbackType: "playlist",
+    id: "new-releases",
+    title: "New releases",
+    matchPatterns: [/new releases/i, /new albums/i, /new singles/i],
+    browseTarget: { browseId: "FEmusic_new_releases_albums", title: "New releases" },
+    fallbackQuery: "new releases albums songs",
+    fallbackType: "album",
   },
   {
-    id: "covers-and-remixes",
-    title: "Covers and remixes",
-    matchPatterns: [/covers and remixes/i, /covers & remixes/i, /covers/i, /remixes/i],
-    fallbackQuery: "acoustic cover remix slowed reverb",
-    fallbackType: "song",
+    id: "from-the-community",
+    title: "From the community",
+    matchPatterns: [/from the community/i, /community/i],
+    fallbackQuery: "community playlists viral fanmade",
+    fallbackType: "playlist",
   },
   {
     id: "featured-playlists-for-you",
@@ -111,22 +117,16 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     fallbackType: "playlist",
   },
   {
-    id: "today-biggest-hit",
-    title: "today biggest hit",
-    matchPatterns: [/today.*biggest hit/i, /biggest hit/i, /today.*hit/i, /top hits/i],
-    fallbackQuery: "Today's Biggest Hits YouTube Music",
-    fallbackType: "playlist",
-  },
-  {
-    id: "from-the-community",
-    title: "From the community",
-    matchPatterns: [/from the community/i, /community/i],
-    fallbackQuery: "community playlists viral fanmade",
+    id: "recaps",
+    title: "Recaps",
+    matchPatterns: [/recap/i, /your recap/i],
+    browseTarget: { browseId: "UCWLjkgkthzEjTmEpGg0xoDw", title: "Recaps" },
+    fallbackQuery: "YouTube Music Recap playlist",
     fallbackType: "playlist",
   },
   {
     id: "pump-it-up",
-    title: "pump it up",
+    title: "Pump it up",
     matchPatterns: [/pump it up/i, /workout/i, /energize/i, /gym motivation/i],
     fallbackQuery: "pump it up workout gym motivation",
     fallbackType: "song",
@@ -140,6 +140,20 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     fallbackType: "playlist",
   },
   {
+    id: "covers-and-remixes",
+    title: "Covers and remixes",
+    matchPatterns: [/covers and remixes/i, /covers & remixes/i, /covers/i, /remixes/i],
+    fallbackQuery: "acoustic cover remix slowed reverb",
+    fallbackType: "song",
+  },
+  {
+    id: "your-daily-discover",
+    title: "Your daily discover",
+    matchPatterns: [/daily discover/i, /discover mix/i, /discover/i],
+    fallbackQuery: "discover weekly daily mix songs",
+    fallbackType: "song",
+  },
+  {
     id: "trending-songs-for-you",
     title: "Trending songs for you",
     matchPatterns: [/trending songs/i, /trending/i, /charts/i],
@@ -147,10 +161,10 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     fallbackType: "song",
   },
   {
-    id: "your-daily-discover",
-    title: "Your daily discover",
-    matchPatterns: [/daily discover/i, /discover/i, /discover mix/i],
-    fallbackQuery: "discover weekly daily mix songs",
+    id: "heard-in-shorts",
+    title: "Heard in shorts",
+    matchPatterns: [/heard in shorts/i, /shorts/i, /youtube shorts/i],
+    fallbackQuery: "popular songs used in YouTube shorts trending remix",
     fallbackType: "song",
   },
   {
@@ -177,6 +191,7 @@ interface HomePageProps {
   onOpenAlbum?: (album: Album) => void;
   onOpenArtist?: (artist: Artist) => void;
   onOpenPlaylist?: (playlist: Playlist) => void;
+  onOpenReleases?: () => void;
 }
 
 function splitMixedShelves(rawShelves: BrowseShelf[]): BrowseShelf[] {
@@ -238,34 +253,30 @@ function buildPinnedShelves(
   const usedYtIndices = new Set<number>();
 
   for (const section of PINNED_SECTIONS) {
-    // 1. Account Recents
-    if (section.id === "recents") {
-      const recents = libraryState.library?.recentlyPlayed ?? [];
-      if (recents.length > 0) {
-        result.push({
-          title: section.title,
-          tracks: recents.slice(0, 24),
-          albums: [],
-          playlists: [],
-          artists: [],
-          links: [],
-        });
-        matchedIds.add(section.id);
-        continue;
-      }
-    }
-
-    // 2. Account Library
+    // 1. Account Library
     if (section.id === "from-your-library") {
-      const playlists = libraryState.library?.playlists ?? [];
-      const albums = libraryState.library?.albums ?? [];
-      const tracks = libraryState.library?.likedSongs ?? [];
-      if (playlists.length > 0 || albums.length > 0 || tracks.length > 0) {
+      const likedSongs = libraryState.library?.likedSongs ?? [];
+      const userPlaylists = libraryState.library?.playlists ?? [];
+      const userAlbums = libraryState.library?.albums ?? [];
+
+      const likedPlaylist: Playlist | null = likedSongs.length > 0 ? {
+        id: "LM",
+        title: "Liked Music",
+        owner: "Auto playlist",
+        artworkUrl: likedSongs[0]?.artworkUrl,
+        kind: "liked-songs",
+      } : null;
+
+      const combinedPlaylists: Playlist[] = likedPlaylist
+        ? [likedPlaylist, ...userPlaylists.filter((p) => p.id !== "LM")]
+        : userPlaylists;
+
+      if (combinedPlaylists.length > 0 || userAlbums.length > 0 || likedSongs.length > 0) {
         result.push({
           title: section.title,
-          tracks: tracks.slice(0, 10),
-          albums: albums.slice(0, 8),
-          playlists: playlists.slice(0, 14),
+          tracks: likedSongs.slice(0, 10),
+          albums: userAlbums.slice(0, 8),
+          playlists: combinedPlaylists.slice(0, 14),
           artists: [],
           links: [],
         });
@@ -274,7 +285,7 @@ function buildPinnedShelves(
       }
     }
 
-    // 3. Match from YouTube Music Home browse feed
+    // 2. Match from YouTube Music Home browse feed (from Innertube continuations)
     let matchedFromYt: BrowseShelf | null = null;
     for (let i = 0; i < ytShelves.length; i++) {
       if (usedYtIndices.has(i)) continue;
@@ -288,6 +299,20 @@ function buildPinnedShelves(
 
     if (matchedFromYt) {
       result.push(matchedFromYt);
+      matchedIds.add(section.id);
+      continue;
+    }
+
+    // 3. Recaps fallback if not in ytShelves
+    if (section.id === "recaps") {
+      result.push({
+        title: section.title,
+        tracks: [],
+        albums: [],
+        playlists: RECAP_PLAYLISTS,
+        artists: [],
+        links: [],
+      });
       matchedIds.add(section.id);
       continue;
     }
@@ -314,6 +339,7 @@ export function HomePage({
   onOpenAlbum,
   onOpenArtist,
   onOpenPlaylist,
+  onOpenReleases,
 }: HomePageProps) {
   useTrackContextMenu();
   const [activeMood, setActiveMood] = useState<string>("all");
@@ -572,6 +598,7 @@ export function HomePage({
           onOpenAlbum={onOpenAlbum ?? (() => {})}
           onOpenArtist={onOpenArtist ?? (() => {})}
           onOpenPlaylist={onOpenPlaylist ?? (() => {})}
+          onOpenReleases={onOpenReleases}
         />
       ) : (
         <div className="flex flex-col gap-6">

@@ -9,9 +9,11 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { Loader } from "@/components/motion/loader";
-import { BookmarkActiveIcon, BookmarkIcon, CheckIcon, CopyIcon, DownloadIcon, EyeClosedIcon, EyeIcon, ImageIcon, PencilIcon, RefreshIcon, TrashIcon } from "@/ui/icons";
+import { BookmarkActiveIcon, BookmarkIcon, CheckIcon, CopyIcon, DownloadIcon, EyeClosedIcon, EyeIcon, ImageIcon, ListIcon, PencilIcon, RefreshIcon, ShareIcon, ShuffleIcon, SkipNextIcon, TrashIcon } from "@/ui/icons";
 import type { Album, Playlist } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
+import { playerController } from "../../player/playerStore";
+import { shuffleTracks } from "../../player/shuffleTracks";
 import { isLocalPlaylist, LOCAL_IMAGE_PREFIX, setLocalPlaylistArtwork, refreshLocalPlaylists } from "../../player/localPlaylists";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { forgetArtworkSource } from "../../internal/artworkCache";
@@ -21,6 +23,7 @@ import {
   PlaylistContext,
   type PlaylistContextMenuValue,
 } from "./playlistContextMenuContext";
+import { SpotifyService } from "../../services/SpotifyService";
 
 /* Re-exported so existing `from "./PlaylistContextMenu"` imports keep working; the context
    itself has to live outside this file. See playlistContextMenuContext.ts. */
@@ -147,10 +150,6 @@ export function PlaylistContextMenuProvider({
     setPosition({ x: event.clientX, y: event.clientY });
   };
 
-  const isSaved = album
-    ? libraryController.isAlbumSaved(album.id) || Boolean(album.playlistId && libraryController.isAlbumSaved(album.playlistId))
-    : false;
-
   const hiddenPlaylistIds = useHiddenPlaylistIds();
   const isHiddenPlaylist = Boolean(playlist && hiddenPlaylistIds.includes(playlist.id));
   const toggleHiddenPlaylist = () => {
@@ -207,12 +206,72 @@ export function PlaylistContextMenuProvider({
     }
   };
 
+  const isAlbumSaved = Boolean(
+    album && (
+      libraryController.isAlbumSaved(album.id)
+      || (album.playlistId && libraryController.isAlbumSaved(album.playlistId))
+    )
+  );
+
+  const shufflePlayAlbum = async () => {
+    if (!album) return;
+    setPosition(null);
+    showToast(`Loading ${album.title}...`);
+    try {
+      const tracks = await libraryController.getAlbumTracks(album);
+      if (tracks.length > 0) {
+        const shuffled = shuffleTracks(tracks);
+        await playerController.playTrackById(shuffled[0].id, tracks, false, true);
+        playerController.setShuffleEnabled(true);
+      }
+    } catch {
+      showToast("Unable to play album.");
+    }
+  };
+
+  const playAlbumNext = async () => {
+    if (!album) return;
+    setPosition(null);
+    try {
+      const tracks = await libraryController.getAlbumTracks(album);
+      if (tracks.length > 0) {
+        for (let i = tracks.length - 1; i >= 0; i--) {
+          playerController.playNext(tracks[i]);
+        }
+        showToast(`Playing ${album.title} next`);
+      }
+    } catch {
+      showToast("Unable to queue album.");
+    }
+  };
+
+  const addAlbumToQueue = async () => {
+    if (!album) return;
+    setPosition(null);
+    try {
+      const tracks = await libraryController.getAlbumTracks(album);
+      if (tracks.length > 0) {
+        playerController.addTracksToQueue(tracks);
+        showToast(`Added ${album.title} to queue`);
+      }
+    } catch {
+      showToast("Unable to queue album.");
+    }
+  };
+
   const copyAlbumUrl = async () => {
     if (!album || isSaving) return;
     setPosition(null);
     try {
-      await navigator.clipboard.writeText(getAlbumUrl(album));
-      showToast("Url copied to clipboard");
+      const shareUrl = await SpotifyService.getSharableLink({
+        type: "album",
+        title: album.title,
+        artist: album.artist,
+        id: album.id,
+        fallbackUrl: getAlbumUrl(album),
+      });
+      await navigator.clipboard.writeText(shareUrl);
+      showToast(shareUrl.includes("spotify.com") ? "Spotify album link copied" : "Album link copied");
     } catch {
       showToast("Unable to copy the link.");
     }
@@ -222,8 +281,14 @@ export function PlaylistContextMenuProvider({
     if (!playlist || isSaving) return;
     setPosition(null);
     try {
-      await navigator.clipboard.writeText(getPlaylistUrl(playlist));
-      showToast("Url copied to clipboard");
+      const shareUrl = await SpotifyService.getSharableLink({
+        type: "playlist",
+        title: playlist.title,
+        id: playlist.id,
+        fallbackUrl: getPlaylistUrl(playlist),
+      });
+      await navigator.clipboard.writeText(shareUrl);
+      showToast(shareUrl.includes("spotify.com") ? "Spotify playlist link copied" : "Playlist link copied");
     } catch {
       showToast("Unable to copy the link.");
     }
@@ -382,15 +447,53 @@ export function PlaylistContextMenuProvider({
           ) : (
           <>
           {album && (
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => void copyAlbumUrl()}
-            >
-              <CopyIcon size={18} />
-              <span>Copy album URL</span>
-            </button>
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => void shufflePlayAlbum()}
+              >
+                <ShuffleIcon size={18} />
+                <span>Shuffle play</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => void playAlbumNext()}
+              >
+                <SkipNextIcon size={18} />
+                <span>Play next</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => void addAlbumToQueue()}
+              >
+                <ListIcon size={18} />
+                <span>Add to queue</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => void toggleAlbumSaved()}
+              >
+                {isAlbumSaved ? <BookmarkActiveIcon size={18} /> : <BookmarkIcon size={18} />}
+                <span>{isAlbumSaved ? "Remove from library" : "Save album to library"}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => void copyAlbumUrl()}
+              >
+                <ShareIcon size={18} />
+                <span>Share album</span>
+              </button>
+            </>
           )}
           {canCopyPlaylistUrl && (
             <button
@@ -500,17 +603,6 @@ export function PlaylistContextMenuProvider({
                     ? "Delete local playlist"
                     : "Delete playlist"}
               </span>
-            </button>
-          )}
-          {album && (
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => void toggleAlbumSaved()}
-            >
-              {isSaved ? <BookmarkActiveIcon size={18} /> : <BookmarkIcon size={18} />}
-              <span>{isSaved ? "Remove from library" : "Save to library"}</span>
             </button>
           )}
           </>

@@ -76,7 +76,6 @@ export interface SpotifyAlbumMetadata {
   type: "album" | "single" | "ep";
   releaseDate?: string;
   formattedReleaseDate?: string;
-  label?: string;
   copyrights: string[];
   trackCount: number;
   tracks: SpotifyAlbumTrack[];
@@ -262,6 +261,8 @@ class SpotifyServiceManager {
    */
   async searchArtistUri(artistName: string): Promise<string | null> {
     const cleanName = artistName.trim().toLowerCase();
+    if (!cleanName) return null;
+
     const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
       searchTerm: artistName,
       offset: 0,
@@ -272,8 +273,34 @@ class SpotifyServiceManager {
 
     const artists = result?.data?.searchV2?.artists?.items;
     if (Array.isArray(artists) && artists.length > 0) {
-      const match = artists.find((a: any) => a?.data?.profile?.name?.toLowerCase() === cleanName) || artists[0];
-      return match?.data?.uri || null;
+      const cleanSimp = cleanName.replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
+
+      // 1. Exact match (case-insensitive)
+      const exactMatch = artists.find((a: any) => {
+        const aName = a?.data?.profile?.name?.toLowerCase()?.trim();
+        return aName === cleanName;
+      });
+      if (exactMatch) return exactMatch?.data?.uri || null;
+
+      // 2. Simplified match (ignoring hyphens, punctuation, spaces, e.g. "lege-cy" == "legecy")
+      const simpMatch = artists.find((a: any) => {
+        const aName = a?.data?.profile?.name || "";
+        const aSimp = aName.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
+        return aSimp && aSimp === cleanSimp;
+      });
+      if (simpMatch) return simpMatch?.data?.uri || null;
+
+      // 3. Close alias (e.g. "The Weeknd" vs "Weeknd") - must be closely related
+      const closeMatch = artists.find((a: any) => {
+        const aName = (a?.data?.profile?.name || "").toLowerCase().trim();
+        const aSimp = aName.replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
+        const stripThe = (s: string) => s.replace(/^the\s+/, "");
+        return stripThe(aName) === stripThe(cleanName)
+          || (aSimp.length >= 6 && cleanSimp.length >= 6 && (aSimp.startsWith(cleanSimp) || cleanSimp.startsWith(aSimp)));
+      });
+      if (closeMatch) return closeMatch?.data?.uri || null;
+
+      return null;
     }
     return null;
   }
@@ -298,10 +325,10 @@ class SpotifyServiceManager {
         numberOfTopResults: 5,
         includeAudiobooks: false,
       });
-      const albums = result?.data?.searchV2?.albums?.items;
+      const albums = result?.data?.searchV2?.albumsV2?.items ?? result?.data?.searchV2?.albums?.items;
       if (Array.isArray(albums) && albums.length > 0) {
         const match = albums[0];
-        const uri = match?.data?.uri;
+        const uri = match?.data?.uri || match?.uri;
         if (uri && uri.startsWith("spotify:album:")) {
           return `https://open.spotify.com/album/${uri.replace("spotify:album:", "")}`;
         }
@@ -324,10 +351,10 @@ class SpotifyServiceManager {
         numberOfTopResults: 5,
         includeAudiobooks: false,
       });
-      const tracks = result?.data?.searchV2?.tracks?.items;
+      const tracks = result?.data?.searchV2?.tracksV2?.items ?? result?.data?.searchV2?.tracks?.items;
       if (Array.isArray(tracks) && tracks.length > 0) {
         const match = tracks[0];
-        const uri = match?.item?.data?.uri || match?.data?.uri;
+        const uri = match?.item?.data?.uri || match?.data?.uri || match?.uri;
         if (uri && uri.startsWith("spotify:track:")) {
           return `https://open.spotify.com/track/${uri.replace("spotify:track:", "")}`;
         }
@@ -343,25 +370,79 @@ class SpotifyServiceManager {
    */
   async searchArtistUrl(name: string): Promise<string | null> {
     try {
+      const uri = await this.searchArtistUri(name);
+      if (uri && uri.startsWith("spotify:artist:")) {
+        return `https://open.spotify.com/artist/${uri.replace("spotify:artist:", "")}`;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
+   * Search for a playlist by title, returns open.spotify.com playlist URL if matched.
+   */
+  async searchPlaylistUrl(title: string): Promise<string | null> {
+    try {
       const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
-        searchTerm: name,
+        searchTerm: title,
         offset: 0,
         limit: 5,
         numberOfTopResults: 5,
         includeAudiobooks: false,
       });
-      const artists = result?.data?.searchV2?.artists?.items;
-      if (Array.isArray(artists) && artists.length > 0) {
-        const match = artists[0];
+      const playlists = result?.data?.searchV2?.playlists?.items;
+      if (Array.isArray(playlists) && playlists.length > 0) {
+        const match = playlists[0];
         const uri = match?.data?.uri;
-        if (uri && uri.startsWith("spotify:artist:")) {
-          return `https://open.spotify.com/artist/${uri.replace("spotify:artist:", "")}`;
+        if (uri && uri.startsWith("spotify:playlist:")) {
+          return `https://open.spotify.com/playlist/${uri.replace("spotify:playlist:", "")}`;
         }
       }
     } catch {
       // ignore
     }
     return null;
+  }
+
+  /**
+   * Resolves a fast Spotify sharable link for tracks, albums, artists, or playlists with a 1.5s timeout,
+   * falling back automatically to the provided fallback URL (e.g. YouTube Music).
+   */
+  async getSharableLink(entity: {
+    type: "track" | "album" | "artist" | "playlist";
+    title: string;
+    artist?: string;
+    id?: string;
+    fallbackUrl?: string;
+  }): Promise<string> {
+    const fallback = entity.fallbackUrl
+      || (entity.type === "track" && entity.id ? `https://music.youtube.com/watch?v=${entity.id}` : undefined)
+      || (entity.type === "album" && entity.id ? `https://music.youtube.com/browse/${entity.id}` : undefined)
+      || (entity.type === "artist" && entity.id ? `https://music.youtube.com/channel/${entity.id}` : undefined)
+      || (entity.type === "playlist" && entity.id ? `https://music.youtube.com/playlist?list=${entity.id.replace(/^VL/, "")}` : undefined)
+      || "https://music.youtube.com";
+
+    const spotifyPromise = (async () => {
+      switch (entity.type) {
+        case "track":
+          return this.searchTrackUrl(entity.title, entity.artist || "");
+        case "album":
+          return this.searchAlbumUrl(entity.title, entity.artist || "");
+        case "artist":
+          return this.searchArtistUrl(entity.title);
+        case "playlist":
+          return this.searchPlaylistUrl(entity.title);
+      }
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    try {
+      const spotifyUrl = await Promise.race([spotifyPromise, timeoutPromise]);
+      if (spotifyUrl) return spotifyUrl;
+    } catch {}
+    return fallback;
   }
 
   /**
@@ -462,7 +543,7 @@ class SpotifyServiceManager {
       bio: rawBio || undefined,
       cleanBio: cleanBio || undefined,
       avatarUrl: getHighestResSource(visuals.avatarImage?.sources) || undefined,
-      headerUrl: getHighestResSource(visuals.headerImage?.sources) || undefined,
+      headerUrl: getHighestResSource(visuals.headerImage?.sources) || getHighestResSource(visuals.gallery?.items?.[0]?.sources) || galleryUrls[0] || undefined,
       galleryUrls,
       instagramUrl: instagramItem?.url || undefined,
       externalLinks,
@@ -624,12 +705,13 @@ class SpotifyServiceManager {
     if (!cleanId) return null;
 
     const cacheKey = cleanId.toLowerCase();
-    if (typeof localStorage !== "undefined") {
+    const cached = typeof localStorage !== "undefined" ? localStorage.getItem(`sp_alb_v2_${cacheKey}`) : null;
+    if (cached) {
       try {
-        const raw = localStorage.getItem(`sp_alb_${cacheKey}`);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
+        const parsed = JSON.parse(cached);
+        if (Date.now() - parsed.timestamp < 1000 * 60 * 60 * 24 * 7) {
+          const hasBadCopyright = parsed.data?.copyrights?.some((c: string) => /ey[\w.-]{4,}|oy[\w.-]{4,}/i.test(c));
+          if (!hasBadCopyright && parsed.data) {
             return parsed.data;
           }
         }
@@ -658,35 +740,43 @@ class SpotifyServiceManager {
 
       const copyrightMatches = [...pageHtml.matchAll(/([©℗]\s*[^<"&]+)/g)]
         .map((m) => m[1].replace(/&amp;/g, "&").trim())
-        .filter((c, i, arr) => arr.indexOf(c) === i);
+        .filter((c, i, arr) => arr.indexOf(c) === i)
+        .filter((c) => {
+          if (!c || c.length < 3 || c.length > 90) return false;
+          if (!/^[©℗]/.test(c)) return false;
+          if (/ey[\w.-]{4,}|oy[\w.-]{4,}|[{}<>;_\\\/]{2,}/i.test(c)) return false;
+          if (!/\s/.test(c)) return false;
+          return true;
+        });
 
-      let releaseDate: string | undefined;
-      const datePublishedMatch = pageHtml.match(/"datePublished":\s*"([^"]+)"/);
-      if (datePublishedMatch) {
-        releaseDate = datePublishedMatch[1];
-      } else {
-        const metaDateMatch = pageHtml.match(/<meta property="music:release_date" content="([^"]+)"/);
-        if (metaDateMatch) releaseDate = metaDateMatch[1];
+      let releaseDate: string | undefined = entity?.releaseDate;
+      if (!releaseDate) {
+        const datePublishedMatch = pageHtml.match(/"datePublished":\s*"([^"]+)"/);
+        if (datePublishedMatch) {
+          releaseDate = datePublishedMatch[1];
+        } else {
+          const metaDateMatch = pageHtml.match(/<meta property="music:release_date" content="([^"]+)"/);
+          if (metaDateMatch) releaseDate = metaDateMatch[1];
+        }
       }
 
       let formattedReleaseDate: string | undefined;
       if (releaseDate) {
         try {
-          const d = new Date(releaseDate);
-          if (!isNaN(d.getTime())) {
+          const parts = releaseDate.split("T")[0].split("-");
+          if (parts.length >= 2) {
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = new Date(Date.UTC(y, m, 1));
             formattedReleaseDate = d.toLocaleDateString("en-US", {
               year: "numeric",
               month: "long",
-              day: "numeric",
+              timeZone: "UTC",
             });
+          } else if (parts.length === 1 && /^\d{4}$/.test(parts[0])) {
+            formattedReleaseDate = parts[0];
           }
         } catch {}
-      }
-
-      let label: string | undefined;
-      const labelMatch = pageHtml.match(/([A-Za-z0-9\s,\/]+(?:Records|Recordings|Music|Entertainment|Corporation|LLC|Inc))/i);
-      if (labelMatch) {
-        label = labelMatch[1].trim();
       }
 
       const tracks: SpotifyAlbumTrack[] = Array.isArray(entity?.trackList)
@@ -704,8 +794,7 @@ class SpotifyServiceManager {
         name: entity?.title || entity?.name || "",
         type: (entity?.type === "album" ? "album" : "single") as "album" | "single" | "ep",
         releaseDate,
-        formattedReleaseDate: formattedReleaseDate || releaseDate,
-        label,
+        formattedReleaseDate,
         copyrights: copyrightMatches,
         trackCount: tracks.length || 1,
         tracks,
@@ -713,7 +802,7 @@ class SpotifyServiceManager {
 
       if (typeof localStorage !== "undefined") {
         try {
-          localStorage.setItem(`sp_alb_${cacheKey}`, JSON.stringify({ data: result, timestamp: Date.now() }));
+          localStorage.setItem(`sp_alb_v2_${cacheKey}`, JSON.stringify({ data: result, timestamp: Date.now() }));
         } catch {}
       }
 

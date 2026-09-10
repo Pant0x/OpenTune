@@ -18,7 +18,6 @@ import { revokeOfflineBlobUrl } from "./offlinePlayback";
 
 const MANIFEST_KEY = "amber.offline-manifest.v1";
 const MAX_BYTES_KEY = "amber.offline-max-bytes.v1";
-const CHUNK_BYTES = 4 * 1024 * 1024; // 4 MiB per spec
 
 function getOfflineDir(): string {
   try {
@@ -294,8 +293,8 @@ export async function removeAllDownloads(): Promise<void> {
 const pendingTracks = new Map<string, Track>();
 
 /**
- * Chunk Assembly: allocate single target Uint8Array(totalBytes) and .set(chunkBytes, offset)
- * Faster and less memory than repeated concatenation.
+ * Downloads the full media buffer reliably into the local downloads directory.
+ * Direct fetch avoids 403 Forbidden errors that googlevideo servers emit on HEAD or partial Range requests.
  */
 async function downloadToFile(
   url: string,
@@ -303,70 +302,29 @@ async function downloadToFile(
 ): Promise<{ totalBytes: number }> {
   await ensureOfflineDir();
 
-  // Try to get total size via HEAD or first chunk content-range
-  // Fallback: fetch whole file if range not supported
-  const headRes = await tauriFetch(url, { method: "HEAD" }).catch(() => null);
-  let totalBytes: number | null = null;
-  const clen = headRes?.headers.get("content-length") ?? headRes?.headers.get("Content-Length");
-  if (clen) totalBytes = Number(clen);
-  // Also try to parse clen from URL (?clen=) as fallback
-  if (!totalBytes || !Number.isFinite(totalBytes)) {
-    try {
-      const u = new URL(url);
-      const c = u.searchParams.get("clen");
-      if (c) totalBytes = Number(c);
-    } catch {}
+  setState({ progress: 10 });
+
+  const res = await tauriFetch(url);
+  if (!res.ok) {
+    throw new Error(`Download failed HTTP ${res.status}`);
   }
 
-  // If no total, fetch whole file as single blob
-  if (!totalBytes || totalBytes <= 0) {
-    const res = await tauriFetch(url);
-    if (!res.ok) throw new Error(`Download failed HTTP ${res.status}`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    await writeFile(`${getOfflineDir()}/${trackId}.bin`, buf, {
-      baseDir: BaseDirectory.AppData,
-    });
-    return { totalBytes: buf.byteLength };
+  setState({ progress: 60 });
+
+  const arrayBuf = await res.arrayBuffer();
+  const buf = new Uint8Array(arrayBuf);
+  if (buf.byteLength === 0) {
+    throw new Error("Downloaded audio file is empty (0 bytes)");
   }
 
-  // Chunked download with single allocation
-  const total = totalBytes;
-  const target = new Uint8Array(total);
-  let offset = 0;
-  let received = 0;
+  setState({ progress: 85 });
 
-  while (offset < total) {
-    const end = Math.min(offset + CHUNK_BYTES - 1, total - 1);
-    const res = await tauriFetch(url, {
-      headers: { Range: `bytes=${offset}-${end}` },
-    });
-    // Some servers ignore Range and return 200 with full body on first chunk - handle
-    if (res.status === 200 && offset === 0 && total > CHUNK_BYTES) {
-      const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.byteLength === total) {
-        await writeFile(`${getOfflineDir()}/${trackId}.bin`, buf, {
-          baseDir: BaseDirectory.AppData,
-        });
-        return { totalBytes: total };
-      }
-    }
-    if (!res.ok && res.status !== 206) {
-      throw new Error(`Chunk ${offset}-${end} failed HTTP ${res.status}`);
-    }
-    const chunk = new Uint8Array(await res.arrayBuffer());
-    target.set(chunk, offset);
-    offset += chunk.byteLength;
-    received += chunk.byteLength;
-    const percent = Math.round((received / total) * 100);
-    setState({ progress: percent });
-    // Handle short chunk (EOF)
-    if (chunk.byteLength === 0) break;
-  }
-
-  await writeFile(`${getOfflineDir()}/${trackId}.bin`, target, {
+  await writeFile(`${getOfflineDir()}/${trackId}.bin`, buf, {
     baseDir: BaseDirectory.AppData,
   });
-  return { totalBytes: total };
+
+  setState({ progress: 100 });
+  return { totalBytes: buf.byteLength };
 }
 
 async function pump(): Promise<void> {

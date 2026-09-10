@@ -20,14 +20,11 @@ import {
   CheckIcon,
   ClockIcon,
   CloseIcon,
-  CompassIcon,
-  DownloadIcon,
-  FileTextIcon,
-  FolderIcon,
   MusicNoteIcon,
   PlaylistIcon,
   RefreshIcon,
   SearchIcon,
+  SettingsIcon,
   SidebarToggleIcon,
   SortIcon,
   UserIcon,
@@ -134,10 +131,11 @@ interface SidebarProps {
   onNavigateArtist: (artist: Artist) => void;
   onNavigateHistory: () => void;
   onNavigateLibrary: () => void;
-  onNavigateBrowse: () => void;
-  onNavigateDownloads: () => void;
-  onNavigateReleases: () => void;
-  onNavigateLocalFiles: () => void;
+  onNavigateSettings?: () => void;
+  onNavigateBrowse?: () => void;
+  onNavigateDownloads?: () => void;
+  onNavigateReleases?: () => void;
+  onNavigateLocalFiles?: () => void;
 }
 
 /**
@@ -411,7 +409,7 @@ function CreatePlaylistButton({
                 )}
               >
                 {value === "youtube"
-                  ? "Amber Cloud"
+                  ? "Playlists"
                   : "Spotify"}
               </button>
             ))}
@@ -420,7 +418,7 @@ function CreatePlaylistButton({
 
         <span className="text-xs text-muted-foreground">
           {destination === "youtube"
-            ? "Saved to your Amber Cloud account, synced across devices."
+            ? "Saved to your library playlists, synced across devices."
             : "Import a Spotify playlist by URL into your library."}
         </span>
         {destination === "spotify" ? (
@@ -580,10 +578,11 @@ export function Sidebar({
   onNavigateArtist,
   onNavigateHistory,
   onNavigateLibrary,
-  onNavigateBrowse,
-  onNavigateDownloads,
-  onNavigateReleases,
-  onNavigateLocalFiles,
+  onNavigateSettings,
+  onNavigateBrowse: _onNavigateBrowse,
+  onNavigateDownloads: _onNavigateDownloads,
+  onNavigateReleases: _onNavigateReleases,
+  onNavigateLocalFiles: _onNavigateLocalFiles,
 }: SidebarProps) {
   const libraryState = useLibraryState();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -1698,21 +1697,6 @@ export function Sidebar({
               </button>
             </SidebarItemTooltip>
           )}
-          {onNavigateBrowse && (
-            <SidebarItemTooltip enabled={shouldHideText} title="Browse" subtitle="Explore new music">
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  shouldHideText && "justify-center px-0",
-                )}
-                onClick={onNavigateBrowse}
-              >
-                <CompassIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
-                {!shouldHideText && <span className="truncate">Browse</span>}
-              </button>
-            </SidebarItemTooltip>
-          )}
           {onNavigateHistory && (
             <SidebarItemTooltip enabled={shouldHideText} title="History" subtitle="Recently played">
               <button
@@ -1728,48 +1712,18 @@ export function Sidebar({
               </button>
             </SidebarItemTooltip>
           )}
-          {onNavigateReleases && (
-            <SidebarItemTooltip enabled={shouldHideText} title="Releases" subtitle="New albums, EPs, singles">
+          {onNavigateSettings && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Settings" subtitle="Preferences & Audio">
               <button
                 type="button"
                 className={cn(
                   "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   shouldHideText && "justify-center px-0",
                 )}
-                onClick={onNavigateReleases}
+                onClick={onNavigateSettings}
               >
-                <FileTextIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
-                {!shouldHideText && <span className="truncate">Releases</span>}
-              </button>
-            </SidebarItemTooltip>
-          )}
-          {onNavigateDownloads && (
-            <SidebarItemTooltip enabled={shouldHideText} title="Downloads" subtitle="Offline tracks">
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  shouldHideText && "justify-center px-0",
-                )}
-                onClick={onNavigateDownloads}
-              >
-                <DownloadIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
-                {!shouldHideText && <span className="truncate">Downloads</span>}
-              </button>
-            </SidebarItemTooltip>
-          )}
-          {onNavigateLocalFiles && (
-            <SidebarItemTooltip enabled={shouldHideText} title="Local Files" subtitle="Computer music">
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  shouldHideText && "justify-center px-0",
-                )}
-                onClick={onNavigateLocalFiles}
-              >
-                <FolderIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
-                {!shouldHideText && <span className="truncate">Local Files</span>}
+                <SettingsIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Settings</span>}
               </button>
             </SidebarItemTooltip>
           )}

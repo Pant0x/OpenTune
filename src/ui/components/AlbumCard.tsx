@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, type MouseEvent, type ReactNode } from "react";
 import { TiltCard } from "@/components/motion/tilt-card";
-import { PlayActiveIcon } from "@/ui/icons";
+import { MenuDotsIcon, PlayActiveIcon } from "@/ui/icons";
 import { propsEqualIgnoringHandlers } from "../../internal/propsEqual";
 import { TrackArtwork } from "./TrackArtwork";
 
@@ -23,7 +23,7 @@ interface AlbumCardProps {
   size?: number;
   isOfficialYouTube?: boolean;
   onClick?: () => void;
-  onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
+  onContextMenu?: (event: MouseEvent<HTMLDivElement | HTMLButtonElement>) => void;
 }
 
 /**
@@ -52,7 +52,7 @@ export const AlbumCard = memo(function AlbumCard({
 
   const handleClick = useCallback(() => handlersRef.current.onClick?.(), []);
   const handleContextMenu = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => handlersRef.current.onContextMenu?.(event),
+    (event: MouseEvent<HTMLDivElement | HTMLButtonElement>) => handlersRef.current.onContextMenu?.(event),
     [],
   );
   const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -71,7 +71,7 @@ export const AlbumCard = memo(function AlbumCard({
        * `auto` keyword means the guess only ever applies to a card that has not yet been on
        * screen once; after that the browser uses the size it actually measured.
        */
-      className="group/card flex w-full cursor-pointer flex-col gap-2  p-2 transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [content-visibility:auto] [contain-intrinsic-size:auto_232px]"
+      className="group/card flex w-full cursor-pointer flex-col gap-2 p-2 select-none transition-all duration-300 hover:-translate-y-1 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [content-visibility:auto] [contain-intrinsic-size:auto_232px]"
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleKeyDown}
@@ -87,6 +87,22 @@ export const AlbumCard = memo(function AlbumCard({
             size={size}
             variant="album"
           />
+          {/* 3-dots menu button in top-right corner on hover */}
+          {onContextMenu && (
+            <div className="absolute top-2 right-2 z-20 opacity-0 group-hover/card:opacity-100 transition-opacity">
+              <button
+                type="button"
+                aria-label={`Options for ${title || "album"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleContextMenu(e);
+                }}
+                className="flex size-8 items-center justify-center rounded-full bg-black/70 hover:bg-black/90 text-white/90 hover:text-white shadow-lg backdrop-blur-sm transition-all hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+              >
+                <MenuDotsIcon size={16} />
+              </button>
+            </div>
+          )}
           {/* Play affordance fades in on hover rather than sitting permanently on the art. */}
           <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/50 opacity-0 transition-opacity group-hover/card:opacity-100">
             <span className="grid size-12 place-items-center rounded-full bg-red-600 text-white shadow-xl transition-transform duration-200 group-hover/card:scale-105">

@@ -1,7 +1,10 @@
+import type { Track } from "../../datasource/types";
 import type { PlaybackOrderMode } from "../../player/PlayerController";
 import { shallowEqual, usePlayerSelector } from "../../player/playerStore";
 
 export interface NowPlaying {
+  /** The full track currently playing, or null when idle. */
+  currentTrack: Track | null;
   /** Id of the track the player is on, or null when idle. */
   currentTrackId: string | null;
   /** Whether that track is actually advancing, as opposed to paused. */
@@ -32,6 +35,7 @@ export function useNowPlaying(): NowPlaying {
     shallowEqual,
   );
   return {
+    currentTrack: state.currentTrack ?? null,
     currentTrackId: state.currentTrack?.id ?? null,
     isPlaying: state.status === "playing",
     isLoading: state.status === "loading",

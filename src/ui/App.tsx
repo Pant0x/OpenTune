@@ -68,11 +68,10 @@ import {
   usePlayerSelector,
   shallowEqual,
 } from "../player/playerStore";
-import { clearAppSession, hydrateAppSessionAsync, saveAppSession } from "../player/appSession";
+import { clearAppSession, hydrateAppSessionAsync, hydrateLastPlayedTrackAsync, saveAppSession } from "../player/appSession";
 import { readSessionRestoreEnabled } from "./settings/sessionRestore";
 import { useMediaSession } from "../player/useMediaSession";
 import { playerUIStore, usePlayerUIState } from "./stores/playerUIStore";
-import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import {
   clearAppSettings,
   getAppSetting,
@@ -102,12 +101,9 @@ import {
 } from "./settings/keyboardShortcuts";
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
-const LOADING_SCREEN_FADE_MS = 50;
-const LOADING_SCREEN_MAX_MS = 800;
 const ONBOARDING_COMPLETE_KEY = "amber:onboarding-complete";
 const ONBOARDING_COMPLETE_SETTING_KEY = "onboardingComplete";
 const KEYCHAIN_NOTICE_COMPLETE_KEY = "amber:keychain-notice-complete";
-const LOADING_SCREEN_MIN_MS = 0;
 const MOUSE_BACK_BUTTON = 3;
 const MOUSE_FORWARD_BUTTON = 4;
 /** How often the session is written purely to keep the restored playback position fresh. */
@@ -280,7 +276,6 @@ export default function App() {
   const [queuePanelWidth, setQueuePanelWidth] = useState(340);
   const isQueuePanelCollapsed = useQueuePanelCollapsed();
   const nativeWindowControls = useNativeWindowControls();
-  const [loadingScreenState, setLoadingScreenState] = useState<"visible" | "leaving" | "hidden">("visible");
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(() =>
     readLocalOnboardingComplete() ? true : null
   );
@@ -302,10 +297,28 @@ export default function App() {
     // If initial sync did not restore a track (e.g. localStorage was cold or uncommitted), hydrate from disk setting
     if (readSessionRestoreEnabled() && !playerController.getState().currentTrack) {
       void hydrateAppSessionAsync().then((diskSession) => {
-        if (cancelled || !diskSession?.player?.currentTrack) return;
-        if (!playerController.getState().currentTrack) {
+        if (cancelled) return;
+        if (diskSession?.player?.currentTrack && !playerController.getState().currentTrack) {
           playerController.restoreSession(diskSession.player);
+          return;
         }
+        void hydrateLastPlayedTrackAsync().then((lastTrack) => {
+          if (cancelled || !lastTrack || playerController.getState().currentTrack) return;
+          playerController.restoreSession({
+            currentTrack: lastTrack,
+            history: [],
+            queue: [lastTrack],
+            queueIndex: 0,
+            status: "paused",
+            positionSec: 0,
+            volume: 1,
+            muted: false,
+            autoplayEnabled: true,
+            playbackOrderMode: "in-order",
+            shuffleEnabled: false,
+            isPlaylistMode: false,
+          });
+        });
       });
     }
 
@@ -332,8 +345,6 @@ export default function App() {
     };
   }, []);
   const [isExpandedPlayerBar, setIsExpandedPlayerBar] = useState(false);
-  const loadingScreenDismissedRef = useRef(false);
-  const loadingScreenStartedAtRef = useRef(performance.now());
   const lastErrorAlertRef = useRef<string | null>(null);
   const sessionStateRef = useRef({ currentView, navigationHistory, forwardHistory });
   const sessionPersistenceDisabledRef = useRef(false);
@@ -396,16 +407,6 @@ export default function App() {
       });
       return newForward;
     });
-  }, []);
-
-  const dismissLoadingScreen = useCallback(() => {
-    if (loadingScreenDismissedRef.current) return;
-
-    loadingScreenDismissedRef.current = true;
-    setLoadingScreenState("leaving");
-    window.setTimeout(() => {
-      setLoadingScreenState("hidden");
-    }, LOADING_SCREEN_FADE_MS);
   }, []);
 
   const markOnboardingComplete = useCallback((showCompleteToast: boolean) => {
@@ -488,56 +489,6 @@ export default function App() {
     lastErrorAlertRef.current = message;
     logInternalWarn("App playback error", { error: playerState.error });
   }, [playerState.error, playerState.status]);
-
-  useEffect(() => {
-    if (showKeychainNotice) return;
-
-    const elapsed = performance.now() - loadingScreenStartedAtRef.current;
-    const remainingMaximum = Math.max(0, LOADING_SCREEN_MAX_MS - LOADING_SCREEN_FADE_MS - elapsed);
-    const maxTimer = window.setTimeout(dismissLoadingScreen, remainingMaximum);
-
-    return () => {
-      window.clearTimeout(maxTimer);
-    };
-  }, [dismissLoadingScreen, showKeychainNotice]);
-
-  useEffect(() => {
-    if (showKeychainNotice) {
-      loadingScreenDismissedRef.current = true;
-      setLoadingScreenState("hidden");
-      return;
-    }
-
-    const hasRenderableLibrary = Boolean(libraryState.library);
-    if (
-      !hasRenderableLibrary
-      && (libraryState.status === "restoring" || libraryState.status === "loading")
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    let fadeTimer: number | undefined;
-
-    const finishStartup = async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      if (cancelled || loadingScreenDismissedRef.current) return;
-
-      const elapsed = performance.now() - loadingScreenStartedAtRef.current;
-      const remainingMinimum = Math.max(0, LOADING_SCREEN_MIN_MS - elapsed);
-      fadeTimer = window.setTimeout(() => {
-        if (cancelled || loadingScreenDismissedRef.current) return;
-
-        dismissLoadingScreen();
-      }, remainingMinimum);
-    };
-
-    void finishStartup();
-    return () => {
-      cancelled = true;
-      if (fadeTimer !== undefined) window.clearTimeout(fadeTimer);
-    };
-  }, [dismissLoadingScreen, libraryState.library, libraryState.status, showKeychainNotice]);
 
   /*
    * A heartbeat, not the primary persistence path.
@@ -692,32 +643,49 @@ export default function App() {
     });
   };
 
-  const handleNavigateSong = (song: Track) => {
-    playerUIStore.setLyricsOpen(false);
-    playerUIStore.setNowPlayingFullscreen(false);
-    navigateToView({
-      title: song.title,
-      view: "song",
-      song,
-    });
-  };
-
-  /**
-   * Opens the album a track belongs to.
-   */
   const handleNavigateAlbumForTrack = async (track: Track) => {
     if (track.albumId) {
       handleNavigateAlbum({
         id: track.albumId,
         title: track.album ?? "Album",
         artist: track.artist ?? "",
+        artists: track.artists,
         artworkUrl: track.artworkUrl,
+        year: track.year,
+        releaseDate: track.releaseDate,
+        releaseType: track.releaseType || "album",
+      });
+      return;
+    }
+
+    if (!track.album) {
+      handleNavigateAlbum({
+        id: track.id,
+        title: track.title,
+        artist: track.artist ?? "",
+        artists: track.artists,
+        artworkUrl: track.artworkUrl,
+        releaseType: "single",
+        year: track.year,
+        releaseDate: track.releaseDate,
       });
       return;
     }
 
     const query = [track.album, track.artist].filter(Boolean).join(" ").trim();
-    if (!query) return;
+    if (!query) {
+      handleNavigateAlbum({
+        id: track.id,
+        title: track.album || track.title,
+        artist: track.artist ?? "",
+        artists: track.artists,
+        artworkUrl: track.artworkUrl,
+        releaseType: "single",
+        year: track.year,
+        releaseDate: track.releaseDate,
+      });
+      return;
+    }
 
     try {
       const results = await searchController.search(query);
@@ -732,7 +700,21 @@ export default function App() {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    handleSearch(query);
+
+    handleNavigateAlbum({
+      id: track.id,
+      title: track.album || track.title,
+      artist: track.artist ?? "",
+      artists: track.artists,
+      artworkUrl: track.artworkUrl,
+      releaseType: "single",
+      year: track.year,
+      releaseDate: track.releaseDate,
+    });
+  };
+
+  const handleNavigateSong = (song: Track) => {
+    void handleNavigateAlbumForTrack(song);
   };
 
   const handleNavigateArtist = (artist: Artist) => {
@@ -994,10 +976,10 @@ export default function App() {
   }, [showOnboardingComplete]);
 
   useEffect(() => {
-    if (!showOnboardingWelcome || loadingScreenState !== "hidden") return;
+    if (!showOnboardingWelcome) return;
     const timer = window.setTimeout(() => setShowOnboardingWelcome(false), 2600);
     return () => window.clearTimeout(timer);
-  }, [loadingScreenState, showOnboardingWelcome]);
+  }, [showOnboardingWelcome]);
 
   const handleToggleLyrics = () => {
     playerUIStore.setLyricsOpen(!playerUIState.isLyricsOpen);
@@ -1255,6 +1237,7 @@ export default function App() {
           onNavigateArtist={handleNavigateArtist}
           onNavigateHistory={handleOpenHistory}
           onNavigateLibrary={handleOpenLibrary}
+          onNavigateSettings={handleOpenSettings}
           onNavigateBrowse={() => handleOpenBrowse()}
           onNavigateDownloads={() => handleOpenBrowse("downloads")}
           onNavigateReleases={handleOpenReleases}
@@ -1297,13 +1280,14 @@ export default function App() {
                 onSignIn={handleSignIn}
                 destinations={{
                   onOpenLibrary: handleOpenLibrary,
-                  onOpenBrowse: () => handleOpenBrowse(),
+                  onOpenBrowse: () => handleOpenBrowse("charts"),
                   onOpenHistory: handleOpenHistory,
                   onOpenDownloads: () => handleOpenBrowse("downloads"),
                 }}
                 onOpenAlbum={handleNavigateAlbum}
                 onOpenArtist={handleNavigateArtist}
                 onOpenPlaylist={handleNavigatePlaylist}
+                onOpenReleases={handleOpenReleases}
               />
             )}
             {currentView.view === "album" && (
@@ -1336,6 +1320,7 @@ export default function App() {
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
                 onOpenSong={handleNavigateSong}
                 onOpenDiscography={handleNavigateDiscography}
+                onOpenSettings={handleOpenSettings}
               />
             )}
             {currentView.view === "discography" && (
@@ -1492,17 +1477,14 @@ export default function App() {
         onOpenPlaylist={handleNavigatePlaylist}
         onQueryChange={setOnboardingSearchQuery}
       /> */}
-      {loadingScreenState !== "hidden" && (
-        <AppLoadingScreen isLeaving={loadingScreenState === "leaving"} />
-      )}
       {showKeychainNotice ? (
         <KeychainNotice onContinue={handleKeychainNoticeContinue} />
       ) : (
         <>
-          {loadingScreenState === "hidden" && showOnboardingWelcome && (
+          {showOnboardingWelcome && (
             <OnboardingWelcome />
           )}
-          {loadingScreenState === "hidden" && onboardingComplete === false && !showOnboardingWelcome && onboardingStep && (
+          {onboardingComplete === false && !showOnboardingWelcome && onboardingStep && (
             <Onboarding
               step={onboardingStep}
               onSkip={finishOnboarding}

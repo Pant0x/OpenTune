@@ -16,7 +16,7 @@ function GridIcon({ className }: { className?: string }) {
   );
 }
 
-type ReleaseFilter = "all" | "album" | "ep" | "single";
+type ReleaseFilter = "all" | "this-month" | "album" | "ep" | "single";
 
 export function ReleasesPage({
   artist,
@@ -48,19 +48,50 @@ export function ReleasesPage({
     if (!libraryController) return;
     let active = true;
     setIsLoading(true);
-    void libraryController.getReleases((updated) => {
-      if (active && updated.length > 0) {
-        setFetchedReleases(updated);
-        setIsLoading(false);
-      }
-    }).then((items) => {
-      if (active) {
-        setFetchedReleases(items);
-        setIsLoading(false);
-      }
-    }).catch(() => {
-      if (active) setIsLoading(false);
-    });
+
+    const fetchPromises = [
+      libraryController.getReleases((updated) => {
+        if (active && updated.length > 0) {
+          setFetchedReleases((prev) => {
+            const seen = new Set(prev.map((r) => r.id));
+            const fresh = updated.filter((r) => !seen.has(r.id));
+            return [...prev, ...fresh];
+          });
+          setIsLoading(false);
+        }
+      }),
+      libraryController.getBrowsePage({ browseId: "FEmusic_new_releases_albums", title: "New releases" }).catch(() => null),
+    ];
+
+    Promise.allSettled(fetchPromises)
+      .then(([releasesRes, browseRes]) => {
+        if (!active) return;
+        const all: Album[] = [];
+        if (releasesRes.status === "fulfilled" && Array.isArray(releasesRes.value)) {
+          all.push(...releasesRes.value);
+        }
+        if (browseRes.status === "fulfilled" && browseRes.value && typeof browseRes.value === "object" && "shelves" in browseRes.value) {
+          const browsePage = browseRes.value as { shelves: Array<{ albums?: Album[] }> };
+          for (const shelf of browsePage.shelves) {
+            if (shelf.albums?.length) all.push(...shelf.albums);
+          }
+        }
+        const seen = new Set<string>();
+        const unique: Album[] = [];
+        for (const a of all) {
+          if (a?.id && !seen.has(a.id)) {
+            seen.add(a.id);
+            unique.push(a);
+          }
+        }
+        if (unique.length > 0) {
+          setFetchedReleases(unique);
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
     return () => {
       active = false;
     };
@@ -76,14 +107,32 @@ export function ReleasesPage({
     return () => window.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+function getEffectiveReleaseType(r: Album): "album" | "ep" | "single" {
+  if (r.releaseType === "album" || r.releaseType === "ep" || r.releaseType === "single") {
+    return r.releaseType;
+  }
+  const title = (r.title || "").toLowerCase();
+  if (title.includes(" - single") || title.includes("(single)") || title.endsWith(" single")) {
+    return "single";
+  }
+  if (title.includes(" - ep") || title.includes("(ep)") || title.endsWith(" ep")) {
+    return "ep";
+  }
+  return "album";
+}
+
+  const currentYear = new Date().getFullYear().toString();
+
   const filteredReleases = useMemo(() => {
     let list = (releases ?? []).slice();
-    if (filter === "album") {
-      list = list.filter((r) => r.releaseType === "album");
+    if (filter === "this-month") {
+      list = list.filter((r) => !r.year || r.year === currentYear || r.year === (parseInt(currentYear, 10) - 1).toString());
+    } else if (filter === "album") {
+      list = list.filter((r) => getEffectiveReleaseType(r) === "album");
     } else if (filter === "ep") {
-      list = list.filter((r) => r.releaseType === "ep");
+      list = list.filter((r) => getEffectiveReleaseType(r) === "ep");
     } else if (filter === "single") {
-      list = list.filter((r) => r.releaseType === "single");
+      list = list.filter((r) => getEffectiveReleaseType(r) === "single");
     }
 
     if (sort === "title") {
@@ -96,26 +145,26 @@ export function ReleasesPage({
       });
     }
     return list;
-  }, [releases, filter, sort]);
+  }, [releases, filter, sort, currentYear]);
 
   const sortLabel = sort === "date" ? "Release date" : "Name";
 
   const releaseTypeCounts = useMemo(() => {
-    const counts = { all: 0, album: 0, ep: 0, single: 0 };
+    const counts = { all: 0, "this-month": 0, album: 0, ep: 0, single: 0 };
     (releases ?? []).forEach((r) => {
       counts.all++;
-      if (r.releaseType === "album") counts.album++;
-      else if (r.releaseType === "ep") counts.ep++;
-      else if (r.releaseType === "single") counts.single++;
+      if (!r.year || r.year === currentYear) counts["this-month"]++;
+      const type = getEffectiveReleaseType(r);
+      counts[type]++;
     });
     return counts;
-  }, [releases]);
+  }, [releases, currentYear]);
 
   return (
     <div className="flex flex-col gap-6 p-2 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/30 pb-4">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {artist?.name ? `${artist.name} - Releases` : "Releases"}
+          {artist?.name ? `${artist.name} - Releases` : "New releases"}
         </h1>
 
         <div className="flex items-center gap-3">
@@ -135,6 +184,21 @@ export function ReleasesPage({
             >
               All
               <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts.all}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filter === "this-month"}
+              onClick={() => setFilter("this-month")}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                filter === "this-month"
+                  ? "bg-white/20 text-foreground font-bold"
+                  : "bg-white/[0.05] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground"
+              )}
+            >
+              This Month
+              <span className="ml-1.5 tabular-nums opacity-60">{releaseTypeCounts["this-month"]}</span>
             </button>
             <button
               type="button"

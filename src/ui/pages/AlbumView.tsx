@@ -67,6 +67,7 @@ export function AlbumView({
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const keyboardShortcuts = useKeyboardShortcuts();
   const {
+    currentTrack,
     currentTrackId,
     isPlaying,
     isLoading: isPlayerLoading,
@@ -268,7 +269,28 @@ export function AlbumView({
             }
           }
         } catch {}
-        if (active && !showedTracks) setError("Unable to load this album.");
+        if (active && !showedTracks) {
+          // If it's a single release or was routed as a single track, render as 1-track album
+          if (album.releaseType === "single" || !album.id.startsWith("MPRE")) {
+            const singleTrack: Track = {
+              id: album.id,
+              title: album.title,
+              artist: album.artist,
+              artists: album.artists,
+              album: album.title,
+              albumId: album.id,
+              artworkUrl: album.artworkUrl,
+              releaseType: "single",
+              year: album.year,
+              releaseDate: album.releaseDate,
+              source: "youtube",
+            };
+            setTracks(applyAlbumMeta([singleTrack]));
+            setError(null);
+            return;
+          }
+          setError("Unable to load this album.");
+        }
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -288,6 +310,80 @@ export function AlbumView({
       ...(track.artists?.map((artist) => artist.name) ?? []),
     ].some((value) => value?.toLocaleLowerCase().includes(query)));
   }, [albumSearchQuery, tracks]);
+
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    let active = true;
+    const enrichPlayCounts = async () => {
+      const targets = tracks.filter((t) => !t.viewCount && !t.viewCountText);
+      if (targets.length === 0) return;
+      try {
+        const updated = await Promise.all(
+          targets.map(async (track) => {
+            try {
+              const res = await searchController.search(`${track.title} ${track.artist || ""}`);
+              const match = res.tracks?.find(
+                (t) => t.id === track.id || t.title.toLowerCase() === track.title.toLowerCase(),
+              );
+              if (match?.viewCount || match?.viewCountText) {
+                return {
+                  ...track,
+                  viewCount: match.viewCount ?? track.viewCount,
+                  viewCountText: match.viewCountText ?? track.viewCountText,
+                };
+              }
+            } catch {}
+            return track;
+          }),
+        );
+        if (active && updated.some((t) => t.viewCount || t.viewCountText)) {
+          setTracks((prev) =>
+            prev.map((t) => {
+              const u = updated.find((up) => up.id === t.id);
+              return u?.viewCount || u?.viewCountText
+                ? { ...t, viewCount: u.viewCount ?? t.viewCount, viewCountText: u.viewCountText ?? t.viewCountText }
+                : t;
+            }),
+          );
+        }
+      } catch {}
+    };
+    void enrichPlayCounts();
+    return () => {
+      active = false;
+    };
+  }, [tracks]);
+
+  const formattedReleaseDate = useMemo(() => {
+    if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
+    const rawDate = album?.releaseDate || spotifyAlbumMeta?.releaseDate;
+    if (rawDate) {
+      try {
+        const parts = rawDate.split("T")[0].split("-");
+        if (parts.length >= 2) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = new Date(Date.UTC(y, m, 1));
+          return d.toLocaleDateString("en-US", { year: "numeric", month: "long", timeZone: "UTC" });
+        } else if (parts.length === 1 && /^\d{4}$/.test(parts[0])) {
+          return parts[0];
+        }
+      } catch {}
+    }
+    return album?.year || null;
+  }, [spotifyAlbumMeta?.formattedReleaseDate, spotifyAlbumMeta?.releaseDate, album?.releaseDate, album?.year]);
+
+  const cleanedCopyrights = useMemo(() => {
+    return (spotifyAlbumMeta?.copyrights ?? []).filter((c) => {
+      if (!c || typeof c !== "string") return false;
+      const trimmed = c.trim();
+      if (trimmed.length < 3 || trimmed.length > 90) return false;
+      if (!/^[©℗]/.test(trimmed)) return false;
+      if (/ey[\w.-]{4,}|oy[\w.-]{4,}|[{}<>;_\\\/]{2,}/i.test(trimmed)) return false;
+      if (!/\s/.test(trimmed)) return false;
+      return true;
+    });
+  }, [spotifyAlbumMeta?.copyrights]);
 
   useEffect(() => {
     if (!album || isLoading || error || tracks.length === 0) return;
@@ -449,7 +545,7 @@ export function AlbumView({
         meta={formatCollectionMeta(tracks)}
         artworkUrl={album.artworkUrl || tracks[0]?.artworkUrl}
         artworkVariant="album"
-        actionsDisabled={isLoading || Boolean(error) || tracks.length === 0}
+        actionsDisabled={tracks.length === 0}
         actions={
           <div className="flex items-center gap-2.5">
             <Tooltip content={isSaved ? "Remove from library" : "Save to library"}>
@@ -581,8 +677,15 @@ export function AlbumView({
           ) : (
             <div className="flex flex-col gap-0.5">
               {visibleTracks.map((track, index) => {
-                const isCurrent = currentTrackId !== null && track.id === currentTrackId;
-                const viewFormatted = formatCompactNumber(track.viewCount ?? track.viewCountText);
+                const isCurrent = Boolean(
+                  (currentTrackId !== null && track.id === currentTrackId) ||
+                  (currentTrack?.id && track.id === currentTrack.id) ||
+                  (currentTrack?.title &&
+                    track.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase() &&
+                    (!track.artist || !currentTrack.artist || track.artist.trim().toLowerCase() === currentTrack.artist.trim().toLowerCase()))
+                );
+                const viewFormatted = formatCompactNumber(track.viewCount ?? track.viewCountText)
+                  || (typeof track.viewCountText === "string" ? track.viewCountText.replace(/\s*plays?/i, "").trim() : "");
                 return (
                   <TrackRow
                     key={getTrackRenderKey(track, index)}
@@ -620,25 +723,19 @@ export function AlbumView({
         </>
       )}
 
-      {/* Authentic release date, record label, and ℗ / © copyrights (Spotify-style) */}
+      {/* Authentic release date and ℗ / © copyrights (Spotify-style) */}
       <div className="text-xs text-muted-foreground pt-4 pb-1 flex flex-col gap-1 select-text">
-        {spotifyAlbumMeta?.formattedReleaseDate ? (
-          <p className="text-xs text-white/90 font-medium">{spotifyAlbumMeta.formattedReleaseDate}</p>
-        ) : album?.year ? (
-          <p className="text-xs text-white/90 font-medium">{album.year}</p>
+        {formattedReleaseDate ? (
+          <p className="text-xs text-white/90 font-medium">{formattedReleaseDate}</p>
         ) : null}
 
-        {spotifyAlbumMeta?.label && (
-          <p className="text-[11px] text-muted-foreground opacity-80">{spotifyAlbumMeta.label}</p>
-        )}
-
-        {spotifyAlbumMeta?.copyrights && spotifyAlbumMeta.copyrights.length > 0 ? (
-          spotifyAlbumMeta.copyrights.map((c, i) => (
+        {cleanedCopyrights.length > 0 ? (
+          cleanedCopyrights.map((c, i) => (
             <p key={i} className="text-[11px] text-muted-foreground opacity-75 leading-tight">{c}</p>
           ))
         ) : (album?.year || displayArtistName) ? (
           <p className="text-[11px] text-muted-foreground opacity-75 leading-tight">
-            ℗ {album?.year ? `${album.year} ` : ""}{displayArtistName || ""}
+            © {album?.year ? `${album.year} ` : ""}{displayArtistName || ""}
           </p>
         ) : null}
       </div>

@@ -323,10 +323,12 @@ export function TrackContextMenuProvider({
     setMenuPosition(null);
     showPersistentToast("Creating share link...");
     try {
-      let shareUrl = await SpotifyService.searchTrackUrl(selectedTrack.title, selectedTrack.artist).catch(() => null);
-      if (!shareUrl) {
-        shareUrl = `https://music.youtube.com/watch?v=${encodeURIComponent(selectedTrack.id)}`;
-      }
+      const shareUrl = await SpotifyService.getSharableLink({
+        type: "track",
+        title: selectedTrack.title,
+        artist: selectedTrack.artist,
+        id: selectedTrack.id,
+      });
       await navigator.clipboard.writeText(shareUrl);
       showToast(shareUrl.includes("spotify.com") ? "Spotify track link copied" : "Track link copied");
     } catch {

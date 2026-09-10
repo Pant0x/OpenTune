@@ -217,20 +217,23 @@ export async function importPlaylistFile(): Promise<ImportedPlaylist | null> {
 export async function importSpotifyPlaylist(spotifyUrl: string): Promise<ImportedPlaylist | null> {
   const cleanUrl = spotifyUrl.trim();
   const playlistMatch =
-    cleanUrl.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/) ||
+    cleanUrl.match(/spotify\.com(?:\/intl-[^/]+)?\/playlist\/([a-zA-Z0-9]+)/) ||
     cleanUrl.match(/spotify:playlist:([a-zA-Z0-9]+)/);
   const albumMatch =
-    cleanUrl.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/) ||
+    cleanUrl.match(/spotify\.com(?:\/intl-[^/]+)?\/album\/([a-zA-Z0-9]+)/) ||
     cleanUrl.match(/spotify:album:([a-zA-Z0-9]+)/);
+  const trackMatch =
+    cleanUrl.match(/spotify\.com(?:\/intl-[^/]+)?\/track\/([a-zA-Z0-9]+)/) ||
+    cleanUrl.match(/spotify:track:([a-zA-Z0-9]+)/);
 
-  if (!playlistMatch && !albumMatch) {
+  if (!playlistMatch && !albumMatch && !trackMatch) {
     throw new Error(
-      "Invalid Spotify URL. Expected format: https://open.spotify.com/playlist/... or https://open.spotify.com/album/...",
+      "Invalid Spotify URL. Expected format: https://open.spotify.com/playlist/..., /album/..., or /track/...",
     );
   }
 
-  const type = playlistMatch ? "playlist" : "album";
-  const id = playlistMatch ? playlistMatch[1] : albumMatch![1];
+  const type = playlistMatch ? "playlist" : albumMatch ? "album" : "track";
+  const id = (playlistMatch ? playlistMatch[1] : albumMatch ? albumMatch[1] : trackMatch![1]).split("?")[0];
   const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
 
   let html: string;
@@ -238,7 +241,7 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
     const response = await tauriFetch(embedUrl, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
     });
     if (!response.ok) {
@@ -262,26 +265,68 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
       const entity = nextData.props?.pageProps?.state?.data?.entity;
       if (entity) {
         title = entity.name || entity.title || title;
-        artworkUrl = entity.coverArt?.sources?.[0]?.url || entity.visualIdentity?.image?.[0]?.url || entity.images?.[0]?.url;
-        const trackList = entity.trackList || entity.tracks || [];
+
+        // Choose the highest-resolution image from visualIdentity or coverArt
+        const visualImages: Array<{ url?: string; maxWidth?: number; maxHeight?: number }> =
+          Array.isArray(entity.visualIdentity?.image) ? entity.visualIdentity.image : [];
+        if (visualImages.length > 0) {
+          const sorted = [...visualImages].sort((a, b) => (b.maxWidth ?? 0) - (a.maxWidth ?? 0));
+          if (sorted[0]?.url) artworkUrl = sorted[0].url;
+        }
+        if (!artworkUrl) {
+          artworkUrl = entity.coverArt?.sources?.[0]?.url || entity.images?.[0]?.url;
+        }
+
+        const rawList = entity.trackList || entity.tracks;
+        const trackList = Array.isArray(rawList)
+          ? rawList
+          : type === "track" && (entity.title || entity.name)
+            ? [entity]
+            : [];
+
         for (let i = 0; i < trackList.length; i++) {
           const t = trackList[i];
           const trackTitle = t.title || t.name;
           if (!trackTitle) continue;
-          const trackArtists = (t.artists || []).map((a: any) => (typeof a === "string" ? a : a.name)).filter(Boolean).join(", ") || t.subtitle || "Unknown artist";
-          const durationSec = typeof t.duration === "number" ? Math.round(t.duration / 1000) : typeof t.durationMs === "number" ? Math.round(t.durationMs / 1000) : undefined;
+
+          const trackArtists =
+            (Array.isArray(t.artists) ? t.artists : [])
+              .map((a: any) => (typeof a === "string" ? a : a?.name))
+              .filter(Boolean)
+              .join(", ") ||
+            t.subtitle ||
+            "Unknown artist";
+
+          const durationSec =
+            typeof t.duration === "number"
+              ? Math.round(t.duration / 1000)
+              : typeof t.durationMs === "number"
+                ? Math.round(t.durationMs / 1000)
+                : undefined;
+
+          const rawTrackUri = t.uri || t.id || `${id}_${i}`;
+          const cleanTrackId = String(rawTrackUri).replace(/^spotify:track:/, "").replace(/^spotify:/, "");
+
+          const parsedArtists = Array.isArray(t.artists) && t.artists.length > 0
+            ? t.artists.map((a: any) => ({
+                id: typeof a === "object" ? a.id ?? "" : "",
+                name: typeof a === "string" ? a : a?.name ?? "",
+              }))
+            : trackArtists
+                .split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+/i)
+                .map((name: string) => name.trim())
+                .filter(Boolean)
+                .map((name: string) => ({ id: "", name }));
+
           tracks.push({
-            id: `spotify:${t.id || t.uri || i}`,
+            id: `spotify:track:${cleanTrackId}`,
             source: "spotify",
             title: trackTitle,
             artist: trackArtists,
             album: title,
             durationSec,
             artworkUrl,
-            artists: (t.artists || []).map((a: any) => ({
-              id: typeof a === "object" ? a.id ?? "" : "",
-              name: typeof a === "string" ? a : a.name ?? "",
-            })),
+            artists: parsedArtists,
           });
         }
       }
@@ -332,7 +377,7 @@ export async function importSpotifyPlaylist(spotifyUrl: string): Promise<Importe
 
         if (trackTitle) {
           tracks.push({
-            id: `spotify:${id}_${index}`,
+            id: `spotify:track:${id}_${index}`,
             source: "spotify",
             title: trackTitle,
             artist: trackArtist,

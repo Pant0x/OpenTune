@@ -112,6 +112,15 @@ function withYoutubeSize(url: string, size: number): string | null {
  * One extra bucket is the whole cost. It was chosen to catch both card widths at 2× rather than
  * splitting them across two new entries, which is what would actually fragment the cache.
  */
+function toHighResSpotifyUrl(url: string): string | null {
+  if (!url.includes("i.scdn.co/image/")) return null;
+  // ab67616d00004851 (64px) or ab67616d00001e02 (300px) -> ab67616d0000b273 (640px full res)
+  if (url.includes("ab67616d00004851") || url.includes("ab67616d00001e02")) {
+    return url.replace(/ab67616d0000(?:4851|1e02)/, "ab67616d0000b273");
+  }
+  return null;
+}
+
 const ARTWORK_SIZE_BUCKETS = [120, 240, 400, 544, 800];
 
 /**
@@ -139,23 +148,31 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
   // If a specific size was requested, try the resized URL first
   if (size != null) {
     candidates.push(withYoutubeSize(normalized, size));
+  } else {
+    // Without a size, the original URL is the first candidate
+    candidates.push(normalized);
+  }
+
+  const spotifyHighRes = toHighResSpotifyUrl(normalized);
+  if (spotifyHighRes) {
+    candidates.push(spotifyHighRes);
   }
 
   // If it's a YouTube video thumbnail (matches i.ytimg.com or img.youtube.com video IDs), generate ladder
   const ytVideoMatch = normalized.match(/(?:i\d?\.ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})/i);
   if (ytVideoMatch?.[1]) {
     const videoId = ytVideoMatch[1];
-    candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
-    candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/default.jpg`);
-    candidates.push(`https://i.ytimg.com/vi_webp/${videoId}/hqdefault.webp`);
-    candidates.push(`https://i.ytimg.com/vi_webp/${videoId}/maxresdefault.webp`);
   }
 
-  // Original URL
+  // Fallbacks: original and resolution ladders
   candidates.push(normalized);
+  candidates.push(withYoutubeSize(normalized, 1600));
+  candidates.push(withYoutubeSize(normalized, 1200));
   candidates.push(withYoutubeSize(normalized, 800));
   candidates.push(withYoutubeSize(normalized, 544));
   candidates.push(withYoutubeSize(normalized, 400));
@@ -172,8 +189,9 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
 }
 
 export function getVideoArtworkFallback(videoId: string): string | undefined {
-  return /^[A-Za-z0-9_-]{11}$/.test(videoId)
-    ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+  const cleanId = (videoId || "").replace(/^(?:youtube:|spotify:track:|track_)/, "").trim();
+  return /^[A-Za-z0-9_-]{11}$/.test(cleanId)
+    ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg`
     : undefined;
 }
 

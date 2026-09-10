@@ -3,14 +3,18 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/motion/button";
 import { Tooltip } from "@/components/motion/tooltip";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { CloseIcon, RefreshIcon, BookmarkIcon, BookmarkActiveIcon } from "@/ui/icons";
+import { CloseIcon, RefreshIcon, BellIcon, BellActiveIcon } from "@/ui/icons";
 import type { FeedNotification } from "../../datasource/types";
 import { libraryController, playerController } from "../../player/playerStore";
 import { logInternalError } from "../../internal/logging";
 import { FloatingPanel } from "./FloatingPanel";
 
 const DISMISSED_STORAGE_KEY = "amber-dismissed-notifications";
+const SEEN_STORAGE_KEY = "amber-seen-notifications-v2";
+const LAST_SEEN_AT_KEY = "amber_notifications_last_seen_at";
 const UNSEEN_POLL_MS = 60_000;
+
+let cachedNotifications: FeedNotification[] | null = null;
 
 function getDismissedIds(): Set<string> {
   try {
@@ -28,6 +32,25 @@ function getDismissedIds(): Set<string> {
 function saveDismissedIds(ids: Set<string>) {
   try {
     localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {}
+}
+
+function getSeenIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((id): id is string => typeof id === "string" && id.trim().length > 0));
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveSeenIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify([...ids].slice(-250)));
   } catch {}
 }
 
@@ -53,16 +76,55 @@ function isNotificationDismissed(notification: FeedNotification, dismissedSet: S
   return keys.some((key) => dismissedSet.has(key));
 }
 
+function isNotificationSeen(notification: FeedNotification, seenSet: Set<string>): boolean {
+  const keys = getNotificationKeys(notification);
+  return keys.some((key) => seenSet.has(key));
+}
+
+function isStaleLiveNotification(notification: FeedNotification): boolean {
+  const txt = notification.text.toLowerCase();
+  const isLive = txt.includes("is live") || txt.includes("بث مباشر");
+  if (!isLive) return false;
+  const time = (notification.sentAtText || "").toLowerCase();
+  return (
+    time.includes("day") ||
+    time.includes("week") ||
+    time.includes("month") ||
+    time.includes("year") ||
+    time.includes("يوم") ||
+    time.includes("أيام") ||
+    time.includes("اسبوع") ||
+    time.includes("شهر")
+  );
+}
+
+function computeUnseenCount(
+  items: FeedNotification[],
+  dismissed: Set<string>,
+  seen: Set<string>,
+): number {
+  return items.filter(
+    (item) =>
+      !isNotificationDismissed(item, dismissed) &&
+      !isNotificationSeen(item, seen) &&
+      !item.read &&
+      !isStaleLiveNotification(item),
+  ).length;
+}
+
 function NotificationRow({
   notification,
+  isSeen,
   onOpen,
   onDismiss,
 }: {
   notification: FeedNotification;
+  isSeen: boolean;
   onOpen: (notification: FeedNotification) => void;
   onDismiss: (notification: FeedNotification) => void;
 }) {
   const canOpen = Boolean(notification.videoId);
+  const isUnread = !notification.read && !isSeen;
 
   return (
     <div className="group relative flex w-full items-center">
@@ -72,7 +134,7 @@ function NotificationRow({
           "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 pr-9 text-left transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           canOpen ? "hover:bg-white/[0.06]" : "cursor-default",
-          !notification.read && "bg-primary/[0.07]",
+          isUnread && "bg-primary/[0.07]",
         )}
         disabled={!canOpen}
         onClick={() => onOpen(notification)}
@@ -93,9 +155,9 @@ function NotificationRow({
             <span className="text-xs text-muted-foreground">{notification.sentAtText}</span>
           ) : null}
         </span>
-        {!notification.read && (
+        {isUnread && (
           <span
-            className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
+            className="mt-1.5 size-2 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/50"
             aria-label="Unread"
           />
         )}
@@ -118,33 +180,70 @@ function NotificationRow({
 
 /**
  * The account's notification inbox, as a toolbar button.
- *
- * The list is only fetched when the panel opens — it is a page of rendered HTML-ish content
- * nobody reads most sessions. Only the unseen *count* is polled, because that is what decides
- * whether the button is worth looking at.
  */
 export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<FeedNotification[] | null>(null);
+  const [notifications, setNotifications] = useState<FeedNotification[] | null>(() => cachedNotifications);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(getDismissedIds);
+  const [seenIds, setSeenIds] = useState<Set<string>>(getSeenIds);
   const [isLoading, setIsLoading] = useState(false);
   const [unseen, setUnseen] = useState(0);
+
+  const markCurrentAsSeen = useCallback((items: FeedNotification[]) => {
+    setSeenIds((prev) => {
+      const next = new Set(prev);
+      for (const item of items) {
+        for (const k of getNotificationKeys(item)) {
+          next.add(k);
+        }
+      }
+      saveSeenIds(next);
+      return next;
+    });
+    setUnseen(0);
+    try {
+      localStorage.setItem(LAST_SEEN_AT_KEY, Date.now().toString());
+    } catch {}
+    void libraryController.clearNotifications();
+  }, []);
 
   const refreshUnseen = useCallback(() => {
     if (!signedIn) {
       setUnseen(0);
       return;
     }
-    void libraryController.getUnseenNotificationCount()
-      .then((count) => {
-        setUnseen(count);
+    const clearedAt = Number(localStorage.getItem("amber_notifications_cleared_at") || 0);
+    void libraryController.getNotifications()
+      .then((fetched) => {
+        cachedNotifications = fetched;
+        setNotifications((prev) => prev ?? fetched);
+        const currentDismissed = getDismissedIds();
+        const currentSeen = getSeenIds();
+        const unreadCount = computeUnseenCount(fetched, currentDismissed, currentSeen);
+        setUnseen(unreadCount);
       })
-      .catch(() => setUnseen(0));
+      .catch(() => {
+        if (clearedAt > 0) {
+          setUnseen(0);
+          return;
+        }
+        void libraryController.getUnseenNotificationCount()
+          .then((count) => {
+            const currentSeen = getSeenIds();
+            if (currentSeen.size > 0 && count > 0) {
+              // Only surface if unseen count exceeds seen knowledge
+              setUnseen(0);
+            } else {
+              setUnseen(count);
+            }
+          })
+          .catch(() => setUnseen(0));
+      });
   }, [signedIn]);
 
   useEffect(() => {
-    // Defer initial check by 2.5s so startup rendering and immediate clicks have priority
-    const initialTimer = window.setTimeout(refreshUnseen, 2500);
+    // Check unseen on start after short settle delay
+    const initialTimer = window.setTimeout(refreshUnseen, 2000);
     const intervalId = window.setInterval(refreshUnseen, UNSEEN_POLL_MS);
     return () => {
       window.clearTimeout(initialTimer);
@@ -158,17 +257,20 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
     void libraryController.getNotifications()
       .then((fetched) => {
         if (active) {
+          cachedNotifications = fetched;
           setNotifications(fetched);
           const currentDismissed = getDismissedIds();
-          const unreadCount = fetched.filter(
-            (item) => !isNotificationDismissed(item, currentDismissed) && !item.read,
-          ).length;
-          setUnseen(unreadCount);
+          const currentSeen = getSeenIds();
+          if (open) {
+            markCurrentAsSeen(fetched);
+          } else {
+            setUnseen(computeUnseenCount(fetched, currentDismissed, currentSeen));
+          }
         }
       })
       .catch((error: unknown) => {
         logInternalError("NotificationsPanel.load failed", error);
-        if (active) setNotifications([]);
+        if (active && !cachedNotifications) setNotifications([]);
       })
       .finally(() => {
         if (active) setIsLoading(false);
@@ -176,19 +278,19 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [open, markCurrentAsSeen]);
 
   useEffect(() => {
     if (!open) return;
-    const cancel = load();
     setUnseen(0);
+    const cancel = load();
     return cancel;
   }, [load, open]);
 
   if (!signedIn) return null;
 
   const visibleNotifications = (notifications ?? []).filter(
-    (item) => !isNotificationDismissed(item, dismissedIds),
+    (item) => !isNotificationDismissed(item, dismissedIds) && !isStaleLiveNotification(item),
   );
 
   const handleDismiss = (notification: FeedNotification) => {
@@ -203,6 +305,12 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
   };
 
   const handleClearAll = () => {
+    void libraryController.clearNotifications();
+    const now = Date.now();
+    try {
+      localStorage.setItem("amber_notifications_cleared_at", now.toString());
+      localStorage.setItem(LAST_SEEN_AT_KEY, now.toString());
+    } catch {}
     setDismissedIds((prev) => {
       const next = new Set(prev);
       const itemsToDismiss = [...visibleNotifications, ...(notifications ?? [])];
@@ -215,6 +323,7 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
       return next;
     });
     setNotifications([]);
+    cachedNotifications = [];
     setUnseen(0);
   };
 
@@ -229,7 +338,7 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
       open={open}
       onOpenChange={setOpen}
       side="bottom"
-      className="w-96 max-w-[calc(100vw-2rem)] p-2"
+      className="w-96 max-w-[calc(100vw-2rem)] p-3 rounded-2xl border border-white/10 bg-zinc-950/95 shadow-2xl backdrop-blur-xl"
       trigger={
         <Tooltip side="bottom" content="Notifications">
           <Button
@@ -241,13 +350,13 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
             onClick={() => setOpen((value) => !value)}
           >
             {unseen > 0 ? (
-              <BookmarkActiveIcon size={16} aria-hidden="true" className="text-primary" />
+              <BellActiveIcon size={18} aria-hidden="true" className="text-primary" />
             ) : (
-              <BookmarkIcon size={16} aria-hidden="true" className="opacity-40" />
+              <BellIcon size={18} aria-hidden="true" className="text-muted-foreground hover:text-foreground transition-colors" />
             )}
             {unseen > 0 && (
               <span
-                className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-primary px-1 text-[10px] font-semibold leading-3.5 text-primary-foreground"
+                className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground shadow-sm shadow-primary/40 animate-in zoom-in-50 duration-200"
                 aria-hidden="true"
               >
                 {unseen > 9 ? "9+" : unseen}
@@ -257,28 +366,40 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
         </Tooltip>
       }
     >
-      <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-1">
+      <div className="flex items-center justify-between gap-2 px-1 pb-2 pt-0.5 border-b border-white/[0.08] mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">Notifications</span>
+          <span className="text-sm font-bold tracking-tight text-foreground">Notifications</span>
+          {unseen > 0 ? (
+            <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              {unseen} new
+            </span>
+          ) : visibleNotifications.length > 0 ? (
+            <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {visibleNotifications.length}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1">
           {visibleNotifications.length > 0 && (
             <button
               type="button"
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-white/[0.06] cursor-pointer"
               onClick={handleClearAll}
             >
               Clear all
             </button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:text-foreground"
+            aria-label="Refresh notifications"
+            disabled={isLoading}
+            onClick={() => load()}
+          >
+            <RefreshIcon size={14} aria-hidden="true" className={isLoading ? "animate-spin" : ""} />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Refresh notifications"
-          disabled={isLoading}
-          onClick={() => load()}
-        >
-          <RefreshIcon size={15} aria-hidden="true" />
-        </Button>
       </div>
 
       {isLoading && !notifications ? (
@@ -295,6 +416,7 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
             <NotificationRow
               key={notification.id}
               notification={notification}
+              isSeen={open || isNotificationSeen(notification, seenIds)}
               onOpen={handleOpen}
               onDismiss={handleDismiss}
             />

@@ -18,6 +18,8 @@ import {
   savePlaybackSettings,
   type PlaybackSettings,
 } from "./playbackSettings";
+import { saveLastPlayedTrack } from "./appSession";
+import { getVideoArtworkFallback } from "../datasource/youtube/artwork";
 
 /**
  * How the queue advances. Repeat only — shuffle is a separate, independent flag.
@@ -300,7 +302,7 @@ export class PlayerController {
     );
     this.stopAfterTrack = null;
     this.autoplayEnabled = session.autoplayEnabled;
-    this.pendingSeekTime = Math.max(0, session.positionSec);
+    this.pendingSeekTime = 0;
     this.audioEngine.setVolume(session.volume);
     this.audioEngine.setMuted(session.muted);
     this.playbackOrderMode = normalizePlaybackOrderMode(session.playbackOrderMode);
@@ -313,9 +315,17 @@ export class PlayerController {
       session.shuffleEnabled ?? wasLegacyShuffleMode(session.playbackOrderMode);
     this.isPlaylistMode = session.isPlaylistMode ?? false;
     this.isTabActive = true;
+    const restoredCurrentTrack = session.currentTrack
+      ? {
+          ...session.currentTrack,
+          artworkUrl:
+            session.currentTrack.artworkUrl
+            || getVideoArtworkFallback(session.currentTrack.id),
+        }
+      : null;
     this.state = {
-      status: session.currentTrack ? session.status : "idle",
-      currentTrack: session.currentTrack,
+      status: restoredCurrentTrack ? session.status : "idle",
+      currentTrack: restoredCurrentTrack,
       history: session.history,
       error: null,
       playbackOrderMode: this.playbackOrderMode,
@@ -383,12 +393,13 @@ export class PlayerController {
     playbackQueue?: readonly Track[],
     autoplayWhenQueueEnds = true,
     shufflePlaylist = false,
+    isAutoTransition = false,
   ): Promise<boolean> {
     // Close out whatever was playing first: this is the funnel every track change goes
     // through, so it catches a natural end and a skip with the same one call.
     this.finishPlayReport();
     const requestId = ++this.playTrackRequestId;
-    logInternalInfo("PlayerController.playTrackById start", { videoId });
+    logInternalInfo("PlayerController.playTrackById start", { videoId, isAutoTransition });
     const hadLoadedTrack = this.loadedTrackId !== null;
     const wasPlaying = this.state.status === "playing";
     /*
@@ -399,10 +410,8 @@ export class PlayerController {
      * track is resolved and decoded, then smoothly crossfade into it instead of a harsh cut.
      */
     if (!this.audioEngine.hasPreloaded(videoId)) {
-      if (!this.audioEngine.usesRustAudio() || !wasPlaying) {
-        this.audioEngine.stop();
-        this.audioEngine.silenceCompetingPlayback();
-      }
+      this.audioEngine.stop();
+      this.audioEngine.silenceCompetingPlayback();
     }
     this.loadedTrackId = null;
     this.pendingSeekTime = null;
@@ -516,6 +525,12 @@ function findBestTrackMatch(
       else if (diff > 30) score -= 30;
     }
 
+    // Explicit content priority vs clean penalty
+    const isCandExplicit = candidate.isExplicit || /\b(?:explicit|\[e\]|\(e\))\b/i.test(candTitle);
+    const isCandClean = /\b(?:clean|clean version|radio edit|censored)\b/i.test(candTitle);
+    if (isCandExplicit) score += 35;
+    if (isCandClean) score -= 60;
+
     return score;
   };
 
@@ -528,8 +543,18 @@ function findBestTrackMatch(
       let track: Track;
       if (videoId.startsWith("spotify:") && knownTrack) {
         try {
-          const query = `${knownTrack.artist} ${knownTrack.title}`.trim();
-          const results = await this.dataSource.searchTracks?.(query) ?? [];
+          const primaryQuery = `${knownTrack.artist} ${knownTrack.title}`.trim();
+          let results = await this.dataSource.searchTracks?.(primaryQuery) ?? [];
+          if (results.length === 0) {
+            // Fallback: search title only or stripped title
+            const cleanTitle = knownTrack.title.replace(/\s*\([^)]*\)|\s*\[[^\]]*\]/g, "").trim();
+            const fallbackQuery = `${knownTrack.artist.split(",")[0].trim()} ${cleanTitle}`.trim();
+            results = await this.dataSource.searchTracks?.(fallbackQuery) ?? [];
+          }
+          if (results.length === 0) {
+            results = await this.dataSource.searchTracks?.(knownTrack.title.trim()) ?? [];
+          }
+
           const bestMatch = findBestTrackMatch(
             results,
             knownTrack.title,
@@ -544,6 +569,12 @@ function findBestTrackMatch(
               artworkUrl: knownTrack.artworkUrl || bestMatch.artworkUrl,
               durationSec: knownTrack.durationSec || bestMatch.durationSec,
             };
+            // Update queue so subsequent checks or replays use the resolved video ID
+            const qItem = this.queue.all.find((item) => item.id === videoId);
+            if (qItem) {
+              qItem.id = bestMatch.id;
+              qItem.source = bestMatch.source || "youtube";
+            }
           } else {
             track = knownTrack;
           }
@@ -586,21 +617,16 @@ function findBestTrackMatch(
         void this.primeRadioQueue(track, requestId);
       }
       /*
-       * Warm the next track *while* this one loads, not after — but only once something is
-       * already loaded.
-       *
-       * Resolution costs the better part of a second, and starting only once this track had
-       * finished meant a skip inside the first second always lost the race — which is exactly
-       * how someone skips through a queue looking for something. Both are network-bound and
-       * independent, so they overlap for free — *when* there is already a track holding the
-       * deck. On a cold start there is nothing playing yet to hide the cost behind, so this
-       * would instead double up on the same per-client resolve walk and JS evaluator that
-       * `ensureTrackLoaded` below is about to use for this track, measured as roughly doubling
-       * first-track latency. The call at the end of `ensureTrackLoaded` still fires once this
-       * track actually lands, so a cold start is one warm behind rather than zero.
+       * Warm the next track *while* this one loads only during auto transitions.
+       * On manual track selection, dedicate full bandwidth/CPU to the requested track,
+       * and warm the next track once this track has completed loading.
        */
-      if (hadLoadedTrack) this.warmNextTrack();
-      await this.ensureTrackLoaded(track, wasPlaying);
+      if (hadLoadedTrack && isAutoTransition) this.warmNextTrack();
+      await this.ensureTrackLoaded(
+        track,
+        wasPlaying,
+        isAutoTransition ? (this.crossfadeSec * 1000) : 0,
+      );
       if (requestId !== this.playTrackRequestId) return false;
 
       if (!this.isTabActive) {
@@ -614,6 +640,7 @@ function findBestTrackMatch(
       if (requestId !== this.playTrackRequestId) return false;
 
       this.setState({ status: "playing", error: null });
+      saveLastPlayedTrack(track);
       logInternalInfo("PlayerController.playTrackById success", {
         trackId: track.id,
         title: track.title,
@@ -1101,7 +1128,8 @@ function findBestTrackMatch(
         logInternalInfo("PlayerController.handleTrackEnded looping single track", {
           trackId: loopTrack.id,
         });
-        await this.playTrackById(loopTrack.id);
+        this.loadedTrackId = null;
+        await this.playTrackById(loopTrack.id, undefined, true, false, true);
         return;
       }
 
@@ -1125,7 +1153,8 @@ function findBestTrackMatch(
 
       if (nextTrack) {
         this.refillAutomaticQueue();
-        await this.playTrackById(nextTrack.id);
+        this.loadedTrackId = null;
+        await this.playTrackById(nextTrack.id, undefined, true, false, true);
         return;
       }
 
@@ -1153,7 +1182,7 @@ function findBestTrackMatch(
             trackCount: this.queue.all.length,
             reshuffled: this.shuffleEnabled && this.isPlaylistMode,
           });
-          await this.playTrackById(firstTrack.id);
+          await this.playTrackById(firstTrack.id, undefined, true, false, true);
           return;
         }
       }
@@ -1162,7 +1191,7 @@ function findBestTrackMatch(
       if (this.autoplayEnabled && seed) {
         const queueEndTrack = await this.loadQueueEndRecommendations(seed);
         if (queueEndTrack) {
-          await this.playTrackById(queueEndTrack.id);
+          await this.playTrackById(queueEndTrack.id, undefined, true, false, true);
           return;
         }
       }
@@ -1179,7 +1208,7 @@ function findBestTrackMatch(
       }
 
       this.queue.set(recommendations, 0);
-      await this.playTrackById(recommendations[0].id);
+      await this.playTrackById(recommendations[0].id, undefined, true, false, true);
     } catch (error) {
       this.setError(error);
     } finally {
@@ -1343,10 +1372,15 @@ function findBestTrackMatch(
     return shuffled;
   }
 
-  private async ensureTrackLoaded(track: Track, wasPlaying = false): Promise<void> {
+  private async ensureTrackLoaded(
+    track: Track,
+    _wasPlaying = false,
+    transitionFadeMs?: number,
+  ): Promise<void> {
     logInternalDebug("PlayerController.ensureTrackLoaded start", {
       trackId: track.id,
       loadedTrackId: this.loadedTrackId,
+      transitionFadeMs,
     });
     
     if (this.loadedTrackId === track.id) {
@@ -1364,9 +1398,12 @@ function findBestTrackMatch(
        * them. A zero-length fade is the gapless case and swaps in the same tick.
        */
       if (this.usesPreloadDeck(track) && this.audioEngine.hasPreloaded(track.id)) {
+        const fadeDuration = transitionFadeMs !== undefined
+          ? Math.max(0, Math.round(transitionFadeMs))
+          : (this.crossfadeSec * 1000);
         const swapped = await this.audioEngine.transitionToPreloaded(
           track.id,
-          this.crossfadeSec * 1000,
+          fadeDuration,
         );
         if (swapped) {
           this.loadedTrackId = track.id;
@@ -1480,29 +1517,6 @@ function findBestTrackMatch(
             track.durationSec,
           );
         } else {
-          if (
-            !isDownloaded
-            && this.audioEngine.usesRustAudio()
-            && wasPlaying
-            && audioData?.rustSource
-            && !this.audioEngine.hasPreloaded(track.id)
-          ) {
-            await this.audioEngine.preloadRustTrack(
-              track.id,
-              audioData.rustSource,
-              track.durationSec ?? 0,
-            );
-            const fadeMs = Math.max(1000, this.crossfadeSec * 1000);
-            const transitioned = await this.audioEngine.transitionToPreloaded(track.id, fadeMs);
-            if (transitioned) {
-              this.loadedTrackId = track.id;
-              this.pendingSeekTime = null;
-              this.claimWarmedStream(track.id);
-              this.warmNextTrack();
-              this.beginPlayReport(track);
-              return;
-            }
-          }
           await this.audioEngine.loadTrack(
             track.id,
             audioData?.bytes,
@@ -1634,7 +1648,7 @@ function findBestTrackMatch(
       });
     }
 
-    if (!this.audioEngine.usesNativeAudio()) return;
+    if (!this.audioEngine.usesNativeAudio() && !this.audioEngine.usesRustAudio()) return;
     if (!this.dataSource.getStreamData) return;
     if (this.warmingStream) return;
     /*
@@ -1777,7 +1791,10 @@ function findBestTrackMatch(
     const next = this.peekNextTrack();
     if (!next || !this.usesPreloadDeck(next)) return;
 
-    if (remaining <= PRELOAD_LEAD_SEC) this.audioEngine.preloadNext(next.id);
+    if (remaining <= PRELOAD_LEAD_SEC) {
+      this.audioEngine.preloadNext(next.id);
+      this.warmNextTrack();
+    }
 
     if (this.crossfadeSec <= 0 || remaining > this.crossfadeSec) return;
     if (!this.audioEngine.hasPreloaded(next.id)) return;

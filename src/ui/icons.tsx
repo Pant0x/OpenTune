@@ -71,7 +71,9 @@ export { BugIcon } from "@solar-icons/react/linear/bug";
 export { SpeedometerMaxIcon as SpeedIcon } from "@solar-icons/react/linear/speedometer-max";
 export { CupHotIcon as CoffeeIcon } from "@solar-icons/react/linear/cup-hot";
 export { MagicWandIcon as DiceIcon } from "@solar-icons/react/linear/magic-wand";
-export { MagicWandIcon as DiceActiveIcon } from "@solar-icons/react/bold/magic-wand";
+export { BellIcon } from "@solar-icons/react/linear/bell";
+export { BellIcon as BellActiveIcon } from "@solar-icons/react/bold/bell";
+export { BellRingIcon } from "@solar-icons/react/bold/bell-ring";
 export { UserIcon as MailIcon } from "@solar-icons/react/linear/user";
 export { LockIcon } from "@solar-icons/react/linear/lock";
 

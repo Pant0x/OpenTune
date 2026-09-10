@@ -134,6 +134,7 @@ export abstract class DataSource {
   /** The account's notification inbox, newest first. */
   getNotifications?(): Promise<FeedNotification[]>;
   getUnseenNotificationCount?(): Promise<number>;
+  clearNotifications?(): Promise<void>;
   getPlaylistTracks?(playlist: Playlist, onUpdate?: (tracks: Track[]) => void): Promise<Track[]>;
   getPlaylistTrackPage?(
     playlist: Playlist,

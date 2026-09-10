@@ -16,6 +16,7 @@ import {
   PlayIcon,
   PlayActiveIcon,
   RadioIcon,
+  SettingsIcon,
   ShareIcon,
   ShuffleIcon,
   TwitterIcon,
@@ -90,6 +91,26 @@ interface PopularSongItem {
 }
 
 const artistPageMemory = new Map<string, ArtistPage>();
+const artistOverviewMemory = new Map<string, SpotifyArtistOverview>();
+
+const FOLLOWED_ARTISTS_STORAGE_KEY = "amber_followed_artists";
+
+function getFollowedArtistIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FOLLOWED_ARTISTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveFollowedArtistIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(FOLLOWED_ARTISTS_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {}
+}
 
 export function ArtistView({
   artist,
@@ -99,6 +120,7 @@ export function ArtistView({
   onOpenPlaylist,
   onOpenArtist,
   onOpenDiscography,
+  onOpenSettings,
 }: {
   artist?: Artist;
   playerController: PlayerControllerActions;
@@ -108,6 +130,7 @@ export function ArtistView({
   onOpenArtist?: (artist: Artist) => void;
   onOpenSong?: (song: Track) => void;
   onOpenDiscography?: (artist: Artist, releases?: Album[]) => void;
+  onOpenSettings?: () => void;
 }) {
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const { currentTrackId, isPlaying } = useNowPlaying();
@@ -175,7 +198,10 @@ export function ArtistView({
     let active = true;
 
     const remembered = artistPageMemory.get(artist.id) ?? null;
+    const rememberedOverview = artistOverviewMemory.get(artist.name.toLowerCase()) ?? null;
     setPage(remembered);
+    setSpotifyOverview(rememberedOverview);
+    setSpotifyReleases([]);
     setIsLoading(!remembered);
     setError(null);
     setFilter("all");
@@ -209,6 +235,7 @@ export function ArtistView({
       .then((overview) => {
         if (active && overview) {
           setSpotifyOverview(overview);
+          artistOverviewMemory.set(artistName.toLowerCase(), overview);
         }
       })
       .catch((err) => {
@@ -288,10 +315,10 @@ export function ArtistView({
     spotifyOverview?.avatarUrl ||
     (displayedArtist?.id ? fansSpotifyAvatars[displayedArtist.id] : undefined) ||
     displayedArtist?.artworkUrl;
-  const artistHeaderBg =
-    spotifyOverview?.headerUrl ||
-    spotifyOverview?.galleryUrls?.[0] ||
-    artistAvatar;
+  const spotifyHero = spotifyOverview?.headerUrl || spotifyOverview?.galleryUrls?.[0];
+  const hasSpotifyHero = Boolean(spotifyHero);
+  const artistHeaderBg = spotifyHero || displayedArtist?.artworkUrl || artistAvatar;
+  const heroBackgroundUrl = spotifyHero || displayedArtist?.artworkUrl || artistAvatar;
 
   const isBlockedArtist = displayedArtist?.name
     ? blockedArtists.includes(displayedArtist.name.toLowerCase())
@@ -509,6 +536,14 @@ export function ArtistView({
   }, [subCount]);
 
   const libraryState = useLibraryState();
+  const account = libraryState.library?.account;
+  const isOwnChannel = useMemo(() => {
+    if (!account?.name || !displayedArtist?.name) return false;
+    const cleanAccountName = account.name.trim().toLowerCase();
+    const cleanArtistName = displayedArtist.name.trim().toLowerCase();
+    return cleanAccountName === cleanArtistName;
+  }, [account?.name, displayedArtist?.name]);
+
   const librarySongs = useMemo(() => {
     if (!libraryState.library || !displayedArtist?.name) return [];
     const nameLower = displayedArtist.name.toLowerCase().trim();
@@ -538,30 +573,22 @@ export function ArtistView({
     return albums.filter((a) => a.artist?.toLowerCase().includes(nameLower));
   }, [libraryState.library, displayedArtist?.name]);
 
-  // Separate Featuring playlists (Official YT / curated) and Discovered On playlists (community / fanmade)
+  // Separate Featuring playlists (Official YT curated) and Discovered On playlists (community / fanmade)
   const featuringPlaylists = useMemo(() => {
-    const list = [...(page?.playlists ?? []), ...extraFeaturingPlaylists];
-    const artistNameLower = (displayedArtist?.name || "").toLowerCase();
+    const list = [...(page?.featuredOn ?? []), ...(page?.playlists ?? []), ...extraFeaturingPlaylists];
+    const artistNameLower = (displayedArtist?.name || "").toLowerCase().trim();
     const seen = new Set<string>();
     const officialMatches: Playlist[] = [];
 
     for (const p of list) {
       if (!p || !p.title || seen.has(p.id) || p.id.startsWith("spotify:")) continue;
-      const lower = p.title.toLowerCase();
+      const lower = p.title.toLowerCase().trim();
       if (lower.includes("unknown")) continue;
-      const ownerLower = (p.owner || "").toLowerCase();
-      const isOfficial =
-        ownerLower.includes("youtube") ||
-        ownerLower.includes("yt") ||
-        lower.startsWith("featuring") ||
-        lower.startsWith("presenting") ||
-        lower.startsWith("this is") ||
-        lower.includes("hits") ||
-        lower.includes("best of") ||
-        lower.includes("essential");
+      const ownerLower = (p.owner || "").toLowerCase().trim();
+      const isOfficial = ownerLower.includes("youtube") || ownerLower.includes("yt");
 
       const containsArtist = lower.includes(artistNameLower) || ownerLower.includes(artistNameLower);
-      if (isOfficial && containsArtist) {
+      if (isOfficial || (containsArtist && (lower.startsWith("featuring") || lower.startsWith("presenting") || lower.startsWith("this is")))) {
         seen.add(p.id);
         officialMatches.push({
           ...p,
@@ -570,9 +597,8 @@ export function ArtistView({
       }
     }
 
-    if (officialMatches.length > 0) return officialMatches;
-    return [];
-  }, [page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
+    return officialMatches;
+  }, [page?.featuredOn, page?.playlists, displayedArtist?.name, extraFeaturingPlaylists]);
 
   const discoveredOnPlaylists = useMemo(() => {
     const featSet = new Set(featuringPlaylists.map((p) => p.id));
@@ -595,16 +621,8 @@ export function ArtistView({
       // Filter out if owner is the artist (an album release or official upload)
       if (ownerLower === artistNameLower) continue;
 
-      // Filter out official YouTube Music playlists (those belong in Featuring / official)
-      const isOfficial =
-        ownerLower.includes("youtube") ||
-        ownerLower.includes("yt") ||
-        lower.startsWith("featuring") ||
-        lower.startsWith("presenting") ||
-        lower.startsWith("this is") ||
-        lower.includes("hits") ||
-        lower.includes("best of") ||
-        lower.includes("essential");
+      // Exclude official YouTube Music playlists (those belong exclusively in "Featured on")
+      const isOfficial = ownerLower.includes("youtube") || ownerLower.includes("yt");
       if (isOfficial) continue;
 
       seen.add(p.id);
@@ -650,6 +668,7 @@ export function ArtistView({
   }, [page?.appearsOn, extraAppearsOn]);
 
   const isCreator = Boolean(
+    displayedArtist?.isCreator ||
     page?.isCreator ||
     (!spotifyOverview && !page?.releases?.length && (page?.allSongs?.length || page?.popularSongs?.length))
   );
@@ -724,8 +743,12 @@ export function ArtistView({
   const displayedPopularItems = showAllSongs ? popularItems : popularItems.slice(0, 10);
 
   useEffect(() => {
-    setIsSubscribed(page?.subscribed ?? false);
-  }, [page?.subscribed]);
+    const followedSet = getFollowedArtistIds();
+    const isFollowedLocally = (artist?.id && followedSet.has(artist.id)) ||
+      (displayedArtist?.id && followedSet.has(displayedArtist.id)) ||
+      (displayedArtist?.name && followedSet.has(displayedArtist.name.toLowerCase()));
+    setIsSubscribed(page?.subscribed || Boolean(isFollowedLocally));
+  }, [page?.subscribed, artist?.id, displayedArtist?.id, displayedArtist?.name]);
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -784,19 +807,32 @@ export function ArtistView({
     if (isSubscribing) return;
     const nextSubscribed = !isSubscribed;
     setIsSubscribing(true);
+    setIsSubscribed(nextSubscribed);
+
+    // Persist locally
+    const followedSet = getFollowedArtistIds();
+    const artistKey = displayedArtist.id || artist.id;
+    if (nextSubscribed) {
+      if (artistKey) followedSet.add(artistKey);
+      if (displayedArtist.name) followedSet.add(displayedArtist.name.toLowerCase());
+    } else {
+      if (artistKey) followedSet.delete(artistKey);
+      if (displayedArtist.name) followedSet.delete(displayedArtist.name.toLowerCase());
+    }
+    saveFollowedArtistIds(followedSet);
+
     try {
       await libraryController.setArtistSubscribed(displayedArtist, nextSubscribed);
-      setIsSubscribed(nextSubscribed);
       showToast(
         isCreator
           ? nextSubscribed ? "Subscribed to channel" : "Unsubscribed from channel"
           : nextSubscribed ? "Following artist" : "Unfollowed artist"
       );
-    } catch (subscriptionError) {
+    } catch {
       showToast(
-        subscriptionError instanceof Error
-          ? subscriptionError.message
-          : "Unable to update following status.",
+        isCreator
+          ? nextSubscribed ? "Subscribed (saved locally)" : "Unsubscribed"
+          : nextSubscribed ? "Following artist (saved locally)" : "Unfollowed artist"
       );
     } finally {
       setIsSubscribing(false);
@@ -808,7 +844,7 @@ export function ArtistView({
       {/* Ambient Gaussian Glow Background */}
       <div className="pointer-events-none absolute -top-12 -left-8 -right-8 h-[550px] overflow-hidden -z-10 opacity-35 blur-[60px] saturate-150">
         <img
-          src={artistAvatar || artistHeaderBg}
+          src={heroBackgroundUrl}
           alt=""
           className="w-full h-full object-cover scale-110"
         />
@@ -816,16 +852,35 @@ export function ArtistView({
 
       {/* Modern Panoramic Hero Header */}
       <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[380px] md:min-h-[440px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
-        {/* Hero Background Image with Clean Gradient Overlay (No heavy blur) */}
+        {/* Hero Background Image - Crisp Spotify banner when available, graceful PFP hero fallback */}
         <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
-          <img
-            src={artistHeaderBg || artistAvatar}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center scale-100 opacity-45 transition-transform duration-700"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-black/30" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
+          {hasSpotifyHero ? (
+            <img
+              src={spotifyHero}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-[center_25%] opacity-90 transition-transform duration-700"
+            />
+          ) : (
+            <>
+              {/* Atmospheric blurred glow from channel avatar */}
+              <img
+                src={heroBackgroundUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover object-center scale-125 blur-3xl opacity-50"
+              />
+              {/* Centered clean PFP hero presentation */}
+              <img
+                src={heroBackgroundUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 m-auto max-h-full max-w-full object-cover object-center opacity-45 mix-blend-screen scale-105"
+              />
+            </>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-background/80" />
         </div>
 
         {/* Hero Content with Circular PFP beside Name and Inline Controls */}
@@ -848,7 +903,7 @@ export function ArtistView({
 
           {/* Artist Name, Stats, Bio, and Action Controls */}
           <div className="flex flex-col gap-3 min-w-0 flex-1 pb-1">
-            <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text line-clamp-2">
+            <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text leading-[1.15] pb-2 break-words">
               {displayedArtist.name}
             </h1>
 
@@ -911,32 +966,39 @@ export function ArtistView({
                 <ShuffleIcon size={22} />
               </button>
 
-              {/* Follow / Subscribe Button */}
-              <button
-                type="button"
-                onClick={() => void toggleArtistSubscription()}
-                disabled={isLoading || Boolean(error) || isSubscribing}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
-                  isCreator
-                    ? isSubscribed
-                      ? "border border-white/30 bg-white/10 text-white hover:bg-white/15"
-                      : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95"
-                    : isSubscribed
-                      ? "border border-white/40 bg-white/10 text-white hover:border-white/60 hover:bg-white/15"
-                      : "border border-white/30 bg-transparent text-white hover:border-white/50 hover:bg-white/10 active:scale-95",
-                )}
-              >
-                <span>
-                  {isCreator
-                    ? isSubscribed
-                      ? "Subscribed"
-                      : compactSubCount ? `Subscribe ${compactSubCount}` : "Subscribe"
-                    : isSubscribed
-                      ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
-                      : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
-                </span>
-              </button>
+              {/* Follow / Subscribe / Settings Button */}
+              {isOwnChannel ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenSettings?.()}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase text-white shadow-lg backdrop-blur-md transition-all duration-200 cursor-pointer select-none active:scale-95"
+                >
+                  <SettingsIcon size={16} />
+                  <span>Settings</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void toggleArtistSubscription()}
+                  disabled={isLoading || Boolean(error) || isSubscribing}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
+                    isSubscribed
+                      ? "bg-white hover:bg-white/90 text-black shadow-lg active:scale-95"
+                      : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95",
+                  )}
+                >
+                  <span>
+                    {isCreator
+                      ? isSubscribed
+                        ? "Subscribed"
+                        : compactSubCount ? `Subscribe ${compactSubCount}` : "Subscribe"
+                      : isSubscribed
+                        ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
+                        : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
+                  </span>
+                </button>
+              )}
 
               {/* Share button */}
               <button
@@ -962,17 +1024,31 @@ export function ArtistView({
 
                 {isHeaderMenuOpen && (
                   <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsHeaderMenuOpen(false);
-                        void toggleArtistSubscription();
-                      }}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    >
-                      {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
-                      <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
-                    </button>
+                    {isOwnChannel ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderMenuOpen(false);
+                          onOpenSettings?.();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <SettingsIcon size={16} />
+                        <span>Channel settings</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderMenuOpen(false);
+                          void toggleArtistSubscription();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
+                        <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -1498,22 +1574,16 @@ export function ArtistView({
             <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
             <div
               onClick={() => setIsAboutModalOpen(true)}
-              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-zinc-950 border border-white/10 transition-all duration-300 hover:shadow-2xl hover:border-white/30"
+              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-black border border-white/10 transition-all duration-300 hover:shadow-2xl hover:border-white/30 flex items-center justify-center"
             >
-              {/* Blurred Backdrop */}
-              <img
-                src={artistAvatar || artistHeaderBg}
-                alt=""
-                className="absolute inset-0 size-full object-cover scale-125 blur-2xl opacity-50"
-              />
-              {/* Main Photo with Centered / Maximized Framing */}
+              {/* Full Uncropped Photo - handles 16:9 and 9:16 cleanly with natural letterbox/pillarbox black bars */}
               <img
                 src={artistHeaderBg || artistAvatar}
                 alt={displayedArtist.name}
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 h-full w-full object-contain sm:object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                className="max-h-full max-w-full w-auto h-auto object-contain object-center z-0 transition-transform duration-500 group-hover:scale-[1.02]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none z-10" />
 
               {/* Top-Right Spotify World Rank Badge (Matches Image 5) */}
               {spotifyOverview?.worldRank ? (
@@ -1634,12 +1704,12 @@ export function ArtistView({
               ✕
             </button>
 
-            {/* Hero Image (Uncropped / Full aspect container) */}
-            <div className="relative w-full max-h-[440px] shrink-0 overflow-hidden bg-zinc-950 flex items-center justify-center">
+            {/* Hero Image: Full uncropped image with natural black bars for 16:9 and 9:16 */}
+            <div className="relative w-full h-[360px] sm:h-[440px] md:h-[500px] shrink-0 bg-black flex items-center justify-center overflow-hidden">
               <img
-                src={artistHeaderBg}
+                src={spotifyOverview?.galleryUrls?.[0] || spotifyOverview?.headerUrl || displayedArtist?.artworkUrl || artistAvatar}
                 alt={displayedArtist.name}
-                className="max-h-[440px] w-full object-contain sm:object-cover object-center"
+                className="max-h-full max-w-full w-auto h-auto object-contain object-center select-none"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent pointer-events-none" />
             </div>

@@ -2,9 +2,13 @@ import type { AppViewState } from "../ui/types/tab";
 import type { PlayerSession } from "./PlayerController";
 import { getAppSetting, setAppSetting } from "../internal/appSettings";
 
+import type { Track } from "../datasource/types";
+import { getVideoArtworkFallback } from "../datasource/youtube/artwork";
+
 const STORAGE_KEY_V2 = "amber.app-session.v2";
 const STORAGE_KEY_V1 = "amber.app-session.v1";
 export const SETTING_KEY_V2 = "amber.app-session.v2";
+export const LAST_PLAYED_TRACK_STORAGE_KEY = "amber.last-played-track";
 
 export interface AppSession {
   version: 2;
@@ -15,13 +19,54 @@ export interface AppSession {
 }
 
 function restoreWithoutAutoplay(session: AppSession): AppSession {
+  const currentTrack = session.player.currentTrack;
+  const artworkUrl = currentTrack?.artworkUrl || (currentTrack?.id ? getVideoArtworkFallback(currentTrack.id) : undefined);
+  const trackWithArt = currentTrack ? { ...currentTrack, artworkUrl } : null;
+
   return {
     ...session,
+    view: { view: "home" },
     player: {
       ...session.player,
       status: session.player.status === "playing" ? "paused" : session.player.status,
+      positionSec: 0,
+      currentTrack: trackWithArt,
     },
   };
+}
+
+export function saveLastPlayedTrack(track: Track): void {
+  try {
+    const artworkUrl = track.artworkUrl || getVideoArtworkFallback(track.id);
+    const trackWithArt = { ...track, artworkUrl };
+    const payload = JSON.stringify(trackWithArt);
+    localStorage.setItem(LAST_PLAYED_TRACK_STORAGE_KEY, payload);
+    void setAppSetting(LAST_PLAYED_TRACK_STORAGE_KEY, trackWithArt);
+  } catch {}
+}
+
+export function loadLastPlayedTrack(): Track | null {
+  try {
+    const raw = localStorage.getItem(LAST_PLAYED_TRACK_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.id && parsed?.title) return parsed as Track;
+    }
+  } catch {}
+  return null;
+}
+
+export async function hydrateLastPlayedTrackAsync(): Promise<Track | null> {
+  try {
+    const fromDisk = await getAppSetting<Track>(LAST_PLAYED_TRACK_STORAGE_KEY);
+    if (fromDisk?.id && fromDisk?.title) {
+      try {
+        localStorage.setItem(LAST_PLAYED_TRACK_STORAGE_KEY, JSON.stringify(fromDisk));
+      } catch {}
+      return fromDisk;
+    }
+  } catch {}
+  return null;
 }
 
 export function loadAppSession(): AppSession | null {
@@ -96,8 +141,9 @@ let lastWrittenSession: string | null = null;
 
 export function saveAppSession(session: AppSession): void {
   try {
-    // If incoming session has no track, do not overwrite a previously saved valid track
-    if (!session.player?.currentTrack) {
+    if (session.player?.currentTrack) {
+      saveLastPlayedTrack(session.player.currentTrack);
+    } else {
       const existing = loadAppSession();
       if (existing?.player?.currentTrack) {
         return;

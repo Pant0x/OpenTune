@@ -24,6 +24,7 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { collectTrackPages } from "./collectTrackPages";
+import { useArtistNavigation } from "../components/ArtistLinks";
 
 /*
  * Collapsed search affordance that widens on hover/focus or while it holds a query —
@@ -228,6 +229,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu } = usePlaylistContextMenu();
   const keyboardShortcuts = useKeyboardShortcuts();
+  const navigateArtist = useArtistNavigation();
   /*
    * Only the identity of the current track and the transport status are needed here, and
    * both change at most once per track. Playback *position* deliberately never enters this
@@ -730,7 +732,23 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
         <MediaHeader
           eyebrow="Playlist"
           title={playlist.title}
-          subtitle={playlist.owner}
+          subtitle={
+            playlist.owner && playlist.owner !== "Local files" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigateArtist && playlist.owner) {
+                    navigateArtist({ id: playlist.authorId || "", name: playlist.owner }, false);
+                  }
+                }}
+                className="inline-flex items-center text-foreground hover:text-primary transition-colors cursor-pointer font-medium hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded text-left"
+              >
+                {playlist.owner}
+              </button>
+            ) : (
+              playlist.owner
+            )
+          }
           meta={formatCollectionMeta(tracks, hasMoreTracks)}
           artworkUrl={playlist.artworkUrl}
           artworkVariant="playlist"
@@ -761,7 +779,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
                     </button>
                   </Tooltip>
 
-                  <Tooltip content="Sync playlist to Amber Cloud">
+                  <Tooltip content="Sync playlist to Cloud">
                     <button
                       type="button"
                       onClick={() => setShowCloudSyncModal(true)}
@@ -1015,19 +1033,19 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
                 <CloudIcon size={22} aria-hidden="true" />
               </span>
               <div className="flex flex-col">
-                <h3 className="text-base font-semibold text-foreground">Sync to Amber Cloud</h3>
+                <h3 className="text-base font-semibold text-foreground">Sync to Cloud</h3>
                 <span className="text-xs text-muted-foreground">Backup & cross-device sync</span>
               </div>
             </div>
 
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Do you want to sync <strong className="text-foreground">{playlist?.title}</strong> to your Amber Cloud account? 
+              Do you want to sync <strong className="text-foreground">{playlist?.title}</strong> to your cloud account? 
               This makes your playlist accessible and synced across all your devices.
             </p>
 
             {cloudSynced ? (
               <div className="rounded-xl bg-primary/10 p-3 text-center text-sm font-medium text-primary">
-                Playlist synced successfully to Amber Cloud!
+                Playlist synced successfully to Cloud!
               </div>
             ) : null}
 

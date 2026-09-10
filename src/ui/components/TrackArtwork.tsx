@@ -276,6 +276,14 @@ export function TrackArtwork({
            * fewer thing that can leave a placeholder behind.
            */
           referrerPolicy="no-referrer"
+          ref={(img) => {
+            if (img?.complete && img.naturalWidth > 0 && currentArtworkUrl && loadedArtworkUrl !== currentArtworkUrl) {
+              setLoadedArtworkUrl(currentArtworkUrl);
+              if (cacheKey && baseArtworkUrl && !baseArtworkUrl.startsWith("blob:")) {
+                rememberResolvedArtworkUrl(cacheKey, baseArtworkUrl);
+              }
+            }
+          }}
           onLoad={() => {
             setLoadedArtworkUrl(currentArtworkUrl);
             /*

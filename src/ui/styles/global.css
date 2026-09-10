@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Kablammo&display=swap');
 /*
  * Tailwind v4, full import including preflight — the CSS Modules are gone.
  *
@@ -88,6 +89,10 @@ body,
 }
 @import "tailwindcss";
 @source not "../../../docs";
+
+.font-kablammo {
+  font-family: 'Kablammo', cursive, system-ui, sans-serif;
+}
 
 /*
  * Design tokens consumed by the vendored beUI components.

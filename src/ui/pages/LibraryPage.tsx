@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useId,
   useMemo,
   useRef,
@@ -8,9 +9,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
 } from "react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { CloseIcon, EyeClosedIcon, EyeIcon, SearchIcon } from "@/ui/icons";
+import { CloseIcon, EyeClosedIcon, EyeIcon, FolderIcon, PlayActiveIcon, SearchIcon } from "@/ui/icons";
 import {
   Select,
   SelectContent,
@@ -21,8 +23,13 @@ import {
 import type { Album, Artist, Playlist, Track } from "../../datasource/types";
 import type { LibraryState } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
-import { queueDownloads } from "../../player/offlineStore";
+import { queueDownloads, useOfflineState } from "../../player/offlineStore";
 import { getLocalPlaylistItems, subscribeToLocalPlaylists } from "../../player/localPlaylists";
+import {
+  useLocalMusicFolder,
+  setLocalMusicFolder,
+  scanLocalMusicFolder,
+} from "../../player/localFilesManager";
 import { AlbumCard } from "../components/AlbumCard";
 import { SelectionBar } from "../components/SelectionBar";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -34,13 +41,15 @@ import { useTrackSelection } from "../hooks/useTrackSelection";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import { useHiddenPlaylistIds } from "../settings/hiddenPlaylists";
 
-type LibraryTab = "songs" | "albums" | "artists" | "playlists";
+type LibraryTab = "songs" | "albums" | "artists" | "playlists" | "downloads" | "local-files";
 
 const TABS: Array<{ value: LibraryTab; label: string }> = [
   { value: "songs", label: "Songs" },
   { value: "albums", label: "Albums" },
   { value: "artists", label: "Artists" },
   { value: "playlists", label: "Playlists" },
+  { value: "downloads", label: "Downloads" },
+  { value: "local-files", label: "Local Files" },
 ];
 
 /* Roomier than the old 9rem: at that width a two-line title and an artist filled the card
@@ -300,6 +309,76 @@ export function LibraryPage({
 
 
 
+  const offline = useOfflineState();
+  const downloadedTracks = useMemo(
+    () => Object.values(offline.entries)
+      .sort((left, right) => right.downloadedAt - left.downloadedAt)
+      .map((entry) => entry.track),
+    [offline.entries],
+  );
+
+  const localFolder = useLocalMusicFolder();
+  const [localTracks, setLocalTracks] = useState<Track[]>([]);
+  const [isScanningLocal, setIsScanningLocal] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!localFolder) {
+      setLocalTracks([]);
+      return;
+    }
+    setIsScanningLocal(true);
+    scanLocalMusicFolder(localFolder)
+      .then((scanned) => {
+        if (active) setLocalTracks(scanned);
+      })
+      .catch((err) => {
+        console.error("Error scanning local folder:", err);
+      })
+      .finally(() => {
+        if (active) setIsScanningLocal(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [localFolder]);
+
+  const handleChooseFolder = async () => {
+    try {
+      const selected = await openFileDialog({
+        directory: true,
+        multiple: false,
+        title: "Select Local Music Folder",
+      });
+      if (selected && typeof selected === "string") {
+        setLocalMusicFolder(selected);
+      }
+    } catch (err) {
+      console.error("Failed to pick folder:", err);
+    }
+  };
+
+  const downloads = useMemo(
+    () => sortItems(
+      downloadedTracks.filter((track) => matches(normalizedQuery, track.title, track.artist, track.album)),
+      activeSort,
+      (track) => track.title,
+      (track) => track.artist,
+    ),
+    [activeSort, downloadedTracks, normalizedQuery],
+  );
+
+  const filteredLocalTracks = useMemo(
+    () => sortItems(
+      localTracks.filter((track) => matches(normalizedQuery, track.title, track.artist, track.album)),
+      activeSort,
+      (track) => track.title,
+      (track) => track.artist,
+    ),
+    [activeSort, localTracks, normalizedQuery],
+  );
+
   const playSong = (track: Track, index: number, event: MouseEvent<HTMLElement>) => {
     if (selection.handleRowClick(event, index)) return;
     void playerController.playTrackById(track.id, songs);
@@ -310,9 +389,11 @@ export function LibraryPage({
     albums: albums.length,
     artists: artists.length,
     playlists: visiblePlaylists.length,
+    downloads: downloadedTracks.length,
+    "local-files": localTracks.length,
   };
 
-  if (!library) {
+  if (!library && tab !== "downloads" && tab !== "local-files") {
     return (
       <p className="px-2 py-16 text-center text-sm text-muted-foreground">
         {libraryState.status === "signed-out"
@@ -555,6 +636,132 @@ export function LibraryPage({
             )}
           </div>
         )
+      )}
+
+      {tab === "downloads" && (
+        downloads.length === 0 ? (
+          <EmptyState noun="downloaded songs" query={query.trim()} onClearQuery={() => setQuery("")} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between px-2">
+              <span className="text-xs text-muted-foreground">{downloads.length} downloaded {downloads.length === 1 ? "track" : "tracks"}</span>
+              <button
+                type="button"
+                onClick={() => void playerController.playTrackById(downloads[0].id, downloads, true)}
+                className="flex items-center gap-1.5 rounded-full bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground transition-all hover:bg-muted border border-border/40"
+              >
+                <PlayActiveIcon size={14} className="text-primary" />
+                <span>Play all</span>
+              </button>
+            </div>
+            <div className="flex flex-col">
+              <div
+                className="flex items-center gap-3 px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+                aria-hidden="true"
+              >
+                <span className="w-6 text-right">#</span>
+                <span className="size-10 shrink-0" />
+                <span className="min-w-0 flex-1">Title</span>
+                <span className="hidden min-w-0 flex-1 basis-0 lg:block">Album</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {downloads.map((track, index) => (
+                  <TrackRow
+                    key={`dl:${track.id}`}
+                    track={track}
+                    index={index}
+                    showAlbum
+                    isCurrent={currentTrackId === track.id}
+                    isPlaying={isPlaying && currentTrackId === track.id}
+                    onSelect={() => void playerController.playTrackById(track.id, downloads, true)}
+                    onContextMenu={(event) => openTrackMenu(event, track)}
+                    onQuickAdd={() => openPlaylistPicker(track)}
+                    onQuickAddToQueue={() => playerController.addToQueue(track)}
+                    showDownload
+                    showRating
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      )}
+
+      {tab === "local-files" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-card/40 p-4 border border-border/30">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
+                <FolderIcon size={20} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-semibold text-foreground truncate">
+                  {localFolder ? localFolder : "No music folder selected"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {isScanningLocal ? "Scanning folder..." : `${localTracks.length} local audio files discovered`}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleChooseFolder}
+                className="rounded-full bg-card px-3.5 py-1.5 text-xs font-semibold text-foreground transition-all hover:bg-muted border border-border/40"
+              >
+                {localFolder ? "Change folder" : "Select folder"}
+              </button>
+              {filteredLocalTracks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void playerController.playTrackById(filteredLocalTracks[0].id, filteredLocalTracks, true)}
+                  className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground transition-all hover:opacity-90"
+                >
+                  <PlayActiveIcon size={14} />
+                  <span>Play all</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filteredLocalTracks.length === 0 ? (
+            <EmptyState
+              noun="local audio files"
+              query={query.trim()}
+              onClearQuery={() => setQuery("")}
+            />
+          ) : (
+            <div className="flex flex-col">
+              <div
+                className="flex items-center gap-3 px-2 pb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+                aria-hidden="true"
+              >
+                <span className="w-6 text-right">#</span>
+                <span className="size-10 shrink-0" />
+                <span className="min-w-0 flex-1">Title</span>
+                <span className="hidden min-w-0 flex-1 basis-0 lg:block">Album</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {filteredLocalTracks.map((track, index) => (
+                  <TrackRow
+                    key={`local:${track.id}`}
+                    track={track}
+                    index={index}
+                    showAlbum
+                    isCurrent={currentTrackId === track.id}
+                    isPlaying={isPlaying && currentTrackId === track.id}
+                    onSelect={() => void playerController.playTrackById(track.id, filteredLocalTracks, true)}
+                    onContextMenu={(event) => openTrackMenu(event, track)}
+                    onQuickAdd={() => openPlaylistPicker(track)}
+                    onQuickAddToQueue={() => playerController.addToQueue(track)}
+                    showDownload={false}
+                    showRating={false}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       </div>

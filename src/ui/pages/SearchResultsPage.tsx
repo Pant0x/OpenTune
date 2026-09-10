@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { PlayActiveIcon } from "@/ui/icons";
+import { PlayActiveIcon, PlayIcon } from "@/ui/icons";
 import type {
   Album,
   Artist,
@@ -16,6 +16,8 @@ import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
+import { getVideoArtworkFallback } from "../../datasource/youtube/artwork";
+import { recordSearchSelection } from "../../player/searchAffinity";
 
 function normalizeSearchKey(value: string): string {
   return value
@@ -34,42 +36,33 @@ type SelectableItem =
 
 type SearchScope = "all" | "songs" | "artists" | "albums" | "playlists";
 
-const SCOPES: Array<{
-  value: SearchScope;
-  label: string;
-  field: keyof SearchResults;
-  /** The filter YouTube Music runs for a deep search of this scope. */
-  category?: SearchCategory;
-}> = [
-  { value: "all", label: "All", field: "tracks" },
-  { value: "songs", label: "Songs", field: "tracks", category: "song" },
-  { value: "artists", label: "Artists", field: "artists", category: "artist" },
-  { value: "albums", label: "Albums", field: "albums", category: "album" },
-  { value: "playlists", label: "Playlists", field: "playlists", category: "playlist" },
+const SCOPES: Array<{ label: string; value: SearchScope; category?: SearchCategory }> = [
+  { label: "All", value: "all" },
+  { label: "Songs", value: "songs", category: "song" },
+  { label: "Artists", value: "artists", category: "artist" },
+  { label: "Albums", value: "albums", category: "album" },
+  { label: "Playlists", value: "playlists", category: "playlist" },
 ];
+
+function SearchLoadingSpinner() {
+  return (
+    <div className="grid place-items-center py-20" role="status" aria-label="Loading search results">
+      <SpinnerSteps size={28} color="currentColor" />
+    </div>
+  );
+}
 
 const EMPTY_RESULTS: SearchResults = { artists: [], tracks: [], albums: [], playlists: [] };
 
 function buildFlatItems(results: SearchResults, songsFirst: boolean): SelectableItem[] {
-  const items: SelectableItem[] = [];
-  if (results.artists.length > 0 && !songsFirst) {
-    for (const artist of results.artists) items.push({ kind: "artist", artist });
-  }
-  for (const track of results.tracks) items.push({ kind: "track", track });
-  if (results.artists.length > 0 && songsFirst) {
-    for (const artist of results.artists) items.push({ kind: "artist", artist });
-  }
-  for (const album of results.albums) items.push({ kind: "album", album });
-  for (const playlist of results.playlists) items.push({ kind: "playlist", playlist });
-  return items;
-}
+  const artists = results.artists.map((artist) => ({ kind: "artist" as const, artist }));
+  const tracks = results.tracks.map((track) => ({ kind: "track" as const, track }));
+  const albums = results.albums.map((album) => ({ kind: "album" as const, album }));
+  const playlists = results.playlists.map((playlist) => ({ kind: "playlist" as const, playlist }));
 
-function SearchLoadingSpinner() {
-  return (
-    <div className="grid place-items-center px-2 py-16 text-muted-foreground" role="status" aria-live="polite" aria-label="Searching">
-      <SpinnerSteps size={30} color="currentColor" />
-    </div>
-  );
+  return songsFirst
+    ? [...tracks, ...artists, ...albums, ...playlists]
+    : [...artists, ...tracks, ...albums, ...playlists];
 }
 
 export function SearchResultsPage({
@@ -95,17 +88,8 @@ export function SearchResultsPage({
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const [scope, setScope] = useState<SearchScope>("all");
 
-  // A scope from the previous query is meaningless against the next one, and silently hiding
-  // results the new search did find is the worst outcome.
   useEffect(() => setScope("all"), [query]);
 
-  /*
-   * A filtered search, run when a category tab is opened.
-   *
-   * The mixed search that fills this page samples every category, so its "Songs" shelf is a
-   * handful of rows rather than the answer to "show me the songs". Asking YouTube Music for
-   * one category returns a proper list, which is the whole point of the tab.
-   */
   const [deepResults, setDeepResults] = useState<SearchResults | null>(null);
   const [isDeepLoading, setIsDeepLoading] = useState(false);
 
@@ -117,7 +101,6 @@ export function SearchResultsPage({
       return;
     }
 
-    // Guards against a slow request for one tab landing after the user has moved to another.
     let active = true;
     setDeepResults(null);
     setIsDeepLoading(true);
@@ -126,7 +109,6 @@ export function SearchResultsPage({
         if (active) setDeepResults(fetched);
       })
       .catch(() => {
-        // Falling back to the mixed results is a worse answer, not a broken one.
         if (active) setDeepResults(null);
       })
       .finally(() => {
@@ -138,16 +120,9 @@ export function SearchResultsPage({
     };
   }, [query, scope]);
 
-  /*
-   * Scoping filters the results *before* anything else reads them, so the flat list that
-   * drives keyboard selection contains exactly what is on screen. Filtering only at render
-   * would leave arrow-down walking through hidden entries.
-   */
   const scopedResults = useMemo<SearchResults>(() => {
     if (scope === "all") return results;
 
-    // The deep search is already filtered; the mixed results still need narrowing, and stand
-    // in while the deep one is loading or after it has failed.
     const source = deepResults ?? results;
     const narrowed: SearchResults = {
       artists: scope === "artists" ? source.artists : [],
@@ -157,8 +132,6 @@ export function SearchResultsPage({
     };
     const total = narrowed.artists.length + narrowed.tracks.length
       + narrowed.albums.length + narrowed.playlists.length;
-    // A deep search that came back empty is not a reason to show nothing when the mixed
-    // search had something for this category.
     return total > 0 || !deepResults ? narrowed : {
       ...EMPTY_RESULTS,
       artists: scope === "artists" ? results.artists : [],
@@ -181,10 +154,26 @@ export function SearchResultsPage({
   );
   const songsFirst = hasExactTrack && !hasExactArtist;
 
+  const handleOpenArtist = useCallback((artist: Artist) => {
+    recordSearchSelection(query, { id: artist.id, name: artist.name });
+    onOpenArtist(artist);
+  }, [onOpenArtist, query]);
+
+  const handleOpenAlbum = useCallback((album: Album) => {
+    recordSearchSelection(query, { id: album.id, title: album.title, artist: album.artist });
+    onOpenAlbum(album);
+  }, [onOpenAlbum, query]);
+
+  const handleOpenPlaylist = useCallback((playlist: Playlist) => {
+    recordSearchSelection(query, { id: playlist.id, title: playlist.title });
+    onOpenPlaylist(playlist);
+  }, [onOpenPlaylist, query]);
+
   const playTrack = useCallback((track: Track) => {
+    recordSearchSelection(query, { id: track.id, title: track.title, artist: track.artist });
     if (onPlayTrack) void onPlayTrack(track);
     else void playerController.playTrackById(track.id, scopedResults.tracks, true);
-  }, [onPlayTrack, playerController, scopedResults.tracks]);
+  }, [onPlayTrack, playerController, query, scopedResults.tracks]);
 
   const flatItems = useMemo(
     () => buildFlatItems(scopedResults, songsFirst),
@@ -197,30 +186,15 @@ export function SearchResultsPage({
   useEffect(() => {
     setSelectedIndex(0);
     setIsKeyboardNav(false);
-  }, [results]);
+  }, [results, scope]);
 
   const selectedIndexRef = useRef(selectedIndex);
   selectedIndexRef.current = selectedIndex;
   const flatItemsRef = useRef(flatItems);
   flatItemsRef.current = flatItems;
-  const hasResultsRef = useRef(hasResults);
-  hasResultsRef.current = hasResults;
-  const resultsRef = useRef(results);
-  resultsRef.current = results;
-
-  const onOpenArtistRef = useRef(onOpenArtist);
-  onOpenArtistRef.current = onOpenArtist;
-  const onOpenAlbumRef = useRef(onOpenAlbum);
-  onOpenAlbumRef.current = onOpenAlbum;
-  const onOpenPlaylistRef = useRef(onOpenPlaylist);
-  onOpenPlaylistRef.current = onOpenPlaylist;
-  const onPlayTrackRef = useRef(onPlayTrack);
-  onPlayTrackRef.current = onPlayTrack;
-  const playerControllerRef = useRef(playerController);
-  playerControllerRef.current = playerController;
 
   useEffect(() => {
-    if (isLoading || !hasResultsRef.current) return;
+    if (isLoading || !hasResults) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
@@ -230,113 +204,98 @@ export function SearchResultsPage({
         event.preventDefault();
         setIsKeyboardNav(true);
         setSelectedIndex((prev) => Math.min(prev + 1, flatItemsRef.current.length - 1));
-        return;
-      }
-      if (event.key === "ArrowUp") {
+      } else if (event.key === "ArrowUp") {
         event.preventDefault();
         setIsKeyboardNav(true);
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
-        return;
-      }
-      if (event.key === "Enter") {
+      } else if (event.key === "Enter") {
         const item = flatItemsRef.current[selectedIndexRef.current];
         if (!item) return;
         event.preventDefault();
         switch (item.kind) {
-          case "artist":
-            onOpenArtistRef.current(item.artist);
-            break;
-          case "track": {
-            const track = item.track;
-            if (onPlayTrackRef.current) {
-              void onPlayTrackRef.current(track);
-            } else {
-              void playerControllerRef.current.playTrackById(
-                track.id,
-                resultsRef.current.tracks,
-                true,
-              );
-            }
-            break;
-          }
-          case "album":
-            onOpenAlbumRef.current(item.album);
-            break;
-          case "playlist":
-            onOpenPlaylistRef.current(item.playlist);
-            break;
+          case "artist": handleOpenArtist(item.artist); break;
+          case "track": playTrack(item.track); break;
+          case "album": handleOpenAlbum(item.album); break;
+          case "playlist": handleOpenPlaylist(item.playlist); break;
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isLoading]);
+  }, [isLoading, hasResults, playTrack, onOpenArtist, onOpenAlbum, onOpenPlaylist]);
 
-  useEffect(() => {
-    if (!isKeyboardNav) return;
-    const el = document.querySelector(`[data-selectable-index="${selectedIndex}"]`);
-    if (el) {
-      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  }, [selectedIndex, isKeyboardNav]);
+  const selected = (index: number) =>
+    isKeyboardNav && selectedIndex === index
+      ? "bg-card ring-2 ring-inset ring-ring"
+      : "";
 
-  const handleMouseEnter = useCallback((index: number) => {
+  const selectedAlbumCard = (index: number) =>
+    isKeyboardNav && selectedIndex === index
+      ? "ring-2 ring-inset ring-ring rounded-xl"
+      : "";
+
+  const handleMouseEnter = (index: number) => {
     setIsKeyboardNav(false);
     setSelectedIndex(index);
-  }, []);
+  };
 
-  const selected = useCallback(
-    (index: number) => (isKeyboardNav && index === selectedIndex ? "bg-primary/15 text-foreground" : ""),
-    [isKeyboardNav, selectedIndex],
-  );
+  const enterStyle = (index: number): CSSProperties => ({
+    animationDelay: `${Math.min(index * 25, 250)}ms`,
+  });
 
-  const selectedAlbumCard = useCallback(
-    (index: number) =>
-      isKeyboardNav && index === selectedIndex ? "bg-primary/15 text-foreground" : "",
-    [isKeyboardNav, selectedIndex],
-  );
+  const topResult = useMemo(() => {
+    if (scope !== "all") return null;
+    const topArtist = scopedResults.artists[0];
+    const topTrack = scopedResults.tracks[0];
+    const topAlbum = scopedResults.albums[0];
 
-  const enterStyle = useCallback((index: number) => ({
-    "--search-enter-delay": `${Math.min(Math.max(index, 0), 18) * 28}ms`,
-  } as CSSProperties), []);
+    const normQ = normalizeSearchKey(query);
+    if (topArtist && normalizeSearchKey(topArtist.name) === normQ) {
+      return { kind: "artist" as const, item: topArtist };
+    }
+    if (topTrack && normalizeSearchKey(topTrack.title) === normQ) {
+      return { kind: "track" as const, item: topTrack };
+    }
+    if (topAlbum && normalizeSearchKey(topAlbum.title) === normQ) {
+      return { kind: "album" as const, item: topAlbum };
+    }
+
+    if (songsFirst && topTrack) {
+      return { kind: "track" as const, item: topTrack };
+    }
+    if (topArtist) {
+      return { kind: "artist" as const, item: topArtist };
+    }
+    if (topTrack) {
+      return { kind: "track" as const, item: topTrack };
+    }
+    if (topAlbum) {
+      return { kind: "album" as const, item: topAlbum };
+    }
+    return null;
+  }, [scopedResults, scope, query, songsFirst]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
-        <div>
-          <p className="text-lg font-semibold text-foreground">Search results</p>
-          <h1>{query}</h1>
-        </div>
-
-        {!isLoading && (
-          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter results">
-            {SCOPES.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                role="tab"
-                aria-selected={scope === item.value}
-                onClick={() => setScope(item.value)}
-                className={cn(
-                  "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  scope === item.value
-                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
-                    : "bg-card text-muted-foreground hover:text-foreground hover:bg-muted/60",
-                )}
-              >
-                {item.label}
-                {item.value !== "all" && results[item.field].length > 0 && (
-                  <span className="ml-1.5 tabular-nums opacity-60">
-                    {results[item.field].length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </header>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-2">
+        {SCOPES.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            className={cn(
+              "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              scope === item.value
+                ? "bg-foreground text-background shadow-md"
+                : "bg-white/[0.06] text-muted-foreground hover:bg-white/[0.1] hover:text-foreground",
+            )}
+            onClick={() => setScope(item.value)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
       {isLoading || (isDeepLoading && !hasResults) ? (
         <SearchLoadingSpinner />
@@ -344,9 +303,177 @@ export function SearchResultsPage({
         <p className="px-2 py-10 text-center text-sm text-muted-foreground">No results found.</p>
       ) : (
         <div className="flex flex-col gap-8">
+          {scope === "all" && (topResult || scopedResults.tracks.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.9fr] gap-6 items-start">
+              {topResult && (
+                <section className="flex flex-col gap-3">
+                  <h2 className="text-xl font-bold tracking-tight text-foreground">Top result</h2>
+                  <div
+                    className="group relative flex flex-col justify-between p-5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all duration-300 cursor-pointer min-h-[220px]"
+                    onClick={() => {
+                      if (topResult.kind === "artist") handleOpenArtist(topResult.item);
+                      else if (topResult.kind === "track") playTrack(topResult.item);
+                      else if (topResult.kind === "album") handleOpenAlbum(topResult.item);
+                    }}
+                  >
+                    <div className="flex flex-col gap-4">
+                      <TrackArtwork
+                        className={cn(
+                          "size-24 shadow-2xl object-cover",
+                          topResult.kind === "artist" ? "rounded-full" : "rounded-xl"
+                        )}
+                        size={96}
+                        preferProxy
+                        artworkUrl={
+                          topResult.item.artworkUrl ||
+                          (topResult.kind === "track" && topResult.item.id ? getVideoArtworkFallback(topResult.item.id) : undefined)
+                        }
+                        iconSize={40}
+                        variant={topResult.kind}
+                      />
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-2xl font-black text-white tracking-tight truncate line-clamp-1">
+                          {topResult.kind === "artist" ? topResult.item.name : topResult.item.title}
+                        </span>
+                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                          {topResult.kind === "track" && (
+                            <>
+                              <ArtistLinks artists={topResult.item.artists} fallback={topResult.item.artist} />
+                              <span>•</span>
+                            </>
+                          )}
+                          <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
+                            {topResult.kind === "artist" ? (topResult.item.isCreator ? "Channel" : "Artist") : topResult.kind === "track" ? "Song" : "Album"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="absolute bottom-5 right-5 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (topResult.kind === "artist") handleOpenArtist(topResult.item);
+                        else if (topResult.kind === "track") playTrack(topResult.item);
+                        else if (topResult.kind === "album") handleOpenAlbum(topResult.item);
+                      }}
+                      aria-label="Play"
+                    >
+                      <PlayIcon size={22} fill="currentColor" className="ml-0.5" />
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {scopedResults.tracks.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold tracking-tight text-foreground">Songs</h2>
+                    {scopedResults.tracks.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setScope("songs")}
+                        className="text-xs font-semibold text-muted-foreground hover:text-white transition-colors cursor-pointer"
+                      >
+                        See all
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {scopedResults.tracks.slice(0, 4).map((track, displayIndex) => {
+                      const index = flatItems.findIndex(
+                        (item) => item.kind === "track" && item.track.id === track.id,
+                      );
+                      const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                      return (
+                        <button
+                          key={track.id}
+                          type="button"
+                          data-selectable-index={index}
+                          className={cn(
+                            "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                            selected(index)
+                          )}
+                          style={enterStyle(index)}
+                          onContextMenu={(event) => openTrackMenu(event, track)}
+                          onClick={() => playTrack(track)}
+                          onMouseEnter={() => handleMouseEnter(index)}
+                        >
+                          <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                          <TrackArtwork
+                            className="size-10 shrink-0 rounded-lg object-cover"
+                            size={40}
+                            preferProxy
+                            artworkUrl={art}
+                            iconSize={20}
+                          />
+                          <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
+                            <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                            <ArtistLinks artists={track.artists} fallback={track.artist} />
+                          </span>
+                          <span className="text-xs tabular-nums text-muted-foreground pr-2">
+                            {track.duration || ""}
+                          </span>
+                          <PlayActiveIcon size={16} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {scope === "songs" && scopedResults.tracks.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Songs</h2>
+              <div className="flex flex-col gap-1">
+                {scopedResults.tracks.map((track, displayIndex) => {
+                  const index = flatItems.findIndex(
+                    (item) => item.kind === "track" && item.track.id === track.id,
+                  );
+                  const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                  return (
+                    <button
+                      key={track.id}
+                      type="button"
+                      data-selectable-index={index}
+                      className={cn(
+                        "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                        selected(index)
+                      )}
+                      style={enterStyle(index)}
+                      onContextMenu={(event) => openTrackMenu(event, track)}
+                      onClick={() => playTrack(track)}
+                      onMouseEnter={() => handleMouseEnter(index)}
+                    >
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                      <TrackArtwork
+                        className="size-11 shrink-0 rounded-lg object-cover"
+                        size={44}
+                        preferProxy
+                        artworkUrl={art}
+                        iconSize={24}
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
+                        <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                        <ArtistLinks artists={track.artists} fallback={track.artist} />
+                      </span>
+                      <span className="text-xs tabular-nums text-muted-foreground pr-2">
+                        {track.duration || ""}
+                      </span>
+                      <PlayActiveIcon size={18} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {scopedResults.artists.length > 0 && (
-            <section className="flex flex-col gap-3" style={{ order: songsFirst ? 1 : 0 }}>
-              <h2>Artists</h2>
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Artists</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {scopedResults.artists.map((artist) => {
                   const index = flatItems.findIndex(
@@ -357,58 +484,30 @@ export function SearchResultsPage({
                       key={artist.id}
                       type="button"
                       data-selectable-index={index}
-                      className={`${"flex flex-col items-center gap-2 rounded-xl p-3 transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"} ${"animate-in fade-in"} ${selected(index)}`}
+                      className={cn(
+                        "group flex flex-col items-center gap-3 rounded-2xl p-4 transition-all duration-200 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer text-center",
+                        selected(index)
+                      )}
                       style={enterStyle(index)}
-                      onClick={() => onOpenArtist(artist)}
+                      onClick={() => handleOpenArtist(artist)}
                       onMouseEnter={() => handleMouseEnter(index)}
                     >
                       <TrackArtwork
-                        className="size-24 rounded-full object-cover"
-                        size={96}
+                        className="size-28 rounded-full shadow-lg object-cover transition-transform duration-300 group-hover:scale-105"
+                        size={112}
+                        preferProxy
                         artworkUrl={artist.artworkUrl}
-                        iconSize={42}
+                        iconSize={48}
                         variant="artist"
                       />
-                      <strong>{artist.name}</strong>
-                      <span>{artist.subscriberCount || "Artist"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {scopedResults.tracks.length > 0 && (
-            <section className="flex flex-col gap-3" style={{ order: songsFirst ? 0 : 1 }}>
-              <h2>Songs</h2>
-              <div className="flex flex-col gap-0.5" data-onboarding="search-results">
-                {scopedResults.tracks.map((track, displayIndex) => {
-                  const index = flatItems.findIndex(
-                    (item) => item.kind === "track" && item.track.id === track.id,
-                  );
-                  return (
-                    <button
-                      key={track.id}
-                      type="button"
-                      data-selectable-index={index}
-                      className={`${"group/row flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"} ${"animate-in fade-in"} ${selected(index)}`}
-                      style={enterStyle(index)}
-                      onContextMenu={(event) => openTrackMenu(event, track)}
-                      onClick={() => playTrack(track)}
-                      onMouseEnter={() => handleMouseEnter(index)}
-                    >
-                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
-                      <TrackArtwork
-                        className="size-11 shrink-0 rounded-md object-cover"
-                        size={44}
-                        artworkUrl={track.artworkUrl}
-                        iconSize={24}
-                      />
-                      <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                        <strong>{track.title}</strong>
-                        <ArtistLinks artists={track.artists} fallback={track.artist} />
-                      </span>
-                      <PlayActiveIcon size={18} />
+                      <div className="flex flex-col items-center gap-0.5 min-w-0 w-full">
+                        <strong className="text-sm font-bold text-white group-hover/row:text-primary transition-colors truncate max-w-full">{artist.name}</strong>
+                        <span className="text-xs text-muted-foreground">
+                          {artist.isCreator
+                            ? artist.subscriberCount ? `${artist.subscriberCount} • Channel` : "Channel"
+                            : artist.subscriberCount ? `${artist.subscriberCount} • Artist` : "Artist"}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}
@@ -417,8 +516,8 @@ export function SearchResultsPage({
           )}
 
           {scopedResults.albums.length > 0 && (
-            <section className="flex flex-col gap-3" style={{ order: 2 }}>
-              <h2>Albums</h2>
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Albums</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {scopedResults.albums.map((album) => {
                   const index = flatItems.findIndex(
@@ -428,7 +527,7 @@ export function SearchResultsPage({
                     <div
                       key={album.id}
                       data-selectable-index={index}
-                      className={`${"animate-in fade-in"} ${selectedAlbumCard(index)}`}
+                      className={cn("animate-in fade-in", selectedAlbumCard(index))}
                       style={enterStyle(index)}
                       onMouseEnter={() => handleMouseEnter(index)}
                     >
@@ -438,7 +537,7 @@ export function SearchResultsPage({
                         subtitleContent={(
                           <ArtistLinks artists={album.artists} fallback={album.artist} />
                         )}
-                        onClick={() => onOpenAlbum(album)}
+                        onClick={() => handleOpenAlbum(album)}
                         onContextMenu={(event) => openAlbumMenu(event, album)}
                       />
                     </div>
@@ -449,8 +548,8 @@ export function SearchResultsPage({
           )}
 
           {scopedResults.playlists.length > 0 && (
-            <section className="flex flex-col gap-3" style={{ order: 3 }}>
-              <h2>Playlists</h2>
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Playlists</h2>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
                 {scopedResults.playlists.map((playlist) => {
                   const index = flatItems.findIndex(
@@ -460,7 +559,7 @@ export function SearchResultsPage({
                     <div
                       key={playlist.id}
                       data-selectable-index={index}
-                      className={`${"animate-in fade-in"} ${selectedAlbumCard(index)}`}
+                      className={cn("animate-in fade-in", selectedAlbumCard(index))}
                       style={enterStyle(index)}
                       onMouseEnter={() => handleMouseEnter(index)}
                     >
@@ -468,7 +567,7 @@ export function SearchResultsPage({
                         artworkUrl={playlist.artworkUrl}
                         title={playlist.title}
                         subtitle={playlist.owner}
-                        onClick={() => onOpenPlaylist(playlist)}
+                        onClick={() => handleOpenPlaylist(playlist)}
                         onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                       />
                     </div>

@@ -17,6 +17,7 @@ import type { Album, Artist, Playlist, SearchResults, Track } from "../../dataso
 import { useArtistNavigation, useAlbumNavigation } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
+import { recordSearchSelection, simplifyText } from "../../player/searchAffinity";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 6;
@@ -154,10 +155,20 @@ export function SearchBar({
     try {
       void searchController
         .getSearchSuggestions(trimmed, (updated: string[]) => {
-          setSuggestions(updated.slice(0, 4));
+          const top = updated.slice(0, 4);
+          setSuggestions(top);
         })
         .then((results: string[]) => {
-          if (results) setSuggestions(results.slice(0, 4));
+          const top = (results || []).slice(0, 4);
+          if (results) setSuggestions(top);
+          // Refine preview results using latest suggestions
+          void searchController
+            .search(trimmed, (updated: SearchResults) => {
+              setPreviewResults(updated);
+            }, { suggestions: top })
+            .then((res: SearchResults) => {
+              if (res) setPreviewResults(res);
+            });
         });
 
       void searchController
@@ -200,6 +211,7 @@ export function SearchBar({
   const handleSelectArtist = (artist: Artist) => {
     setIsOpen(false);
     inputRef.current?.blur();
+    recordSearchSelection(query, { id: artist.id, name: artist.name });
     saveRecentSearch(artist.name);
     setRecentSearches(loadRecentSearches());
     navigateArtist?.(artist, false);
@@ -208,6 +220,7 @@ export function SearchBar({
   const handleSelectAlbum = (album: Album) => {
     setIsOpen(false);
     inputRef.current?.blur();
+    recordSearchSelection(query, { id: album.id, title: album.title, artist: album.artist });
     saveRecentSearch(album.title);
     setRecentSearches(loadRecentSearches());
     navigateAlbum?.(album, false);
@@ -216,6 +229,7 @@ export function SearchBar({
   const handleSelectPlaylist = (playlist: Playlist) => {
     setIsOpen(false);
     inputRef.current?.blur();
+    recordSearchSelection(query, { id: playlist.id, title: playlist.title });
     saveRecentSearch(playlist.title);
     setRecentSearches(loadRecentSearches());
     onNavigatePlaylist?.(playlist);
@@ -224,6 +238,7 @@ export function SearchBar({
   const handlePlayTrack = (track: Track) => {
     setIsOpen(false);
     inputRef.current?.blur();
+    recordSearchSelection(query, { id: track.id, title: track.title, artist: track.artist });
     saveRecentSearch(track.title);
     setRecentSearches(loadRecentSearches());
     void playerController.playTrackById(track.id);
@@ -268,17 +283,33 @@ export function SearchBar({
 
   const hasQuery = Boolean(query.trim());
   const matchingArtist = useMemo(() => {
-    if (!previewResults?.artists?.length) return undefined;
+    const artists = previewResults?.artists;
+    if (!artists?.length) return undefined;
+
     if (/\bpanto\b|prodbypanto/i.test(query)) {
-      const panto = previewResults.artists.find(
+      const panto = artists.find(
         (a) => a.name.toLowerCase() === "panto" || /prodbypanto/i.test(a.id)
-      ) || previewResults.artists.find(
+      ) || artists.find(
         (a) => a.name.toLowerCase().includes("panto")
       );
       if (panto) return panto;
     }
-    return previewResults.artists[0];
-  }, [previewResults?.artists, query]);
+
+    // If suggestions are available, check if an artist matches top suggestions
+    if (suggestions.length > 0) {
+      for (const sugg of suggestions) {
+        const simpSugg = simplifyText(sugg);
+        if (!simpSugg) continue;
+        const match = artists.find((a) => {
+          const aSimp = simplifyText(a.name);
+          return aSimp === simpSugg || (simpSugg.length >= 4 && (simpSugg.startsWith(aSimp) || aSimp.startsWith(simpSugg)));
+        });
+        if (match) return match;
+      }
+    }
+
+    return artists[0];
+  }, [previewResults?.artists, query, suggestions]);
   const matchingAlbums = (previewResults?.albums ?? []).slice(0, 2);
   const matchingPlaylists = (previewResults?.playlists ?? []).slice(0, 2);
   const matchingTracks = (previewResults?.tracks ?? []).slice(0, 2);

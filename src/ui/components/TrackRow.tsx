@@ -558,8 +558,10 @@ export const TrackRow = memo(function TrackRow({
 
       {showAlbum && (
         <span className="hidden min-w-0 flex-1 basis-0 truncate text-xs text-muted-foreground lg:block">
-          {track.album
-            ? (openAlbumForTrack && track.source !== "local" ? (
+          {(() => {
+            const releaseLabel = track.album || track.title;
+            if (!releaseLabel) return null;
+            return openAlbumForTrack && track.source !== "local" ? (
               <span
                 role="link"
                 tabIndex={0}
@@ -577,10 +579,12 @@ export const TrackRow = memo(function TrackRow({
                   openAlbumForTrack(track);
                 }}
               >
-                {track.album}
+                {releaseLabel}
               </span>
-            ) : track.album)
-            : ""}
+            ) : (
+              releaseLabel
+            );
+          })()}
         </span>
       )}
 

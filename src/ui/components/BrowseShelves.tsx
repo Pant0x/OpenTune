@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ArrowRightIcon, PlayActiveIcon } from "@/ui/icons";
+import { ArrowLeftIcon, ArrowRightIcon, MenuDotsIcon, PlayActiveIcon } from "@/ui/icons";
 import type { Album, Artist, BrowseLink, BrowseShelf, Playlist, Track } from "../../datasource/types";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import { AlbumCard } from "./AlbumCard";
@@ -29,12 +29,22 @@ function ArtistTile({ artist, onOpen }: { artist: Artist; onOpen: () => void }) 
   );
 }
 
-function PlaylistTile({ playlist, onOpen }: { playlist: Playlist; onOpen: () => void }) {
+function PlaylistTile({
+  playlist,
+  onOpen,
+  onContextMenu,
+}: {
+  playlist: Playlist;
+  onOpen: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+}) {
   return (
-    <button
-      type="button"
+    <div
       onClick={onOpen}
-      className="group flex w-40 shrink-0 flex-col gap-2 rounded-2xl p-2.5 text-left transition-all hover:bg-card hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onContextMenu={onContextMenu}
+      className="group relative flex w-40 shrink-0 flex-col gap-2 rounded-2xl p-2.5 text-left transition-all hover:bg-card hover:scale-[1.02] active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      role="button"
+      tabIndex={0}
     >
       <div className="relative overflow-hidden rounded-xl shadow-md">
         <TrackArtwork
@@ -44,12 +54,27 @@ function PlaylistTile({ playlist, onOpen }: { playlist: Playlist; onOpen: () => 
           iconSize={32}
           variant="playlist"
         />
+        {onContextMenu && (
+          <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              aria-label={`Options for ${playlist.title || "playlist"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onContextMenu(e);
+              }}
+              className="flex size-8 items-center justify-center rounded-full bg-black/70 hover:bg-black/90 text-white/90 hover:text-white shadow-lg backdrop-blur-sm transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            >
+              <MenuDotsIcon size={16} />
+            </button>
+          </div>
+        )}
       </div>
       <span className="line-clamp-2 text-xs font-semibold text-foreground tracking-tight">{playlist.title}</span>
       {playlist.owner ? (
         <span className="line-clamp-1 text-[11px] text-muted-foreground">{playlist.owner}</span>
       ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -62,6 +87,7 @@ function BrowseShelfSection({
   onOpenArtist,
   onOpenPlaylist,
   onFollowLink,
+  onOpenReleases,
 }: {
   shelf: BrowseShelf;
   playerController: PlayerControllerActions;
@@ -71,6 +97,7 @@ function BrowseShelfSection({
   onOpenArtist: (artist: Artist) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
   onFollowLink?: (link: BrowseLink) => void;
+  onOpenReleases?: () => void;
 }) {
   const { openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -80,12 +107,6 @@ function BrowseShelfSection({
     if (!scrollRef.current) return;
     const distance = direction === "left" ? -480 : 480;
     scrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (scrollRef.current && e.deltaY !== 0 && Math.abs(e.deltaX) < Math.abs(e.deltaY)) {
-      scrollRef.current.scrollBy({ left: e.deltaY, behavior: "auto" });
-    }
   };
 
   const playShelfTrack = (shelfTracks: Track[], track: Track) => {
@@ -98,11 +119,26 @@ function BrowseShelfSection({
     shelf.playlists.length > 4 ||
     shelf.artists.length > 4;
 
+  const isLongListens = shelf.title.toLowerCase().includes("long listen");
+
   return (
     <section className="flex flex-col gap-3.5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-foreground tracking-tight">{shelf.title}</h2>
+          {shelf.title.toLowerCase().includes("new release") && onOpenReleases ? (
+            <button
+              type="button"
+              onClick={onOpenReleases}
+              className="group/title flex items-center gap-2 text-left transition hover:opacity-80 focus-visible:outline-none"
+            >
+              <h2 className="text-xl font-bold text-foreground tracking-tight group-hover/title:underline">
+                {shelf.title}
+              </h2>
+              <ArrowRightIcon size={16} className="text-muted-foreground group-hover/title:text-foreground transition-transform group-hover/title:translate-x-0.5" />
+            </button>
+          ) : (
+            <h2 className="text-xl font-bold text-foreground tracking-tight">{shelf.title}</h2>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -143,10 +179,9 @@ function BrowseShelfSection({
       {shelf.tracks.length > 0 && (
         <div
           ref={scrollRef}
-          onWheel={handleWheel}
           className={cn(
             shelf.tracks.length >= 4
-              ? "grid grid-rows-4 grid-flow-col auto-cols-[340px] sm:auto-cols-[380px] md:auto-cols-[420px] gap-x-6 gap-y-1.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+              ? "grid grid-rows-4 grid-flow-col auto-cols-[280px] sm:auto-cols-[320px] md:auto-cols-[350px] gap-x-5 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
               : "flex flex-col gap-1 max-w-2xl",
           )}
         >
@@ -155,7 +190,7 @@ function BrowseShelfSection({
               key={`${track.id}:${index}`}
               className={cn(
                 shelf.tracks.length >= 4
-                  ? "w-[340px] sm:w-[380px] md:w-[420px] shrink-0 snap-start"
+                  ? "w-[280px] sm:w-[320px] md:w-[350px] shrink-0 snap-start"
                   : "w-full",
               )}
             >
@@ -168,6 +203,15 @@ function BrowseShelfSection({
                 onSelect={() => playShelfTrack(shelf.tracks, track)}
                 onContextMenu={(event) => openTrackMenu(event, track)}
                 showRating
+                trailing={
+                  isLongListens && track.durationSec && track.durationSec > 0 ? (
+                    <span className="text-xs font-mono font-medium text-muted-foreground/80 tabular-nums pr-1">
+                      {Math.floor(track.durationSec / 3600) > 0
+                        ? `${Math.floor(track.durationSec / 3600)}:${Math.floor((track.durationSec % 3600) / 60).toString().padStart(2, "0")}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`
+                        : `${Math.floor(track.durationSec / 60)}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`}
+                    </span>
+                  ) : undefined
+                }
               />
             </div>
           ))}
@@ -192,7 +236,6 @@ function BrowseShelfSection({
       {shelf.albums.length > 0 && (
         <div
           ref={scrollRef}
-          onWheel={handleWheel}
           className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
         >
           {shelf.albums.map((album) => {
@@ -237,6 +280,7 @@ function BrowseShelfSection({
                      ) : undefined
                    }
                    onClick={() => onOpenAlbum(album)}
+                   onContextMenu={(event) => openAlbumMenu(event, album)}
                  />
                </div>
              );
@@ -247,16 +291,18 @@ function BrowseShelfSection({
        {shelf.playlists.length > 0 && (
          <div
            ref={scrollRef}
-           onWheel={handleWheel}
            className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
          >
            {shelf.playlists.map((playlist) => (
              <div
                key={playlist.id}
                className="w-40 shrink-0 snap-start"
-               onContextMenu={(event) => openPlaylistMenu(event, playlist)}
              >
-               <PlaylistTile playlist={playlist} onOpen={() => onOpenPlaylist(playlist)} />
+               <PlaylistTile
+                 playlist={playlist}
+                 onOpen={() => onOpenPlaylist(playlist)}
+                 onContextMenu={(event) => openPlaylistMenu(event, playlist)}
+               />
              </div>
            ))}
          </div>
@@ -265,7 +311,6 @@ function BrowseShelfSection({
        {shelf.artists.length > 0 && (
          <div
            ref={scrollRef}
-           onWheel={handleWheel}
            className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
          >
            {shelf.artists.map((artist) => (
@@ -289,6 +334,7 @@ export function BrowseShelves({
   onOpenArtist,
   onOpenPlaylist,
   onFollowLink,
+  onOpenReleases,
   className,
 }: {
   shelves: readonly BrowseShelf[];
@@ -298,6 +344,7 @@ export function BrowseShelves({
   onOpenPlaylist: (playlist: Playlist) => void;
   /** Absent hides the chips: a surface with nowhere to drill into should not offer to. */
   onFollowLink?: (link: BrowseLink) => void;
+  onOpenReleases?: () => void;
   className?: string;
 }) {
   const { currentTrackId, isPlaying } = useNowPlaying();
@@ -315,6 +362,7 @@ export function BrowseShelves({
           onOpenArtist={onOpenArtist}
           onOpenPlaylist={onOpenPlaylist}
           onFollowLink={onFollowLink}
+          onOpenReleases={onOpenReleases}
         />
       ))}
     </div>

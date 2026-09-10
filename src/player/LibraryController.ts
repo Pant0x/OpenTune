@@ -648,6 +648,12 @@ export class LibraryController {
     return this.dataSource.getUnseenNotificationCount();
   }
 
+  async clearNotifications(): Promise<void> {
+    if (!this.dataSource.clearNotifications) return;
+    if (this.state.status === "signed-out") return;
+    return this.dataSource.clearNotifications();
+  }
+
   /** Discovery shelves for a track. Empty rather than throwing — this is never the main event. */
   async getRelated(track: Track): Promise<BrowseShelf[]> {
     if (!this.dataSource.getRelated) return [];

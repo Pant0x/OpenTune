@@ -52,10 +52,10 @@ export function HomeDestinations({
       badge: savedCount > 0 ? `${savedCount} saved` : undefined,
     },
     {
-      key: "browse",
-      label: "Browse",
-      hint: "Charts, moods, podcasts",
-      icon: RadioIcon,
+      key: "trending",
+      label: "Trending",
+      hint: "Top charts & viral hits",
+      icon: CompassIcon,
       onClick: onOpenBrowse,
     },
     {

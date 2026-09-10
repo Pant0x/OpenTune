@@ -15,14 +15,12 @@ import {
   useNativeWindowControls,
   useWindowsStyleWindowControls,
 } from "../settings/windowControls";
-import { Button } from "@/components/motion/button";
 import { libraryController, useLibraryState } from "../../player/playerStore";
 import { AccountAvatar, AccountSwitcher, GoogleAccountSwitcher } from "./AccountSwitcher";
 import { DownloadsPanel } from "./DownloadsPanel";
 import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
-import { motion } from "motion/react";
 import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
 import { SearchBar } from "./SearchBar";
@@ -51,7 +49,7 @@ const WINDOW_BUTTON_BASE =
   "flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function TitleBar({
-  sidebarWidth,
+  sidebarWidth: _sidebarWidth,
   isHomeActive,
   onNavigateHome,
   onOpenSettings,
@@ -102,7 +100,6 @@ export function TitleBar({
     startY: number;
   } | null>(null);
   const suppressHomeClickRef = useRef(false);
-  const hideHomeText = sidebarWidth <= 120;
 
   const handleAuthSuccess = () => {
     setIsAuthModalOpen(false);
@@ -153,11 +150,9 @@ export function TitleBar({
     <div className="relative z-30 flex h-[var(--titlebar-height)] shrink-0 items-stretch bg-background">
       <button
         type="button"
-        style={{ width: `${sidebarWidth}px` }}
         className={cn(
-          "flex shrink-0 items-center gap-1 px-4 text-sm font-bold  transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
-          isHomeActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
-          hideHomeText && "justify-center gap-0 px-0",
+          "flex shrink-0 items-center gap-2.5 px-4 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset group cursor-pointer",
+          isHomeActive ? "text-primary" : "text-foreground",
         )}
         onClick={() => {
           if (suppressHomeClickRef.current) {
@@ -198,26 +193,30 @@ export function TitleBar({
         onPointerCancel={() => {
           homePointerRef.current = null;
         }}
-        aria-label="Home"
+        aria-label="Amber Home"
         aria-current={isHomeActive ? "page" : undefined}
       >
-         <motion.img
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="size-6 "
-          src={appIcon}
-          alt=""
-        /> 
-        {!hideHomeText && <h3 >amber_</h3>}
+        <div className="relative flex size-7 shrink-0 items-center justify-center">
+          <img
+            className="size-7 object-contain"
+            src={appIcon}
+            alt="Amber"
+          />
+        </div>
+        <span className="font-kablammo text-lg font-normal tracking-wide text-foreground leading-none pt-0.5 select-none">
+          Amber
+        </span>
       </button>
 
       <div
         data-tauri-drag-region=""
-        className="flex min-w-0 flex-1 items-center justify-center px-2 sm:px-4 cursor-default select-none h-full"
+        className="flex min-w-0 flex-1 items-center justify-center cursor-default select-none h-full"
         aria-label="Drag window"
-      >
-        <div data-tauri-drag-region="none" className="w-full max-w-lg pointer-events-auto">
+      />
+
+      {/* Mathematically Centered Search Bar across entire window width */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-10">
+        <div data-tauri-drag-region="none" className="w-full max-w-lg pointer-events-auto px-4">
           <SearchBar
             onSearch={onSearch}
             onOpen={onOpenSearch}
@@ -249,18 +248,6 @@ export function TitleBar({
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
         )}
         {downloadsVisible && <DownloadsPanel onOpenDownloads={onOpenDownloads} />}
-
-
-        <Tooltip side="bottom" content="Settings">
-        <Button
-            variant='ghost'
-          size='icon'
-            onClick={onOpenSettings}
-            aria-label="Open settings"
-          >
-            <SettingsIcon size={17} aria-hidden="true" />
-          </Button>
-        </Tooltip>
 
         {/* Only once signed in: an avatar that opens nothing is worse than no avatar. The
             panel is portalled because the title bar clips its children. */}

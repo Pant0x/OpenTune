@@ -72,6 +72,7 @@ export interface Album {
   artists?: ArtistReference[];
   artworkUrl?: string;
   releaseType?: "album" | "single" | "ep";
+  releaseDate?: string;
   year?: string;
 }
 
@@ -79,6 +80,7 @@ export interface Playlist {
   id: string;
   title: string;
   owner: string;
+  authorId?: string;
   description?: string;
   artworkUrl?: string;
   kind?: "playlist" | "liked-songs" | "local";
@@ -112,6 +114,7 @@ export interface ArtistPage {
   playlists: Playlist[];
   appearsOn?: Album[];
   fansAlsoLike?: Artist[];
+  featuredOn?: Playlist[];
   discoveredOn?: Playlist[];
   isCreator?: boolean;
 }

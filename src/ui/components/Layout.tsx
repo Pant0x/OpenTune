@@ -15,6 +15,7 @@ interface LayoutProps {
   onNavigateArtist: (artist: Artist) => void;
   onNavigateHistory: () => void;
   onNavigateLibrary: () => void;
+  onNavigateSettings?: () => void;
   onNavigateBrowse: (tab?: string) => void;
   onNavigateDownloads: () => void;
   onNavigateReleases: () => void;
@@ -55,6 +56,7 @@ export function Layout({
   onNavigateArtist,
   onNavigateHistory,
   onNavigateLibrary,
+  onNavigateSettings,
   onNavigateBrowse,
   onNavigateDownloads,
   onNavigateReleases,
@@ -256,6 +258,7 @@ export function Layout({
             onNavigateArtist={onNavigateArtist}
             onNavigateHistory={onNavigateHistory}
             onNavigateLibrary={onNavigateLibrary}
+            onNavigateSettings={onNavigateSettings}
             onNavigateBrowse={onNavigateBrowse}
             onNavigateDownloads={onNavigateDownloads}
             onNavigateReleases={onNavigateReleases}
@@ -264,7 +267,7 @@ export function Layout({
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
             composited layer and a blur pass to render something nothing can see through. */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3 bg-background rounded-tl-lg">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-2 bg-background border-l border-border/20">
           {/*
             Ambient wash for the page beneath. Rendered here rather than inside the page so
             it can start at the very top of the column — behind the search bar — instead of
@@ -276,7 +279,7 @@ export function Layout({
           {ambientArtwork ? (
             <span
               key={ambientArtwork}
-              className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,background_25%,transparent)] rounded-tl-lg"
+              className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,background_25%,transparent)]"
               aria-hidden="true"
               data-fx="ambient"
             >
@@ -310,8 +313,8 @@ export function Layout({
               <div
                 ref={pageContentRef}
                 className={cn(
-                  "h-full overflow-y-auto overscroll-contain rounded-xl ",
-                  fullBleedContent ? "p-0" : "p-4",
+                  "h-full overflow-y-auto overscroll-contain rounded-xl pb-28 scroll-pb-28",
+                  fullBleedContent ? "p-0" : "px-4 pt-1",
                 )}
                 data-page-scroll-root
               >

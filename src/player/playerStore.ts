@@ -3,7 +3,9 @@ import { YouTubeMusicDataSource } from "../datasource/youtube/YouTubeMusicDataSo
 import { LibraryController } from "./LibraryController";
 import { PlayerController, type PlayerSession, type PlayerState } from "./PlayerController";
 import { SearchController } from "./SearchController";
-import { loadAppSession } from "./appSession";
+import { loadAppSession, loadLastPlayedTrack } from "./appSession";
+import type { Track } from "../datasource/types";
+import type { AudioQuality } from "../internal/audioQuality";
 import { readSessionRestoreEnabled } from "../ui/settings/sessionRestore";
 import {
   hydrateOfflineStore,
@@ -19,13 +21,8 @@ export const searchController = new SearchController(dataSource);
  * The offline queue needs a stream URL but must not depend on any particular data source, so
  * the source is injected here where both are already in scope.
  */
-setOfflineStreamResolver((track, quality) => {
-  /*
-   * `resolveDownloadUrl`, never `resolveStreamUrl`. The two differ only in client order, but
-   * the download one never reads the authenticated-streaming preference — binding it here is
-   * what keeps that guarantee at the wiring site rather than inside a shared function.
-   */
-  const resolver = (dataSource as {
+const offlineResolver = async (track: Track, quality: AudioQuality) => {
+  const resolver = (dataSource as unknown as {
     resolveDownloadUrl?: (
       t: typeof track,
       q: typeof quality,
@@ -33,7 +30,8 @@ setOfflineStreamResolver((track, quality) => {
   }).resolveDownloadUrl;
   if (!resolver) throw new Error("Downloads are unavailable for this source.");
   return resolver.call(dataSource, track, quality);
-});
+};
+setOfflineStreamResolver(offlineResolver);
 void hydrateOfflineStore();
 startOfflineProgressFeed();
 
@@ -42,6 +40,24 @@ export const playerController = new PlayerController(dataSource);
 export const restoredSession = readSessionRestoreEnabled() ? loadAppSession() : null;
 if (restoredSession) {
   playerController.restoreSession(restoredSession.player);
+} else if (readSessionRestoreEnabled()) {
+  const lastTrack = loadLastPlayedTrack();
+  if (lastTrack) {
+    playerController.restoreSession({
+      currentTrack: lastTrack,
+      history: [],
+      queue: [lastTrack],
+      queueIndex: 0,
+      status: "paused",
+      positionSec: 0,
+      volume: 1,
+      muted: false,
+      autoplayEnabled: true,
+      playbackOrderMode: "in-order",
+      shuffleEnabled: false,
+      isPlaylistMode: false,
+    });
+  }
 }
 
 export type PlayerControllerActions = PlayerController;

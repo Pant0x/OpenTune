@@ -7,16 +7,16 @@ import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { TrackArtwork } from "../TrackArtwork";
-import { ArtistLinks, useAlbumNavigation, useSongNavigation } from "../ArtistLinks";
+import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
+import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 
 export function TrackInfo() {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
   const navigateAlbum = useAlbumNavigation();
-  const navigateSong = useSongNavigation();
-  const { openTrackMenu, toggleTrackLike } = useTrackContextMenu();
+  const { openTrackMenu, toggleTrackLike, openAlbumForTrack } = useTrackContextMenu();
   const currentTrack = state.currentTrack;
   const titleViewportRef = useRef<HTMLDivElement>(null);
   const titleTextRef = useRef<HTMLSpanElement>(null);
@@ -54,14 +54,10 @@ export function TrackInfo() {
   ) ?? false);
 
   const handleTitleClick = () => {
-    // If it's a single or has no album, navigate to Song / Single page
-    if (currentTrack.releaseType === "single" || (!currentTrack.albumId && !currentTrack.album)) {
-      if (navigateSong) {
-        navigateSong(currentTrack);
-        return;
-      }
+    if (openAlbumForTrack) {
+      openAlbumForTrack(currentTrack);
+      return;
     }
-    // If it's an EP or Album track, navigate to EP/Album page
     if (navigateAlbum && (currentTrack.albumId || currentTrack.album)) {
       navigateAlbum({
         id: currentTrack.albumId || currentTrack.album!,
@@ -70,8 +66,6 @@ export function TrackInfo() {
         artworkUrl: currentTrack.artworkUrl,
         releaseType: currentTrack.releaseType || "album",
       });
-    } else if (navigateSong) {
-      navigateSong(currentTrack);
     } else if (navigateAlbum) {
       navigateAlbum({
         id: currentTrack.id,
@@ -101,7 +95,9 @@ export function TrackInfo() {
           <TrackArtwork
             className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105"
             size={48}
-            artworkUrl={currentTrack.artworkUrl}
+            loading="eager"
+            preferProxy
+            artworkUrl={currentTrack.artworkUrl || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined)}
             iconSize={22}
           />
         </button>
@@ -111,7 +107,7 @@ export function TrackInfo() {
           ref={titleViewportRef}
           className="relative min-w-0 overflow-hidden cursor-pointer"
           onClick={handleTitleClick}
-          title={currentTrack.album ? `Go to ${currentTrack.album}` : `Go to ${currentTrack.title}`}
+          title={currentTrack.album ? `Go to album: ${currentTrack.album}` : `Go to album`}
         >
           {/* Hidden measuring copy — Marquee duplicates its children, so width
               must be read from a single stable node. */}
@@ -133,7 +129,7 @@ export function TrackInfo() {
             </Marquee>
           )}
         </div>
-        <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center text-xs text-muted-foreground">
           <span className="truncate">
             <ArtistLinks
               artists={currentTrack.artists}
@@ -141,28 +137,6 @@ export function TrackInfo() {
               trackTitle={currentTrack.title}
             />
           </span>
-          {currentTrack.album && (
-            <>
-              <span className="shrink-0 opacity-40">•</span>
-              <button
-                type="button"
-                className="hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all truncate focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-left"
-                onClick={() => {
-                  if (navigateAlbum) {
-                    navigateAlbum({
-                      id: currentTrack.albumId || currentTrack.album!,
-                      title: currentTrack.album!,
-                      artist: currentTrack.artist,
-                      artworkUrl: currentTrack.artworkUrl,
-                    });
-                  }
-                }}
-                title={currentTrack.album}
-              >
-                {currentTrack.album}
-              </button>
-            </>
-          )}
         </div>
       </div>
 
