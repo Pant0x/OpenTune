@@ -146,6 +146,8 @@ export function AlbumView({
 
   const artistProfileAvatar = useSpotifyArtistAvatar(displayArtistName, artistDetails?.artworkUrl);
 
+  const enrichedAlbumIdRef = useRef<string | null>(null);
+
   // Reset album state when navigating between albums
   useEffect(() => {
     setArtistDetails(null);
@@ -155,6 +157,7 @@ export function AlbumView({
     setIsLoading(true);
     setError(null);
     setAlbumSearchQuery("");
+    enrichedAlbumIdRef.current = null;
   }, [album?.id]);
 
   useEffect(() => {
@@ -312,30 +315,47 @@ export function AlbumView({
   }, [albumSearchQuery, tracks]);
 
   useEffect(() => {
-    if (tracks.length === 0) return;
+    if (!album?.id || tracks.length === 0) return;
+    if (enrichedAlbumIdRef.current === album.id) return;
+    const targets = tracks.filter((t) => !t.viewCount && !t.viewCountText);
+    if (targets.length === 0) {
+      enrichedAlbumIdRef.current = album.id;
+      return;
+    }
+    enrichedAlbumIdRef.current = album.id;
     let active = true;
+
     const enrichPlayCounts = async () => {
-      const targets = tracks.filter((t) => !t.viewCount && !t.viewCountText);
-      if (targets.length === 0) return;
       try {
-        const updated = await Promise.all(
-          targets.map(async (track) => {
-            try {
-              const res = await searchController.search(`${track.title} ${track.artist || ""}`);
-              const match = res.tracks?.find(
-                (t) => t.id === track.id || t.title.toLowerCase() === track.title.toLowerCase(),
-              );
-              if (match?.viewCount || match?.viewCountText) {
-                return {
-                  ...track,
-                  viewCount: match.viewCount ?? track.viewCount,
-                  viewCountText: match.viewCountText ?? track.viewCountText,
-                };
-              }
-            } catch {}
-            return track;
-          }),
-        );
+        const updated: Track[] = [];
+        const chunkSize = 3;
+        for (let i = 0; i < targets.length; i += chunkSize) {
+          if (!active) return;
+          const chunk = targets.slice(i, i + chunkSize);
+          const chunkResults = await Promise.all(
+            chunk.map(async (track) => {
+              try {
+                const res = await searchController.search(`${track.title} ${track.artist || ""}`);
+                const cleanTrack = track.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+                const match = res.tracks?.find((t) => {
+                  if (t.id === track.id) return true;
+                  const candClean = t.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+                  return candClean === cleanTrack || candClean.includes(cleanTrack) || cleanTrack.includes(candClean);
+                });
+                if (match?.viewCount || match?.viewCountText) {
+                  return {
+                    ...track,
+                    viewCount: match.viewCount ?? track.viewCount,
+                    viewCountText: match.viewCountText ?? track.viewCountText,
+                  };
+                }
+              } catch {}
+              return track;
+            }),
+          );
+          updated.push(...chunkResults);
+        }
+
         if (active && updated.some((t) => t.viewCount || t.viewCountText)) {
           setTracks((prev) =>
             prev.map((t) => {
@@ -348,14 +368,14 @@ export function AlbumView({
         }
       } catch {}
     };
+
     void enrichPlayCounts();
     return () => {
       active = false;
     };
-  }, [tracks]);
+  }, [album?.id, tracks.length > 0]);
 
-  const formattedReleaseDate = useMemo(() => {
-    if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
+  const formattedMonthYear = useMemo(() => {
     const rawDate = album?.releaseDate || spotifyAlbumMeta?.releaseDate;
     if (rawDate) {
       try {
@@ -364,14 +384,39 @@ export function AlbumView({
           const y = parseInt(parts[0], 10);
           const m = parseInt(parts[1], 10) - 1;
           const d = new Date(Date.UTC(y, m, 1));
-          return d.toLocaleDateString("en-US", { year: "numeric", month: "long", timeZone: "UTC" });
+          return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+        }
+      } catch {}
+    }
+    const spYear = spotifyAlbumMeta?.releaseDate?.match(/^\d{4}/)?.[0];
+    const y = album?.year || spYear;
+    return y ? String(y) : null;
+  }, [album?.releaseDate, spotifyAlbumMeta?.releaseDate, album?.year]);
+
+  const formattedReleaseDate = useMemo(() => {
+    if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
+    const rawDate = album?.releaseDate || spotifyAlbumMeta?.releaseDate;
+    if (rawDate) {
+      try {
+        const parts = rawDate.split("T")[0].split("-");
+        if (parts.length >= 3) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const d = parseInt(parts[2], 10);
+          const dateObj = new Date(Date.UTC(y, m, d));
+          return dateObj.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
+        } else if (parts.length === 2) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10) - 1;
+          const dateObj = new Date(Date.UTC(y, m, 1));
+          return dateObj.toLocaleDateString("en-US", { year: "numeric", month: "long", timeZone: "UTC" });
         } else if (parts.length === 1 && /^\d{4}$/.test(parts[0])) {
           return parts[0];
         }
       } catch {}
     }
-    return album?.year || null;
-  }, [spotifyAlbumMeta?.formattedReleaseDate, spotifyAlbumMeta?.releaseDate, album?.releaseDate, album?.year]);
+    return formattedMonthYear || album?.year || null;
+  }, [spotifyAlbumMeta?.formattedReleaseDate, spotifyAlbumMeta?.releaseDate, album?.releaseDate, album?.year, formattedMonthYear]);
 
   const cleanedCopyrights = useMemo(() => {
     return (spotifyAlbumMeta?.copyrights ?? []).filter((c) => {
@@ -528,7 +573,13 @@ export function AlbumView({
   return (
     <div className="flex flex-col gap-8 pb-16">
       <MediaHeader
-        eyebrow={album.year ? `${releaseTypeLabel} • ${album.year}` : releaseTypeLabel}
+        eyebrow={
+          formattedMonthYear
+            ? `${releaseTypeLabel} • ${formattedMonthYear}`
+            : album.year
+              ? `${releaseTypeLabel} • ${album.year}`
+              : releaseTypeLabel
+        }
         title={album.title}
         subtitle={
           <ArtistLinks
@@ -542,7 +593,11 @@ export function AlbumView({
             fallback={displayArtistName || (!isInvalidArtist(album.artist) ? album.artist : undefined)}
           />
         }
-        meta={formatCollectionMeta(tracks)}
+        meta={
+          formattedMonthYear
+            ? `${formattedMonthYear} • ${formatCollectionMeta(tracks)}`
+            : formatCollectionMeta(tracks)
+        }
         artworkUrl={album.artworkUrl || tracks[0]?.artworkUrl}
         artworkVariant="album"
         actionsDisabled={tracks.length === 0}

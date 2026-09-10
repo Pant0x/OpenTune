@@ -540,46 +540,59 @@ function findBestTrackMatch(
   return scored[0]?.track ?? results[0];
 }
 
+const spotifyToYoutubeTrackCache = new Map<string, Track>();
+
       let track: Track;
       if (videoId.startsWith("spotify:") && knownTrack) {
-        try {
-          const primaryQuery = `${knownTrack.artist} ${knownTrack.title}`.trim();
-          let results = await this.dataSource.searchTracks?.(primaryQuery) ?? [];
-          if (results.length === 0) {
-            // Fallback: search title only or stripped title
-            const cleanTitle = knownTrack.title.replace(/\s*\([^)]*\)|\s*\[[^\]]*\]/g, "").trim();
-            const fallbackQuery = `${knownTrack.artist.split(",")[0].trim()} ${cleanTitle}`.trim();
-            results = await this.dataSource.searchTracks?.(fallbackQuery) ?? [];
+        const cached = spotifyToYoutubeTrackCache.get(videoId);
+        if (cached) {
+          track = cached;
+          const qItem = this.queue.all.find((item) => item.id === videoId);
+          if (qItem) {
+            qItem.id = cached.id;
+            qItem.source = cached.source || "youtube";
           }
-          if (results.length === 0) {
-            results = await this.dataSource.searchTracks?.(knownTrack.title.trim()) ?? [];
-          }
-
-          const bestMatch = findBestTrackMatch(
-            results,
-            knownTrack.title,
-            knownTrack.artist,
-            knownTrack.durationSec,
-          );
-          if (bestMatch) {
-            track = {
-              ...bestMatch,
-              title: knownTrack.title || bestMatch.title,
-              artist: knownTrack.artist || bestMatch.artist,
-              artworkUrl: knownTrack.artworkUrl || bestMatch.artworkUrl,
-              durationSec: knownTrack.durationSec || bestMatch.durationSec,
-            };
-            // Update queue so subsequent checks or replays use the resolved video ID
-            const qItem = this.queue.all.find((item) => item.id === videoId);
-            if (qItem) {
-              qItem.id = bestMatch.id;
-              qItem.source = bestMatch.source || "youtube";
+        } else {
+          try {
+            const primaryQuery = `${knownTrack.artist} ${knownTrack.title}`.trim();
+            let results = await this.dataSource.searchTracks?.(primaryQuery) ?? [];
+            if (results.length === 0) {
+              // Fallback: search title only or stripped title
+              const cleanTitle = knownTrack.title.replace(/\s*\([^)]*\)|\s*\[[^\]]*\]/g, "").trim();
+              const fallbackQuery = `${knownTrack.artist.split(",")[0].trim()} ${cleanTitle}`.trim();
+              results = await this.dataSource.searchTracks?.(fallbackQuery) ?? [];
             }
-          } else {
+            if (results.length === 0) {
+              results = await this.dataSource.searchTracks?.(knownTrack.title.trim()) ?? [];
+            }
+
+            const bestMatch = findBestTrackMatch(
+              results,
+              knownTrack.title,
+              knownTrack.artist,
+              knownTrack.durationSec,
+            );
+            if (bestMatch) {
+              track = {
+                ...bestMatch,
+                title: knownTrack.title || bestMatch.title,
+                artist: knownTrack.artist || bestMatch.artist,
+                artworkUrl: knownTrack.artworkUrl || bestMatch.artworkUrl,
+                durationSec: knownTrack.durationSec || bestMatch.durationSec,
+              };
+              spotifyToYoutubeTrackCache.set(videoId, track);
+              // Update queue so subsequent checks or replays use the resolved video ID
+              const qItem = this.queue.all.find((item) => item.id === videoId);
+              if (qItem) {
+                qItem.id = bestMatch.id;
+                qItem.source = bestMatch.source || "youtube";
+              }
+            } else {
+              track = knownTrack;
+            }
+          } catch {
             track = knownTrack;
           }
-        } catch {
-          track = knownTrack;
         }
       } else if (queuedTrack?.source === "local") {
         track = queuedTrack;

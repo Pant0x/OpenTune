@@ -802,7 +802,7 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private getArtistName(item: MusicItem): string {
-    const raw = item.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
+    let raw = item.artists?.map((artist) => artist.name).filter(Boolean).join(", ")
       || item.authors?.map((author) => author.name).filter(Boolean).join(", ")
       || item.author?.name
       || item.subtitle?.runs
@@ -811,6 +811,22 @@ export class YouTubeMusicDataSource extends DataSource {
         .filter(Boolean)
         .join(", ")
       || item.subtitle?.toString();
+
+    if (!raw && item.flex_columns && item.flex_columns.length > 1) {
+      for (let c = 1; c < item.flex_columns.length; c++) {
+        const col = item.flex_columns[c];
+        const runs = col?.title?.runs || [];
+        const artistRuns = runs.filter((r) => {
+          const bId = this.findBrowseId(r.endpoint) ?? this.findBrowseId(r.navigationEndpoint);
+          return (typeof bId === "string" && bId.startsWith("UC"))
+            || (r.endpoint as any)?.payload?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType === "MUSIC_PAGE_TYPE_ARTIST";
+        });
+        if (artistRuns.length > 0) {
+          raw = artistRuns.map((r) => r.text).filter(Boolean).join(", ");
+          break;
+        }
+      }
+    }
 
     const cleaned = this.cleanArtistNameCandidate(raw);
     const validParts = cleaned
@@ -840,13 +856,13 @@ export class YouTubeMusicDataSource extends DataSource {
         name: this.cleanArtistNameCandidate(candidate.name ?? candidate.text ?? ""),
       };
     };
-    const candidates = item.artists?.length
-      ? item.artists
-      : item.authors?.length
-        ? item.authors
-        : item.author
-          ? [item.author]
-          : [];
+    const flexRuns = (item.flex_columns ?? []).slice(1).flatMap((c) => c.title?.runs ?? []);
+    const candidates = [
+      ...(item.artists?.length ? item.artists : []),
+      ...(item.authors?.length ? item.authors : []),
+      ...(item.author ? [item.author] : []),
+      ...flexRuns,
+    ];
     const artists = candidates
       .map(toArtistReference)
       .filter((artist) => artist.id.startsWith("UC") && this.isValidArtistString(artist.name));
@@ -1129,7 +1145,17 @@ export class YouTubeMusicDataSource extends DataSource {
     const title = this.getTitle(item);
     if (!id || !title) return null;
 
-    const yearMatch = this.findStringByKey(item, new Set(["year", "subtitle", "byline"]))?.match(/\b(19\d\d|20\d\d)\b/);
+    let yearMatch = this.findStringByKey(item, new Set(["year", "subtitle", "byline"]))?.match(/\b(19\d\d|20\d\d)\b/);
+    if (!yearMatch && item.flex_columns?.length) {
+      for (let c = 1; c < item.flex_columns.length; c++) {
+        const text = item.flex_columns[c]?.title?.toString() || "";
+        const m = text.match(/\b(19\d\d|20\d\d)\b/);
+        if (m) {
+          yearMatch = m;
+          break;
+        }
+      }
+    }
 
     const rawArtist = this.getArtistName(item);
     const artist = this.isValidArtistString(rawArtist) ? rawArtist : "Unknown artist";
@@ -1342,6 +1368,8 @@ export class YouTubeMusicDataSource extends DataSource {
           : undefined,
       duration: track.duration,
       durationSec: track.durationSec,
+      year: album.year || track.year,
+      releaseDate: album.releaseDate || track.releaseDate,
     };
   }
 
@@ -3716,8 +3744,31 @@ export class YouTubeMusicDataSource extends DataSource {
 
     if (album.id.startsWith("spotify:")) {
       try {
+        const query = album.artist && this.isValidArtistString(album.artist) && album.artist !== "Unknown artist"
+          ? `${album.title} ${album.artist}`
+          : album.title;
+        const searchRes = await client.music.search(query, { type: "album" });
+        const candidate = (searchRes?.albums?.contents as any[])?.[0];
+        if (candidate?.id) {
+          const candTitle = (candidate.title?.toString() || "").toLowerCase().trim();
+          const origTitle = album.title.toLowerCase().trim();
+          if (candTitle === origTitle || candTitle.includes(origTitle) || origTitle.includes(candTitle)) {
+            const ytTracks = await this.fetchAlbumTracksFresh({
+              ...album,
+              id: candidate.id,
+              artworkUrl: album.artworkUrl || this.getArtwork(candidate),
+            });
+            if (ytTracks.length > 0) {
+              return ytTracks;
+            }
+          }
+        }
+      } catch {}
+
+      try {
         const spMeta = await SpotifyService.getAlbumMetadata(album.id);
         if (spMeta && spMeta.tracks.length > 0) {
+          const spYear = spMeta.releaseDate?.match(/^\d{4}/)?.[0];
           return spMeta.tracks.map((st, idx) => ({
             id: `spotify:${st.id}`,
             title: st.title,
@@ -3728,6 +3779,8 @@ export class YouTubeMusicDataSource extends DataSource {
             artworkUrl: album.artworkUrl,
             isExplicit: st.isExplicit,
             trackNumber: idx + 1,
+            year: album.year || spYear,
+            releaseDate: album.releaseDate || spMeta.releaseDate,
             source: "youtube" as const,
           }));
         }
@@ -3776,10 +3829,16 @@ export class YouTubeMusicDataSource extends DataSource {
           ? headerArtists
           : (resolvedAlbumArtist ? [{ id: headerAuthorId || "", name: resolvedAlbumArtist }] : undefined);
 
+      const headerSubtitleText = header?.subtitle?.toString() || header?.subtitle?.text || "";
+      const headerYearMatch = headerSubtitleText.match(/\b(19\d\d|20\d\d)\b/)
+        || (header?.year ? String(header.year).match(/\b(19\d\d|20\d\d)\b/) : null);
+      const headerYear = headerYearMatch ? headerYearMatch[1] : undefined;
+
       const enrichedAlbum: Album = {
         ...album,
         artist: resolvedAlbumArtist || album.artist,
         artists: resolvedAlbumArtists,
+        year: album.year || headerYear,
       };
 
       const initialItems = (albumPage.contents as unknown as MusicItem[]) ?? [];

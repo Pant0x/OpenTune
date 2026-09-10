@@ -433,6 +433,7 @@ export function ArtistView({
           artist: displayedArtist?.name || "",
           artworkUrl: sr.coverUrl,
           year: sr.year ? String(sr.year) : undefined,
+          releaseDate: sr.date,
           releaseType: sr.type,
         });
       }
@@ -1312,7 +1313,14 @@ export function ArtistView({
                                   type="button"
                                   onClick={() => {
                                     setActiveSongMenuId(null);
-                                    onOpenAlbum({ id: item.albumId!, title: item.albumName || "Album", artist: item.artist });
+                                    const raw = page?.popularSongs?.find((s) => s.id === item.id) || page?.allSongs?.find((s) => s.id === item.id);
+                                    onOpenAlbum({
+                                      id: item.albumId!,
+                                      title: item.albumName || "Album",
+                                      artist: item.artist,
+                                      year: raw?.year,
+                                      releaseDate: raw?.releaseDate,
+                                    });
                                   }}
                                   className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
                                 >
@@ -1674,7 +1682,13 @@ export function ArtistView({
                     key={album.id}
                     artworkUrl={album.artworkUrl}
                     title={album.title}
-                    subtitle={album.artist || "Featured release"}
+                    subtitle={
+                      album.artist && album.artist !== "Unknown artist"
+                        ? album.artist
+                        : album.artists?.[0]?.name && album.artists[0].name !== "Unknown artist"
+                          ? album.artists[0].name
+                          : (displayedArtist?.name || "Featured release")
+                    }
                     onClick={() => onOpenAlbum(album)}
                     onContextMenu={(event) => openAlbumMenu(event, album)}
                   />
