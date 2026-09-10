@@ -179,9 +179,9 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
         className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px]"
         onClick={handlePlayerBarClick}
       >
-        <div className="grid w-full grid-cols-[minmax(180px,1fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
+        <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}
-          <div className="min-w-0 flex items-center justify-start">
+          <div className="min-w-0 max-w-full flex items-center justify-start flex-1">
             <TrackInfo />
           </div>
 

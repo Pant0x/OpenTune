@@ -880,6 +880,33 @@ export class LibraryController {
     return this.dataSource.removeTrackFromPlaylist(track, playlist);
   }
 
+  async removeTracksFromPlaylist(tracks: Track[], playlist: Playlist): Promise<void> {
+    for (const track of tracks) {
+      forgetTrackInPlaylist(track, playlist);
+    }
+    const localTracks = tracks.filter((t) => t.source === "local");
+    const remoteTracks = tracks.filter((t) => t.source !== "local");
+
+    for (const track of localTracks) {
+      if (isLocalPlaylist(playlist)) {
+        if (track.localPath) removeLocalPlaylistTrack(playlist.id, track.localPath);
+      } else {
+        removeLocalTrackFromPlaylist(track, playlist);
+      }
+    }
+
+    if (remoteTracks.length === 0) return;
+
+    if (this.dataSource.removeTracksFromPlaylist) {
+      return this.dataSource.removeTracksFromPlaylist(remoteTracks, playlist);
+    }
+    if (this.dataSource.removeTrackFromPlaylist) {
+      for (const track of remoteTracks) {
+        await this.dataSource.removeTrackFromPlaylist(track, playlist);
+      }
+    }
+  }
+
   isPlaylistSaved(playlistId: string): boolean {
     const normalizedId = playlistId.replace(/^VL/, "");
     return this.state.library?.playlists.some(

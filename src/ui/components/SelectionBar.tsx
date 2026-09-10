@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { Loader } from "@/components/motion/loader";
@@ -46,7 +47,7 @@ export function SelectionBar({
     }
   };
 
-  return (
+  const content = (
     <AnimatePresence>
       {selection.isActive && (
         <motion.div
@@ -128,4 +129,7 @@ export function SelectionBar({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === "undefined") return content;
+  return createPortal(content, document.body);
 }

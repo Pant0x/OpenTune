@@ -439,7 +439,41 @@ export class PlayerController {
     try {
       if (playbackQueue?.length) {
         const startIndex = playbackQueue.findIndex((track) => track.id === videoId);
-        this.queue.set([...playbackQueue], startIndex >= 0 ? startIndex : 0);
+        const resolvedStartIndex = startIndex >= 0 ? startIndex : 0;
+        const currentSelectedTrack = playbackQueue[resolvedStartIndex];
+
+        // Capture existing upcoming tracks and manual queue to preserve them
+        const existingCurrentIndex = this.queue.currentIndex;
+        const existingUpcoming = existingCurrentIndex >= 0 && existingCurrentIndex < this.queue.all.length
+          ? this.queue.all.slice(existingCurrentIndex + 1)
+          : [];
+        const existingManualCount = this.queue.queuedManually;
+
+        // Separate existing upcoming into manual and automatic
+        const existingManual = existingUpcoming.slice(0, existingManualCount);
+        const remainingAlbumTracks = playbackQueue.filter((_, idx) => idx !== resolvedStartIndex && _.id !== videoId);
+
+        if (existingManual.length > 0) {
+          // If the user had manually queued tracks, keep them right after the new track, followed by the rest of the album
+          const combinedQueue = [
+            currentSelectedTrack,
+            ...existingManual,
+            ...remainingAlbumTracks,
+          ];
+          this.queue.set(combinedQueue, 0, existingManual.length);
+        } else if (existingUpcoming.length > 0 && !this.isPlaylistMode) {
+          // If the user had an active custom queue, preserve it after the current track
+          const filteredExisting = existingUpcoming.filter((t) => t.id !== videoId);
+          const combinedQueue = [
+            currentSelectedTrack,
+            ...filteredExisting,
+            ...remainingAlbumTracks,
+          ];
+          this.queue.set(combinedQueue, 0, filteredExisting.length);
+        } else {
+          this.queue.set([...playbackQueue], resolvedStartIndex, 0);
+        }
+
         this.autoplayEnabled = autoplayWhenQueueEnds;
         this.isPlaylistMode = playbackQueue.length > 1;
         if (shufflePlaylist && this.isPlaylistMode) {

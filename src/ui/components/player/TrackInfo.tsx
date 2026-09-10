@@ -22,6 +22,10 @@ export function TrackInfo() {
   const titleTextRef = useRef<HTMLSpanElement>(null);
   const [isTitleOverflowing, setIsTitleOverflowing] = useState(false);
 
+  const artistViewportRef = useRef<HTMLDivElement>(null);
+  const artistTextRef = useRef<HTMLSpanElement>(null);
+  const [isArtistOverflowing, setIsArtistOverflowing] = useState(false);
+
   // Only scroll a title that actually overflows — a permanent marquee on short
   // titles is noise. Measured rather than guessed from character count.
   useLayoutEffect(() => {
@@ -39,6 +43,22 @@ export function TrackInfo() {
     observer.observe(text);
     return () => observer.disconnect();
   }, [currentTrack?.title]);
+
+  useLayoutEffect(() => {
+    const viewport = artistViewportRef.current;
+    const text = artistTextRef.current;
+    if (!viewport || !text) return;
+
+    const updateOverflow = () => {
+      setIsArtistOverflowing(text.scrollWidth - viewport.clientWidth > 1);
+    };
+    updateOverflow();
+
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(viewport);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, [currentTrack?.artist, currentTrack?.artists, currentTrack?.album]);
 
   if (!currentTrack) {
     return null;
@@ -79,10 +99,23 @@ export function TrackInfo() {
     }
   };
 
+  const handleAlbumClick = () => {
+    if (currentTrack.albumId || currentTrack.album) {
+      if (navigateAlbum) {
+        navigateAlbum({
+          id: currentTrack.albumId || currentTrack.album!,
+          title: currentTrack.album || currentTrack.title,
+          artist: currentTrack.artist,
+          artworkUrl: currentTrack.artworkUrl,
+          releaseType: currentTrack.releaseType || "album",
+        });
+      }
+    }
+  };
 
   return (
     <div
-      className="flex min-w-0 items-center gap-3"
+      className="flex min-w-0 max-w-full flex-1 items-center gap-3"
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
       {uiState.showAlbumArt && (
@@ -102,7 +135,7 @@ export function TrackInfo() {
           />
         </button>
       )}
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div
           ref={titleViewportRef}
           className="relative min-w-0 overflow-hidden cursor-pointer"
@@ -129,14 +162,90 @@ export function TrackInfo() {
             </Marquee>
           )}
         </div>
-        <div className="flex min-w-0 items-center text-xs text-muted-foreground">
-          <span className="truncate">
+        <div
+          ref={artistViewportRef}
+          className="relative min-w-0 overflow-hidden text-xs text-muted-foreground"
+        >
+          {/* Hidden measuring copy */}
+          <span
+            ref={artistTextRef}
+            aria-hidden={isArtistOverflowing}
+            className={cn(
+              "inline-flex items-center gap-1.5 whitespace-nowrap",
+              isArtistOverflowing && "invisible absolute",
+            )}
+          >
             <ArtistLinks
               artists={currentTrack.artists}
               fallback={currentTrack.artist}
               trackTitle={currentTrack.title}
             />
+            {currentTrack.album && (
+              <>
+                <span className="opacity-40 select-none">•</span>
+                <span
+                  className="hover:text-foreground cursor-pointer transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAlbumClick();
+                  }}
+                  title={`Album: ${currentTrack.album}`}
+                >
+                  {currentTrack.album}
+                </span>
+              </>
+            )}
           </span>
+
+          {isArtistOverflowing ? (
+            <Marquee speed={20} gap="2rem" className="text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <ArtistLinks
+                  artists={currentTrack.artists}
+                  fallback={currentTrack.artist}
+                  trackTitle={currentTrack.title}
+                />
+                {currentTrack.album && (
+                  <>
+                    <span className="opacity-40 select-none">•</span>
+                    <span
+                      className="hover:text-foreground cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAlbumClick();
+                      }}
+                      title={`Album: ${currentTrack.album}`}
+                    >
+                      {currentTrack.album}
+                    </span>
+                  </>
+                )}
+              </span>
+            </Marquee>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap truncate max-w-full">
+              <ArtistLinks
+                artists={currentTrack.artists}
+                fallback={currentTrack.artist}
+                trackTitle={currentTrack.title}
+              />
+              {currentTrack.album && (
+                <>
+                  <span className="opacity-40 select-none">•</span>
+                  <span
+                    className="hover:text-foreground cursor-pointer transition-colors truncate"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAlbumClick();
+                    }}
+                    title={`Album: ${currentTrack.album}`}
+                  >
+                    {currentTrack.album}
+                  </span>
+                </>
+              )}
+            </span>
+          )}
         </div>
       </div>
 

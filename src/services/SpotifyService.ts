@@ -314,23 +314,63 @@ class SpotifyServiceManager {
   }
 
   /**
-   * Search for an album by title and artist, returns open.spotify.com album URL if matched.
+   * Search for an album by title and artist (with optional sample track fallback),
+   * returns open.spotify.com album URL if matched.
    */
-  async searchAlbumUrl(title: string, artist: string): Promise<string | null> {
+  async searchAlbumUrl(title: string, artist: string, sampleTrackTitle?: string): Promise<string | null> {
     try {
+      const cleanTitle = title.replace(/\s*\(?(?:album|ep|single|deluxe|version)\)?/gi, "").trim();
       const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
-        searchTerm: `${title} ${artist}`,
+        searchTerm: `${cleanTitle || title} ${artist}`.trim(),
         offset: 0,
-        limit: 5,
+        limit: 10,
         numberOfTopResults: 5,
         includeAudiobooks: false,
       });
       const albums = result?.data?.searchV2?.albumsV2?.items ?? result?.data?.searchV2?.albums?.items;
       if (Array.isArray(albums) && albums.length > 0) {
-        const match = albums[0];
-        const uri = match?.data?.uri || match?.uri;
+        const lowerTitle = cleanTitle.toLowerCase();
+        const best = albums.find((a: any) => {
+          const name = (a?.data?.name || a?.name || "").toLowerCase();
+          return name === lowerTitle || name.includes(lowerTitle) || lowerTitle.includes(name);
+        }) || albums[0];
+
+        const uri = best?.data?.uri || best?.uri;
         if (uri && uri.startsWith("spotify:album:")) {
           return `https://open.spotify.com/album/${uri.replace("spotify:album:", "")}`;
+        }
+      }
+
+      // If sampleTrackTitle is provided, search track to find its album
+      if (sampleTrackTitle) {
+        const trackAlbumUrl = await this.searchTrackAlbumUrl(sampleTrackTitle, artist);
+        if (trackAlbumUrl) return trackAlbumUrl;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
+   * Searches for a track and returns its parent album's open.spotify.com URL.
+   */
+  async searchTrackAlbumUrl(trackTitle: string, artist: string): Promise<string | null> {
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `${trackTitle} ${artist}`.trim(),
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+      const tracks = result?.data?.searchV2?.tracksV2?.items ?? result?.data?.searchV2?.tracks?.items;
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        for (const item of tracks) {
+          const albumUri = item?.item?.data?.albumOfTrack?.uri || item?.data?.albumOfTrack?.uri;
+          if (albumUri && typeof albumUri === "string" && albumUri.startsWith("spotify:album:")) {
+            return `https://open.spotify.com/album/${albumUri.replace("spotify:album:", "")}`;
+          }
         }
       }
     } catch {
@@ -742,7 +782,7 @@ class SpotifyServiceManager {
         .map((m) => m[1].replace(/&amp;/g, "&").trim())
         .filter((c, i, arr) => arr.indexOf(c) === i)
         .filter((c) => {
-          if (!c || c.length < 3 || c.length > 90) return false;
+          if (!c || c.length < 3 || c.length > 250) return false;
           if (!/^[©℗]/.test(c)) return false;
           if (/ey[\w.-]{4,}|oy[\w.-]{4,}|[{}<>;_\\\/]{2,}/i.test(c)) return false;
           if (!/\s/.test(c)) return false;
@@ -767,7 +807,18 @@ class SpotifyServiceManager {
       if (typeof releaseDate === "string" && releaseDate.length > 0) {
         try {
           const parts = releaseDate.split("T")[0].split("-");
-          if (parts.length >= 2) {
+          if (parts.length >= 3) {
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = parseInt(parts[2], 10);
+            const dateObj = new Date(Date.UTC(y, m, d));
+            formattedReleaseDate = dateObj.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              timeZone: "UTC",
+            });
+          } else if (parts.length === 2) {
             const y = parseInt(parts[0], 10);
             const m = parseInt(parts[1], 10) - 1;
             const d = new Date(Date.UTC(y, m, 1));

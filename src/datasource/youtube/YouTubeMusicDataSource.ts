@@ -5262,6 +5262,65 @@ export class YouTubeMusicDataSource extends DataSource {
     }
   }
 
+  async removeTracksFromPlaylist(tracks: Track[], playlist: Playlist): Promise<void> {
+    if (!this.musicCookie) {
+      throw new Error("Sign in to YouTube Music before removing songs from playlists.");
+    }
+    const validTracks = tracks.filter((t) => Boolean(t.playlistItemId));
+    if (validTracks.length === 0) return;
+
+    logInternalInfo("YouTubeMusicDataSource.removeTracksFromPlaylist start", {
+      count: validTracks.length,
+      playlistId: playlist.id,
+    });
+
+    try {
+      const client = await this.getMusicClient();
+      const cacheKey = this.getPlaylistTrackCacheKey(playlist.id);
+      const editablePlaylistId = playlist.id.startsWith("VL")
+        ? playlist.id.slice(2)
+        : playlist.id;
+
+      // InnerTube / YouTube batch edits can process actions in chunks of up to 50
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < validTracks.length; i += CHUNK_SIZE) {
+        const chunk = validTracks.slice(i, i + CHUNK_SIZE);
+        const actions = chunk.map((t) => ({
+          action: "ACTION_REMOVE_VIDEO",
+          setVideoId: t.playlistItemId,
+        }));
+
+        const response = await client.actions.execute("browse/edit_playlist", {
+          playlistId: editablePlaylistId,
+          actions,
+        });
+        if (!response.success) {
+          throw new Error(`Playlist batch edit returned HTTP ${response.status_code}.`);
+        }
+      }
+
+      const removedIds = new Set(validTracks.map((t) => t.playlistItemId));
+      const cachedTracks = await getCachedJson<Track[]>(cacheKey);
+      if (cachedTracks) {
+        await setCachedJson(
+          cacheKey,
+          cachedTracks.filter((item) => !removedIds.has(item.playlistItemId)),
+        );
+      }
+
+      logInternalInfo("YouTubeMusicDataSource.removeTracksFromPlaylist success", {
+        count: validTracks.length,
+        playlistId: playlist.id,
+      });
+    } catch (error) {
+      logInternalError("YouTubeMusicDataSource.removeTracksFromPlaylist failed", error, {
+        count: validTracks.length,
+        playlistId: playlist.id,
+      });
+      throw new Error("YouTube Music could not remove these songs from the playlist.");
+    }
+  }
+
   /** Kept for callers that only deal in likes; the rating path is the single implementation. */
   async setTrackLiked(track: Track, liked: boolean): Promise<void> {
     await this.setTrackRating(track, liked ? "like" : "none");

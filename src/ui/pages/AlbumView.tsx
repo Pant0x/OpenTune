@@ -167,7 +167,12 @@ export function AlbumView({
       try {
         let spId = album.id.startsWith("spotify:") ? album.id : "";
         if (!spId) {
-          const spUrl = await SpotifyService.searchAlbumUrl(album.title, resolvedArtistName || album.artist || "");
+          const sampleTrack = tracks[0]?.title;
+          const spUrl = await SpotifyService.searchAlbumUrl(
+            album.title,
+            resolvedArtistName || album.artist || "",
+            sampleTrack,
+          );
           if (spUrl) {
             const m = spUrl.match(/\/album\/([a-zA-Z0-9]+)/);
             if (m) spId = m[1];
@@ -185,7 +190,7 @@ export function AlbumView({
     return () => {
       active = false;
     };
-  }, [album?.id, album?.title, resolvedArtistName, album?.artist]);
+  }, [album?.id, album?.title, resolvedArtistName, album?.artist, tracks[0]?.title]);
 
   useEffect(() => {
     if (!resolvedArtistName && !resolvedArtistId) {
@@ -407,11 +412,10 @@ export function AlbumView({
   const formattedReleaseDate = useMemo(() => {
     if (spotifyAlbumMeta?.formattedReleaseDate) return spotifyAlbumMeta.formattedReleaseDate;
     const rawDate =
-      typeof album?.releaseDate === "string"
-        ? album.releaseDate
-        : typeof spotifyAlbumMeta?.releaseDate === "string"
-          ? spotifyAlbumMeta.releaseDate
-          : (spotifyAlbumMeta?.releaseDate as any)?.isoString || (spotifyAlbumMeta?.releaseDate as any)?.text;
+      typeof spotifyAlbumMeta?.releaseDate === "string"
+        ? spotifyAlbumMeta.releaseDate
+        : (spotifyAlbumMeta?.releaseDate as any)?.isoString || (spotifyAlbumMeta?.releaseDate as any)?.text
+        || (typeof album?.releaseDate === "string" ? album.releaseDate : undefined);
     if (typeof rawDate === "string" && rawDate.length > 0) {
       try {
         const parts = rawDate.split("T")[0].split("-");
@@ -438,7 +442,7 @@ export function AlbumView({
     return (spotifyAlbumMeta?.copyrights ?? []).filter((c) => {
       if (!c || typeof c !== "string") return false;
       const trimmed = c.trim();
-      if (trimmed.length < 3 || trimmed.length > 90) return false;
+      if (trimmed.length < 3 || trimmed.length > 250) return false;
       if (!/^[©℗]/.test(trimmed)) return false;
       if (/ey[\w.-]{4,}|oy[\w.-]{4,}|[{}<>;_\\\/]{2,}/i.test(trimmed)) return false;
       if (!/\s/.test(trimmed)) return false;

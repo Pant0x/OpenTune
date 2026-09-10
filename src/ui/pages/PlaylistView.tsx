@@ -20,6 +20,7 @@ import { formatCollectionMeta, MediaHeader } from "../components/MediaHeader";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import { TrackListSkeleton } from "../components/Skeleton";
 import { TrackRow } from "../components/TrackRow";
+import { TrackArtwork } from "../components/TrackArtwork";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
@@ -511,7 +512,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     });
   }, [tracks]);
 
-  const quarterSplitArtworks = useMemo(() => {
+  const dynamicPlaylistArtworks = useMemo(() => {
     const seen = new Set<string>();
     const arts: string[] = [];
     for (const t of enrichedTracks) {
@@ -800,7 +801,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
             )
           }
           meta={formatCollectionMeta(tracks, hasMoreTracks)}
-          artworkUrl={quarterSplitArtworks.length >= 4 ? quarterSplitArtworks[0] : playlist.artworkUrl}
+          artworkUrl={dynamicPlaylistArtworks.length > 0 ? dynamicPlaylistArtworks[0] : playlist.artworkUrl}
           artworkVariant="playlist"
           artworkSlot={isLikedSongs ? (
             <img
@@ -808,9 +809,9 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
               src={likedSongsCover}
               alt=""
             />
-          ) : quarterSplitArtworks.length >= 4 ? (
+          ) : dynamicPlaylistArtworks.length >= 4 ? (
             <div className="size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 grid grid-cols-2 grid-rows-2 bg-neutral-900">
-              {quarterSplitArtworks.slice(0, 4).map((art, idx) => (
+              {dynamicPlaylistArtworks.slice(0, 4).map((art, idx) => (
                 <img
                   key={idx}
                   src={art}
@@ -820,6 +821,14 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
                 />
               ))}
             </div>
+          ) : dynamicPlaylistArtworks.length > 0 ? (
+            <TrackArtwork
+              artworkUrl={dynamicPlaylistArtworks[0]}
+              size={400}
+              variant="album"
+              preferProxy
+              className="size-44 shrink-0 rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
+            />
           ) : undefined}
           {...(isLocalPlaylistView
             ? {
@@ -1070,20 +1079,19 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
           selection.clear();
         }}
         onRemove={async (selected) => {
-          // Sequential for the same reason batch-add is: YouTube rejects rapid bursts of
-          // playlist edits, and a half-applied removal is worse than a slow one.
-          for (const item of selected) {
-            try {
-              await libraryController.removeTrackFromPlaylist(item, playlist);
-              removeTrackFromList(item);
-            } catch (error) {
-              logInternalError("PlaylistView.batchRemove failed", error, {
-                trackId: item.id,
-                playlistId: playlist.id,
-              });
-            }
-          }
+          // Instant optimistic UI update so deletion feels 0ms
+          const selectedItemIds = new Set(selected.map((t) => t.playlistItemId || t.id));
+          setTracks((current) => current.filter((t) => !selectedItemIds.has(t.playlistItemId || t.id)));
           selection.clear();
+
+          try {
+            await libraryController.removeTracksFromPlaylist(selected, playlist);
+          } catch (error) {
+            logInternalError("PlaylistView.batchRemove failed", error, {
+              count: selected.length,
+              playlistId: playlist.id,
+            });
+          }
         }}
       />
 

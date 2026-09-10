@@ -169,6 +169,7 @@ export abstract class DataSource {
    */
   getPlaylistIdsContainingTrack?(track: Track): Promise<string[]>;
   removeTrackFromPlaylist?(track: Track, playlist: Playlist): Promise<void>;
+  removeTracksFromPlaylist?(tracks: Track[], playlist: Playlist): Promise<void>;
   setTrackLiked?(track: Track, liked: boolean): Promise<void>;
   /** Three-valued rating. Sources that only support liking may implement setTrackLiked alone. */
   setTrackRating?(track: Track, rating: TrackRating): Promise<void>;
