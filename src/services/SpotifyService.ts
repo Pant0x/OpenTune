@@ -761,6 +761,88 @@ class SpotifyServiceManager {
     return releases;
   }
 
+  private trackCoverMemory = new Map<string, { url: string; timestamp: number }>();
+
+  /**
+   * The track's album cover straight from Spotify, for the player-bar dock.
+   *
+   * YouTube-sourced tracks carry a video thumbnail as artwork whenever no album art was
+   * attached — the dock then shows a video still instead of the album cover. One searchDesktop
+   * request resolves the cover; cached in memory and localStorage, so a track gets looked up
+   * once per machine, not once per play. Null means "nothing found" and is cached briefly so
+   * a track with no Spotify presence does not re-search on every render.
+   */
+  async getTrackCoverUrl(trackTitle: string, artist: string): Promise<string | null> {
+    const cleanTitle = trackTitle?.trim();
+    const cleanArtist = artist?.trim();
+    if (!cleanTitle || !cleanArtist) return null;
+
+    const key = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}`;
+    const DAY_MS = 86_400_000;
+    const mem = this.trackCoverMemory.get(key);
+    if (mem && Date.now() - mem.timestamp < 30 * DAY_MS) return mem.url;
+    const storageKey = `sp_trk_cover_v1_${key.replace(/[^\w-]/g, "_").slice(0, 80)}`;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.data && Date.now() - parsed.timestamp < 30 * DAY_MS) {
+            this.trackCoverMemory.set(key, { url: parsed.data, timestamp: Date.now() });
+            return parsed.data;
+          }
+        }
+      } catch {}
+    }
+
+    const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+      searchTerm: `${cleanArtist} ${cleanTitle}`,
+      offset: 0,
+      limit: 10,
+      numberOfTopResults: 5,
+      includeAudiobooks: false,
+    });
+    const items: any[] = Array.isArray(result?.data?.searchV2?.tracks?.items)
+      ? result.data.searchV2.tracks.items
+      : [];
+
+    const tTitle = cleanTitle.toLowerCase();
+    const tArtist = cleanArtist.toLowerCase();
+    let bestCover: string | null = null;
+    let bestScore = -1;
+    for (const item of items) {
+      const data = item?.data;
+      const name = String(data?.name ?? "").toLowerCase();
+      if (!name) continue;
+      let score = 0;
+      if (name === tTitle) score += 100;
+      else if (name.includes(tTitle) || tTitle.includes(name)) score += 60;
+      else continue;
+      const artists: string[] = Array.isArray(data?.artists?.items)
+        ? data.artists.items.map((a: any) => String(a?.profile?.name ?? "").toLowerCase())
+        : [];
+      if (artists.some((a) => a === tArtist)) score += 50;
+      else if (artists.some((a) => a.includes(tArtist) || tArtist.includes(a))) score += 25;
+      if (score > bestScore) {
+        bestScore = score;
+        bestCover = getHighestResSource(data?.albumOfTrack?.coverArt?.sources) || null;
+      }
+    }
+
+    // Cache misses too — briefly — so absent tracks do not re-search forever.
+    if (bestCover) {
+      this.trackCoverMemory.set(key, { url: bestCover, timestamp: Date.now() });
+      if (typeof localStorage !== "undefined") {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify({ data: bestCover, timestamp: Date.now() }));
+        } catch {}
+      }
+    } else {
+      this.trackCoverMemory.set(key, { url: "", timestamp: Date.now() - 29 * DAY_MS });
+    }
+    return bestCover;
+  }
+
   /**
    * Fetches rich album / single metadata including track list, release date,
    * record label, and copyrights (℗ and ©).

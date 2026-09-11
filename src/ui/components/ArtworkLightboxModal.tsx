@@ -115,12 +115,18 @@ export function ArtworkLightboxModal({
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 320, damping: 28 }}
         className={cn(
-          "relative z-10 flex max-h-[86vh] max-w-[86vw] items-center justify-center overflow-hidden rounded-2xl",
+          "relative z-10 flex items-center justify-center overflow-hidden rounded-2xl",
+          "size-[min(92vh,92vw)]",
           "shadow-[0_40px_120px_rgba(0,0,0,0.85)] ring-1 ring-white/15 bg-black/40 cursor-default",
         )}
       >
+        {/*
+          TrackArtwork sizes its box from the className on the span, and the img inside is
+          absolute inset-0 — so the box needs explicit dimensions or it collapses to the
+          fallback icon and the "big cover" renders thumbnail-sized.
+        */}
         <TrackArtwork
-          className="max-h-[86vh] max-w-[86vw] h-auto w-auto object-contain select-none pointer-events-none"
+          className="size-full"
           artworkUrl={artworkUrl}
           iconSize={96}
           size={1600}

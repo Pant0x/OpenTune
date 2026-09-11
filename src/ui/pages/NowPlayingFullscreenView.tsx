@@ -696,7 +696,16 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               <div
                 onClick={() => {
                   if (navigateArtist && track?.artist) {
-                    navigateArtist({ id: "", name: track.artist }, false);
+                    /* The primary artist reference carries the real channel id when the
+                       source has one — navigating by the raw artist string would search the
+                       name and can land on a different artist's page. */
+                    const primary = track.artists?.[0];
+                    navigateArtist(
+                      primary?.id || primary?.name
+                        ? { id: primary.id, name: primary.name || track.artist }
+                        : { id: "", name: track.artist },
+                      false,
+                    );
                     onClose();
                   }
                 }}

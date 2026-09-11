@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { Marquee } from "@/components/motion/marquee";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { TrackArtwork } from "../TrackArtwork";
 import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
+import { SpotifyService } from "../../../services/SpotifyService";
 
 export function TrackInfo() {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
@@ -25,6 +26,26 @@ export function TrackInfo() {
   const artistViewportRef = useRef<HTMLDivElement>(null);
   const artistTextRef = useRef<HTMLSpanElement>(null);
   const [isArtistOverflowing, setIsArtistOverflowing] = useState(false);
+
+  /*
+   * The dock prefers Spotify's album cover: YouTube-sourced tracks carry a video thumbnail as
+   * artwork whenever the album art was missing, and a video still in the dock reads wrong.
+   * Resolved once per track (service-level cache), falling back to the source artwork.
+   */
+  const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
+  useEffect(() => {
+    setSpotifyCover(null);
+    if (!currentTrack || currentTrack.source === "local" || !currentTrack.title) return;
+    let active = true;
+    void SpotifyService.getTrackCoverUrl(currentTrack.title, currentTrack.artist)
+      .then((url) => {
+        if (active && url) setSpotifyCover(url);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist]);
 
   // Only scroll a title that actually overflows — a permanent marquee on short
   // titles is noise. Measured rather than guessed from character count.
@@ -130,7 +151,9 @@ export function TrackInfo() {
             size={48}
             loading="eager"
             preferProxy
-            artworkUrl={currentTrack.artworkUrl || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined)}
+            artworkUrl={spotifyCover
+              ?? (currentTrack.artworkUrl
+                || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined))}
             iconSize={22}
           />
         </button>
