@@ -99,6 +99,8 @@ export interface Artist {
   id: string;
   name: string;
   artworkUrl?: string;
+  /** The artist page's wide header image — a banner, only set when the source is landscape. */
+  bannerUrl?: string;
   subscriberCount?: string;
   isCreator?: boolean;
 }

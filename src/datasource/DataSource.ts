@@ -68,6 +68,8 @@ export abstract class DataSource {
    * lazy path to cover it on the first real request.
    */
   warmPlayback?(): void;
+  /** Same fire-and-forget contract as `warmPlayback`, for the search/recommendation clients. */
+  warmDiscovery?(): void;
   /**
    * Reports plays to the provider's own listening history.
    *

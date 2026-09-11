@@ -376,7 +376,6 @@ export function MediaHeader({
       isOpen={isLightboxOpen}
       onClose={() => setIsLightboxOpen(false)}
       artworkUrl={artworkUrl}
-      title={typeof title === "string" ? title : undefined}
     />
   </>
   );

@@ -292,11 +292,13 @@ export function ArtistView({
     };
   }, [artist, libraryController]);
 
-  // Pre-fetch Spotify avatars for "Fans also like" artists
+  // Pre-fetch Spotify avatars for "Fans also like" artists. Each avatar is a full artist
+  // overview (search + overview, two requests), so the first shelf only — the grid shows
+  // eight cards before scrolling anyway, and the rest hydrate from cache on later visits.
   useEffect(() => {
     if (!page?.fansAlsoLike?.length) return;
     let active = true;
-    for (const similar of page.fansAlsoLike) {
+    for (const similar of page.fansAlsoLike.slice(0, 8)) {
       void SpotifyService.getArtistAvatar(similar.name).then((avatar) => {
         if (active && avatar) {
           setFansSpotifyAvatars((prev) => ({ ...prev, [similar.id]: avatar }));
@@ -315,10 +317,14 @@ export function ArtistView({
     spotifyOverview?.avatarUrl ||
     (displayedArtist?.id ? fansSpotifyAvatars[displayedArtist.id] : undefined) ||
     displayedArtist?.artworkUrl;
-  const spotifyHero = spotifyOverview?.headerUrl || spotifyOverview?.galleryUrls?.[0];
-  const hasSpotifyHero = Boolean(spotifyHero);
-  const artistHeaderBg = spotifyHero || displayedArtist?.artworkUrl || artistAvatar;
-  const heroBackgroundUrl = spotifyHero || displayedArtist?.artworkUrl || artistAvatar;
+  /*
+   * The hero banner is Spotify's when it publishes one, else the artist page's own landscape
+   * header, else nothing at all — a square photo stretched across the hero is not a banner,
+   * so with neither source the hero stays plain background.
+   */
+  const heroBanner = spotifyOverview?.headerUrl || displayedArtist?.bannerUrl;
+  const artistHeaderBg = heroBanner || artistAvatar;
+  const heroBackgroundUrl = heroBanner || displayedArtist?.artworkUrl || artistAvatar;
 
   const isBlockedArtist = displayedArtist?.name
     ? blockedArtists.includes(displayedArtist.name.toLowerCase())
@@ -853,33 +859,17 @@ export function ArtistView({
 
       {/* Modern Panoramic Hero Header */}
       <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[380px] md:min-h-[440px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
-        {/* Hero Background Image - Crisp Spotify banner when available, graceful PFP hero fallback */}
+        {/* Hero Background — real banner (Spotify, else the artist page's landscape header),
+            or nothing: no blurred PFP substitute, just the gradients over plain background. */}
         <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
-          {hasSpotifyHero ? (
+          {heroBanner ? (
             <img
-              src={spotifyHero}
+              src={heroBanner}
               alt=""
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover object-[center_25%] opacity-90 transition-transform duration-700"
             />
-          ) : (
-            <>
-              {/* Atmospheric blurred glow from channel avatar */}
-              <img
-                src={heroBackgroundUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-center scale-125 blur-3xl opacity-50"
-              />
-              {/* Centered clean PFP hero presentation */}
-              <img
-                src={heroBackgroundUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="absolute inset-0 m-auto max-h-full max-w-full object-cover object-center opacity-45 mix-blend-screen scale-105"
-              />
-            </>
-          )}
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-background/80" />
         </div>
@@ -986,7 +976,7 @@ export function ArtistView({
                     "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
                     isSubscribed
                       ? "bg-white hover:bg-white/90 text-black shadow-lg active:scale-95"
-                      : "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/30 active:scale-95",
+                      : "border border-white/40 bg-black/30 text-white hover:border-white hover:bg-white/10 active:scale-95",
                   )}
                 >
                   <span>
@@ -1591,26 +1581,27 @@ export function ArtistView({
                 referrerPolicy="no-referrer"
                 className="max-h-full max-w-full w-auto h-auto object-contain object-center z-0 transition-transform duration-500 group-hover:scale-[1.02]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none z-10" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent pointer-events-none z-10" />
 
-              {/* Top-Right Spotify World Rank Badge (Matches Image 5) */}
-              {spotifyOverview?.worldRank ? (
-                <div className="absolute top-5 right-5 sm:top-6 sm:right-6 z-10 flex size-16 sm:size-20 shrink-0 flex-col items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-xl shadow-[#0D72EC]/40 select-none">
-                  <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">#{spotifyOverview.worldRank}</span>
-                  <span className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white/95 leading-tight mt-0.5">in the world</span>
+              {/* Spotify About layout: listeners + bio bottom-left, world-rank circle bottom-right */}
+              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 z-10 flex items-end justify-between gap-6">
+                <div className="flex flex-col gap-2 min-w-0">
+                  {spotifyOverview?.monthlyListeners ? (
+                    <span className="text-base md:text-lg font-bold text-white/95">
+                      {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
+                    </span>
+                  ) : null}
+                  {spotifyOverview?.cleanBio || spotifyOverview?.bio ? (
+                    <p className="line-clamp-4 text-sm md:text-base text-white/80 leading-relaxed max-w-2xl">
+                      {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
+                    </p>
+                  ) : null}
                 </div>
-              ) : null}
-
-              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col gap-2">
-                {spotifyOverview?.monthlyListeners ? (
-                  <span className="text-base md:text-lg font-bold text-white/95">
-                    {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
-                  </span>
-                ) : null}
-                {spotifyOverview?.cleanBio || spotifyOverview?.bio ? (
-                  <p className="line-clamp-3 text-sm md:text-base text-white/80 leading-relaxed max-w-2xl">
-                    {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
-                  </p>
+                {spotifyOverview?.worldRank ? (
+                  <div className="flex size-16 sm:size-20 shrink-0 flex-col items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-xl shadow-[#0D72EC]/40 select-none">
+                    <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">#{spotifyOverview.worldRank}</span>
+                    <span className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white/95 leading-tight mt-0.5">in the world</span>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -1715,13 +1706,13 @@ export function ArtistView({
               className="absolute right-4 top-4 z-10 flex size-9 items-center justify-center rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-black/90 transition-colors cursor-pointer"
               aria-label="Close modal"
             >
-              ✕
+              <CloseIcon size={16} />
             </button>
 
             {/* Hero Image: Full uncropped image with natural black bars for 16:9 and 9:16 */}
             <div className="relative w-full h-[360px] sm:h-[440px] md:h-[500px] shrink-0 bg-black flex items-center justify-center overflow-hidden">
               <img
-                src={spotifyOverview?.galleryUrls?.[0] || spotifyOverview?.headerUrl || displayedArtist?.artworkUrl || artistAvatar}
+                src={spotifyOverview?.galleryUrls?.[0] || spotifyOverview?.headerUrl || displayedArtist?.bannerUrl || displayedArtist?.artworkUrl || artistAvatar}
                 alt={displayedArtist.name}
                 className="max-h-full max-w-full w-auto h-auto object-contain object-center select-none"
               />
@@ -1870,7 +1861,6 @@ export function ArtistView({
         isOpen={isLightboxOpen}
         onClose={() => setIsLightboxOpen(false)}
         artworkUrl={artistAvatar}
-        title={displayedArtist.name}
       />
     </div>
   );

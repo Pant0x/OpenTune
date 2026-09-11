@@ -153,30 +153,24 @@ export function SearchBar({
     }
 
     try {
-      void searchController
-        .getSearchSuggestions(trimmed, (updated: string[]) => {
-          const top = updated.slice(0, 4);
-          setSuggestions(top);
-        })
-        .then((results: string[]) => {
-          const top = (results || []).slice(0, 4);
-          if (results) setSuggestions(top);
-          // Refine preview results using latest suggestions
-          void searchController
-            .search(trimmed, (updated: SearchResults) => {
-              setPreviewResults(updated);
-            }, { suggestions: top })
-            .then((res: SearchResults) => {
-              if (res) setPreviewResults(res);
-            });
-        });
-
+      // One search per keystroke. The old version ran search twice — standalone and again
+      // once suggestions arrived to re-rank with — and both paid the full re-rank. The
+      // suggestion fetch runs alongside instead; the network call was already deduped,
+      // but the ranking work was not.
       void searchController
         .search(trimmed, (updated: SearchResults) => {
           setPreviewResults(updated);
         })
         .then((results: SearchResults) => {
           if (results) setPreviewResults(results);
+        });
+
+      void searchController
+        .getSearchSuggestions(trimmed, (updated: string[]) => {
+          setSuggestions(updated.slice(0, 4));
+        })
+        .then((results: string[]) => {
+          setSuggestions((results || []).slice(0, 4));
         });
     } catch {}
   }, []);

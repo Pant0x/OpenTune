@@ -118,6 +118,18 @@ export function getHighestResSource(sources?: Array<{ url?: string; width?: numb
   return sorted[0]?.url;
 }
 
+/**
+ * Picks the widest landscape (width ≥ height) image from a sources array — a banner, not a
+ * portrait. Undefined for square-only galleries, because stretching a 640×640 photo across a
+ * hero reads as a blur, not a banner.
+ */
+export function getLandscapeSource(sources?: Array<{ url?: string; width?: number; height?: number }>): string | undefined {
+  if (!Array.isArray(sources) || sources.length === 0) return undefined;
+  const valid = sources.filter((s): s is { url: string; width?: number; height?: number } => typeof s?.url === "string" && s.url.length > 0);
+  const landscape = valid.filter((s) => (s.width ?? 0) >= (s.height ?? 0));
+  return getHighestResSource(landscape);
+}
+
 const SPOTIFY_PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v1/query";
 
 const QUERY_HASHES = {
@@ -497,7 +509,7 @@ class SpotifyServiceManager {
 
     if (typeof localStorage !== "undefined") {
       try {
-        const raw = localStorage.getItem(`sp_ov_${cacheKey}`);
+        const raw = localStorage.getItem(`sp_ov_v2_${cacheKey}`);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
@@ -526,6 +538,19 @@ class SpotifyServiceManager {
     const stats = union.stats || {};
     const profile = union.profile || {};
     const visuals = union.visuals || {};
+
+    /*
+     * Spotify moved the artist banner out of `visuals`: the live API now carries it as a
+     * top-level `headerImage` wrapping `{ data: { sources } }`, and `visuals.headerImage`
+     * comes back empty for every artist. Read the new shape first and keep the old one for
+     * cached/older payloads. A square gallery photo is deliberately NOT a substitute — a
+     * banner that isn't landscape is no banner, and the UI falls back to the YouTube one.
+     */
+    const headerUrl =
+      getLandscapeSource(union.headerImage?.data?.sources)
+      || getLandscapeSource(union.headerImage?.sources)
+      || getLandscapeSource(visuals.headerImage?.sources)
+      || undefined;
 
     const topCities: SpotifyTopCity[] = Array.isArray(stats.topCities?.items)
       ? stats.topCities.items.map((item: any) => ({
@@ -583,7 +608,7 @@ class SpotifyServiceManager {
       bio: rawBio || undefined,
       cleanBio: cleanBio || undefined,
       avatarUrl: getHighestResSource(visuals.avatarImage?.sources) || undefined,
-      headerUrl: getHighestResSource(visuals.headerImage?.sources) || getHighestResSource(visuals.gallery?.items?.[0]?.sources) || galleryUrls[0] || undefined,
+      headerUrl,
       galleryUrls,
       instagramUrl: instagramItem?.url || undefined,
       externalLinks,
@@ -595,8 +620,8 @@ class SpotifyServiceManager {
     this.artistOverviewCache.set(uri.toLowerCase(), { data: overview, timestamp: Date.now() });
     if (typeof localStorage !== "undefined") {
       try {
-        localStorage.setItem(`sp_ov_${cacheKey}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
-        localStorage.setItem(`sp_ov_${uri.toLowerCase()}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
+        localStorage.setItem(`sp_ov_v2_${cacheKey}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
+        localStorage.setItem(`sp_ov_v2_${uri.toLowerCase()}`, JSON.stringify({ data: overview, timestamp: Date.now() }));
       } catch {}
     }
     return overview;

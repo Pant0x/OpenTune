@@ -166,14 +166,13 @@ export function TrackInfo() {
           ref={artistViewportRef}
           className="relative min-w-0 overflow-hidden text-xs text-muted-foreground"
         >
-          {/* Hidden measuring copy */}
+          {/* Measuring copy. Hidden unconditionally: making `invisible absolute` conditional
+              on overflow left it visible next to the real text whenever the artist fit —
+              the doubled "ArtistArtist" line in the player bar. */}
           <span
             ref={artistTextRef}
-            aria-hidden={isArtistOverflowing}
-            className={cn(
-              "inline-flex items-center gap-1.5 whitespace-nowrap",
-              isArtistOverflowing && "invisible absolute",
-            )}
+            aria-hidden="true"
+            className="invisible absolute inline-flex items-center gap-1.5 whitespace-nowrap"
           >
             <ArtistLinks
               artists={currentTrack.artists}

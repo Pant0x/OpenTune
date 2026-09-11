@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
+import { motion, useReducedMotion } from "motion/react";
 import { TrackArtwork } from "./TrackArtwork";
 import { cn } from "@/lib/utils";
 import { CloseIcon, CopyIcon } from "@/ui/icons";
@@ -8,19 +9,22 @@ interface ArtworkLightboxModalProps {
   isOpen: boolean;
   onClose: () => void;
   artworkUrl?: string;
-  title?: string;
-  subtitle?: string;
 }
 
+/*
+ * Spotify-style cover preview: the artwork enlarged over its own blurred wash, popped in with
+ * a spring, and nothing else — no name or caption, the cover is the whole point. Esc, the
+ * close button, or a click anywhere outside the artwork dismisses it.
+ */
 export function ArtworkLightboxModal({
   isOpen,
   onClose,
   artworkUrl,
-  title,
-  subtitle,
 }: ArtworkLightboxModalProps) {
   const [toast, setToast] = useState<string | null>(null);
+  const [backdropFailed, setBackdropFailed] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -36,9 +40,18 @@ export function ArtworkLightboxModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (isOpen) setBackdropFailed(false);
+  }, [isOpen, artworkUrl]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+  }, []);
+
+  if (!isOpen || !artworkUrl) return null;
+
   const copyToClipboard = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!artworkUrl) return;
     try {
       await navigator.clipboard.writeText(artworkUrl);
       setToast("Image link copied to clipboard");
@@ -49,80 +62,79 @@ export function ArtworkLightboxModal({
     }
   };
 
-  if (!isOpen || !artworkUrl) return null;
-
   return createPortal(
-    <div
+    <motion.div
       role="dialog"
       aria-modal="true"
-      aria-label={title ? `Cover art preview for ${title}` : "Cover art preview"}
+      aria-label="Cover art preview"
       onClick={onClose}
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-4 sm:p-8 backdrop-blur-xl animate-in fade-in duration-200 cursor-pointer select-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: reducedMotion ? 0 : 0.2 }}
+      className="fixed inset-0 z-[300] flex items-center justify-center overflow-hidden bg-black/80 p-6 sm:p-10 select-none cursor-pointer"
     >
+      {/* Ambient wash: the artwork itself, blurred to fill the screen. Dropped if it 404s. */}
+      {!backdropFailed && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <img
+            src={artworkUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setBackdropFailed(true)}
+            className="h-full w-full scale-125 object-cover opacity-60 blur-3xl saturate-150"
+          />
+          <div className="absolute inset-0 bg-black/55" />
+        </div>
+      )}
+
       {/* Top action buttons */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <button
           type="button"
           onClick={copyToClipboard}
-          className="flex size-10 items-center justify-center rounded-full bg-black/60 hover:bg-black/90 text-white/90 hover:text-white transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg border border-white/10"
+          className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur transition-all hover:bg-white/20 hover:text-white hover:scale-105 active:scale-95 cursor-pointer border border-white/10"
           title="Copy image link"
+          aria-label="Copy image link"
         >
           <CopyIcon size={18} />
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="flex size-10 items-center justify-center rounded-full bg-black/60 hover:bg-black/90 text-white/90 hover:text-white transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-lg border border-white/10"
+          className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white/90 backdrop-blur transition-all hover:bg-white/20 hover:text-white hover:scale-105 active:scale-95 cursor-pointer border border-white/10"
           title="Close preview"
+          aria-label="Close preview"
         >
           <CloseIcon size={18} />
         </button>
       </div>
 
-      <div
-        className="relative flex max-h-[85vh] max-w-[85vw] flex-col items-center gap-4 text-center cursor-pointer select-none"
+      <motion.div
         onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          onClick={copyToClipboard}
-          className={cn(
-            "group relative flex items-center justify-center overflow-hidden shadow-2xl ring-1 ring-white/15 transition-all duration-300 rounded-2xl bg-black/60",
-            "max-h-[78vh] max-w-[85vw] shrink-0 select-none cursor-pointer",
-            "hover:shadow-[0_25px_60px_rgba(0,0,0,0.9)] hover:ring-white/30",
-          )}
-        >
-          <TrackArtwork
-            className="max-h-[78vh] max-w-[85vw] w-auto h-auto object-contain rounded-2xl select-none pointer-events-none transition-transform duration-300 group-hover:scale-[1.01]"
-            artworkUrl={artworkUrl}
-            iconSize={96}
-            size={1600}
-            loading="eager"
-            preferProxy
-          />
-        </div>
-
-        {(title || subtitle) && (
-          <div className="flex flex-col items-center gap-1 px-4 select-none">
-            {title && (
-              <h2 className="max-w-xl truncate text-xl font-bold text-white drop-shadow-md sm:text-2xl">
-                {title}
-              </h2>
-            )}
-            {subtitle && (
-              <p className="max-w-lg truncate text-sm font-medium text-white/70">
-                {subtitle}
-              </p>
-            )}
-          </div>
+        initial={reducedMotion ? false : { scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        className={cn(
+          "relative z-10 flex max-h-[86vh] max-w-[86vw] items-center justify-center overflow-hidden rounded-2xl",
+          "shadow-[0_40px_120px_rgba(0,0,0,0.85)] ring-1 ring-white/15 bg-black/40 cursor-default",
         )}
-      </div>
+      >
+        <TrackArtwork
+          className="max-h-[86vh] max-w-[86vw] h-auto w-auto object-contain select-none pointer-events-none"
+          artworkUrl={artworkUrl}
+          iconSize={96}
+          size={1600}
+          loading="eager"
+          preferProxy
+        />
+      </motion.div>
 
       {toast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[310] rounded-full bg-white text-black px-5 py-2.5 text-xs font-bold shadow-2xl animate-in fade-in zoom-in duration-200">
           {toast}
         </div>
       )}
-    </div>,
+    </motion.div>,
     document.body,
   );
 }

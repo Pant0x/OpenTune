@@ -384,7 +384,8 @@ function createPlaybackNonce(): string {
 const SELECTED_ACCOUNT_STORAGE_KEY = "youtube-music:selected-account";
 // v7: artist pictures come from named header fields now — foreground, then thumbnail, then the
 // channel avatar — so anything cached under the older shape-and-crop rules has to go.
-const ARTIST_CACHE_VERSION = "v9";
+// v10: Artist gained `bannerUrl` (the landscape header image), absent from cached pages.
+const ARTIST_CACHE_VERSION = "v10";
 /**
  * How long a background artist refresh is skipped after a recent one.
  *
@@ -646,6 +647,28 @@ export class YouTubeMusicDataSource extends DataSource {
       });
     });
     warmPoToken();
+  }
+
+  /**
+   * Pre-creates the music and web Innertube clients, off the critical path.
+   *
+   * The first search of a session otherwise pays both constructions — the music client's
+   * player fetch and scraped session metadata, plus the web client's own bootstrap — while
+   * the user watches an empty results shelf. Called alongside warmPlayback once the library
+   * load finishes. Both are memoized, so when a real search beats this to it, the call costs
+   * nothing extra.
+   */
+  warmDiscovery(): void {
+    void this.getMusicClient().catch((error) => {
+      logInternalWarn("YouTubeMusicDataSource.warmDiscovery music client failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    void this.getWebClient().catch((error) => {
+      logInternalWarn("YouTubeMusicDataSource.warmDiscovery web client failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   /**
@@ -3673,6 +3696,7 @@ export class YouTubeMusicDataSource extends DataSource {
     // The library is the last thing the app was already fetching for the user; whatever
     // bandwidth/CPU first play would otherwise need is free from here until they press play.
     this.warmPlayback();
+    this.warmDiscovery();
 
     return {
       account: {
@@ -4341,12 +4365,26 @@ export class YouTubeMusicDataSource extends DataSource {
       header?.foreground_thumbnail,
       headerThumbnail,
     );
+    /*
+     * The artist page's own header image doubles as the banner when it is landscape — the
+     * immersive artist header is a wide crop of the same art. A square (or portrait) image is
+     * not a banner, and the UI wants "no banner" over a stretched portrait, so only candidates
+     * clearly wider than tall qualify.
+     */
+    const bannerCandidates = collectArtworkCandidates(headerThumbnail).filter(
+      (candidate) => (candidate.width ?? 0) > 0 && (candidate.width ?? 0) >= (candidate.height ?? 0) * 1.2,
+    );
+    const bannerUrl = bannerCandidates.length > 0
+      ? bannerCandidates.reduce((best, candidate) =>
+          ((candidate.width ?? 0) * (candidate.height ?? 0)) > ((best.width ?? 0) * (best.height ?? 0)) ? candidate : best).url
+      : undefined;
     const artist: Artist = {
       id: artistId,
       name: header?.title?.toString()
         || artistItem?.title?.toString()
         || "Artist",
       artworkUrl,
+      bannerUrl: bannerUrl ?? undefined,
       subscriberCount,
     };
 

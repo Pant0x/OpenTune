@@ -118,6 +118,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   // Artist Overview for "About the artist"
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
+  const [isFollowingArtist, setIsFollowingArtist] = useState(false);
 
   // Lyrics
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
@@ -218,6 +219,48 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       active = false;
     };
   }, [track?.artist]);
+
+  // Follow state for the About-the-artist card, keyed by name in the same store the artist
+  // page writes (the fullscreen view has the artist's name only, never its channel id).
+  useEffect(() => {
+    if (!track?.artist) {
+      setIsFollowingArtist(false);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("amber_followed_artists");
+      const parsed = raw ? JSON.parse(raw) : [];
+      setIsFollowingArtist(
+        Array.isArray(parsed) && parsed.includes(track.artist.toLowerCase()),
+      );
+    } catch {
+      setIsFollowingArtist(false);
+    }
+  }, [track?.artist]);
+
+  const toggleFollowingArtist = () => {
+    const name = track?.artist;
+    if (!name) return;
+    const key = name.toLowerCase();
+    let next: Set<string>;
+    try {
+      const raw = localStorage.getItem("amber_followed_artists");
+      const parsed = raw ? JSON.parse(raw) : [];
+      next = new Set(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      next = new Set();
+    }
+    if (next.has(key)) {
+      next.delete(key);
+      setIsFollowingArtist(false);
+    } else {
+      next.add(key);
+      setIsFollowingArtist(true);
+    }
+    try {
+      localStorage.setItem("amber_followed_artists", JSON.stringify([...next]));
+    } catch {}
+  };
 
   // Fetch Lyrics when viewMode is "lyrics" or "split"
   useEffect(() => {
@@ -693,10 +736,16 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        toggleFollowingArtist();
                       }}
-                      className="rounded-full border border-white/40 px-4 py-1 text-xs font-bold text-white hover:bg-white/20 transition-colors"
+                      className={cn(
+                        "rounded-full border px-4 py-1 text-xs font-bold transition-colors",
+                        isFollowingArtist
+                          ? "border-white/60 bg-white text-black hover:bg-white/90"
+                          : "border-white/40 text-white hover:bg-white/20",
+                      )}
                     >
-                      Following
+                      {isFollowingArtist ? "Following" : "Follow"}
                     </button>
                   </div>
 
