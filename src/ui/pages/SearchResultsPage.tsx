@@ -309,30 +309,40 @@ export function SearchResultsPage({
                 <section className="flex flex-col gap-3">
                   <h2 className="text-xl font-bold tracking-tight text-foreground">Top result</h2>
                   <div
-                    className="group relative flex flex-col justify-between p-5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all duration-300 cursor-pointer min-h-[220px]"
+                    className={cn(
+                      "group relative flex flex-col justify-between rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all duration-300 cursor-pointer",
+                      topResult.kind === "track" ? "p-4 sm:p-4.5 min-h-[175px]" : "p-5 min-h-[210px]"
+                    )}
                     onClick={() => {
                       if (topResult.kind === "artist") handleOpenArtist(topResult.item);
                       else if (topResult.kind === "track") playTrack(topResult.item);
                       else if (topResult.kind === "album") handleOpenAlbum(topResult.item);
                     }}
                   >
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3.5">
                       <TrackArtwork
                         className={cn(
-                          "size-24 shadow-2xl object-cover",
-                          topResult.kind === "artist" ? "rounded-full" : "rounded-xl"
+                          "shadow-2xl object-cover transition-transform duration-300 group-hover:scale-[1.02]",
+                          topResult.kind === "track"
+                            ? "size-20 rounded-xl"
+                            : topResult.kind === "artist"
+                            ? "size-24 rounded-full"
+                            : "size-24 rounded-xl"
                         )}
-                        size={96}
+                        size={topResult.kind === "track" ? 80 : 96}
                         preferProxy
                         artworkUrl={
                           topResult.item.artworkUrl ||
                           (topResult.kind === "track" && topResult.item.id ? getVideoArtworkFallback(topResult.item.id) : undefined)
                         }
-                        iconSize={40}
+                        iconSize={topResult.kind === "track" ? 34 : 40}
                         variant={topResult.kind}
                       />
                       <div className="flex flex-col gap-1 min-w-0">
-                        <span className="text-2xl font-black text-white tracking-tight truncate line-clamp-1">
+                        <span className={cn(
+                          "text-white tracking-tight truncate line-clamp-1",
+                          topResult.kind === "track" ? "text-xl font-bold" : "text-2xl font-black"
+                        )}>
                           {topResult.kind === "artist" ? topResult.item.name : topResult.item.title}
                         </span>
                         <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -351,7 +361,10 @@ export function SearchResultsPage({
 
                     <button
                       type="button"
-                      className="absolute bottom-5 right-5 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200 cursor-pointer"
+                      className={cn(
+                        "absolute flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200 cursor-pointer",
+                        topResult.kind === "track" ? "bottom-4 right-4 size-11" : "bottom-5 right-5 size-12"
+                      )}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (topResult.kind === "artist") handleOpenArtist(topResult.item);
@@ -360,7 +373,7 @@ export function SearchResultsPage({
                       }}
                       aria-label="Play"
                     >
-                      <PlayIcon size={22} fill="currentColor" className="ml-0.5" />
+                      <PlayIcon size={topResult.kind === "track" ? 20 : 22} fill="currentColor" className="ml-0.5" />
                     </button>
                   </div>
                 </section>

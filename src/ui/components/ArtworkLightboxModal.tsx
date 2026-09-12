@@ -71,7 +71,7 @@ export function ArtworkLightboxModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: reducedMotion ? 0 : 0.2 }}
-      className="fixed inset-0 z-[300] flex items-center justify-center overflow-hidden bg-black/80 p-6 sm:p-10 select-none cursor-pointer"
+      className="fixed inset-0 z-[300] flex items-center justify-center overflow-hidden bg-black/85 p-3 sm:p-6 select-none cursor-pointer"
     >
       {/* Ambient wash: the artwork itself, blurred to fill the screen. Dropped if it 404s. */}
       {!backdropFailed && (
@@ -116,7 +116,7 @@ export function ArtworkLightboxModal({
         transition={{ type: "spring", stiffness: 320, damping: 28 }}
         className={cn(
           "relative z-10 flex items-center justify-center overflow-hidden rounded-2xl",
-          "size-[min(92vh,92vw)]",
+          "size-[min(94vh,94vw,980px)]",
           "shadow-[0_40px_120px_rgba(0,0,0,0.85)] ring-1 ring-white/15 bg-black/40 cursor-default",
         )}
       >

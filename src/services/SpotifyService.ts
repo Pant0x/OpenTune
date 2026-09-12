@@ -326,6 +326,46 @@ class SpotifyServiceManager {
   }
 
   /**
+   * Fast artist search returning official Spotify artists with high-res avatar.
+   */
+  async searchArtists(query: string, limit = 5): Promise<Array<{
+    id: string;
+    name: string;
+    artworkUrl?: string;
+    uri: string;
+  }>> {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) return [];
+
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: cleanQuery,
+        offset: 0,
+        limit,
+        numberOfTopResults: limit,
+        includeAudiobooks: false,
+      });
+
+      const items = result?.data?.searchV2?.artists?.items;
+      if (!Array.isArray(items) || items.length === 0) return [];
+
+      const artists: Array<{ id: string; name: string; artworkUrl?: string; uri: string }> = [];
+      for (const item of items) {
+        const data = item?.data;
+        const name = data?.profile?.name;
+        const uri = data?.uri;
+        if (!name || !uri) continue;
+        const id = uri.replace(/^spotify:artist:/, "");
+        const artworkUrl = getHighestResSource(data?.visuals?.avatarImage?.sources);
+        artists.push({ id, name, artworkUrl, uri });
+      }
+      return artists;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Search for an album by title and artist (with optional sample track fallback),
    * returns open.spotify.com album URL if matched.
    */
@@ -773,15 +813,41 @@ class SpotifyServiceManager {
    * a track with no Spotify presence does not re-search on every render.
    */
   async getTrackCoverUrl(trackTitle: string, artist: string): Promise<string | null> {
-    const cleanTitle = trackTitle?.trim();
-    const cleanArtist = artist?.trim();
-    if (!cleanTitle || !cleanArtist) return null;
+    if (!trackTitle?.trim()) return null;
+
+    // Clean title and artist to maximize Spotify search matches
+    let cleanTitle = trackTitle
+      .replace(/\s*[\(\[][^\)\]]*(?:video|audio|visualizer|lyric|clip|hd|4k|remastered|official)[^\)\]]*[\)\]]/gi, "")
+      .replace(/["“”]/g, "")
+      .trim();
+
+    let cleanArtist = (artist || "")
+      .replace(/\s*-\s*topic$/i, "")
+      .replace(/\s*vevo$/i, "")
+      .replace(/,\s*feat\..*$/i, "")
+      .replace(/\s+ft\..*$/i, "")
+      .replace(/\s+feat\..*$/i, "")
+      .trim();
+
+    // If title has "Artist - Song" or "Song - Artist", extract the pure song title
+    const dashParts = cleanTitle.split(/\s+-\s+/);
+    if (dashParts.length === 2) {
+      const p0 = dashParts[0].trim();
+      const p1 = dashParts[1].trim();
+      if (cleanArtist && p0.toLowerCase().includes(cleanArtist.toLowerCase())) {
+        cleanTitle = p1;
+      } else if (cleanArtist && p1.toLowerCase().includes(cleanArtist.toLowerCase())) {
+        cleanTitle = p0;
+      } else {
+        cleanTitle = p1;
+      }
+    }
 
     const key = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}`;
     const DAY_MS = 86_400_000;
     const mem = this.trackCoverMemory.get(key);
     if (mem && Date.now() - mem.timestamp < 30 * DAY_MS) return mem.url;
-    const storageKey = `sp_trk_cover_v1_${key.replace(/[^\w-]/g, "_").slice(0, 80)}`;
+    const storageKey = `sp_trk_cover_v2_${key.replace(/[^\w-]/g, "_").slice(0, 80)}`;
     if (typeof localStorage !== "undefined") {
       try {
         const raw = localStorage.getItem(storageKey);
@@ -795,41 +861,55 @@ class SpotifyServiceManager {
       } catch {}
     }
 
+    const searchQuery = `${cleanArtist} ${cleanTitle}`.trim();
     const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
-      searchTerm: `${cleanArtist} ${cleanTitle}`,
+      searchTerm: searchQuery,
       offset: 0,
       limit: 10,
       numberOfTopResults: 5,
       includeAudiobooks: false,
     });
-    const items: any[] = Array.isArray(result?.data?.searchV2?.tracks?.items)
-      ? result.data.searchV2.tracks.items
-      : [];
 
-    const tTitle = cleanTitle.toLowerCase();
-    const tArtist = cleanArtist.toLowerCase();
+    const items: any[] = Array.isArray(result?.data?.searchV2?.tracksV2?.items)
+      ? result.data.searchV2.tracksV2.items
+      : Array.isArray(result?.data?.searchV2?.tracks?.items)
+        ? result.data.searchV2.tracks.items
+        : [];
+
+    const normSimp = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+    const tTitleSimp = normSimp(cleanTitle);
+    const tArtistSimp = normSimp(cleanArtist);
+
     let bestCover: string | null = null;
     let bestScore = -1;
+
     for (const item of items) {
-      const data = item?.data;
-      const name = String(data?.name ?? "").toLowerCase();
-      if (!name) continue;
+      const data = item?.item?.data || item?.data;
+      if (!data) continue;
+      const rawName = String(data?.name ?? "");
+      const nameSimp = normSimp(rawName);
+      if (!nameSimp) continue;
+
       let score = 0;
-      if (name === tTitle) score += 100;
-      else if (name.includes(tTitle) || tTitle.includes(name)) score += 60;
+      if (nameSimp === tTitleSimp) score += 100;
+      else if (nameSimp.includes(tTitleSimp) || (tTitleSimp && tTitleSimp.includes(nameSimp))) score += 60;
       else continue;
+
       const artists: string[] = Array.isArray(data?.artists?.items)
-        ? data.artists.items.map((a: any) => String(a?.profile?.name ?? "").toLowerCase())
+        ? data.artists.items.map((a: any) => normSimp(String(a?.profile?.name ?? "")))
         : [];
-      if (artists.some((a) => a === tArtist)) score += 50;
-      else if (artists.some((a) => a.includes(tArtist) || tArtist.includes(a))) score += 25;
-      if (score > bestScore) {
+
+      if (artists.some((a) => a === tArtistSimp)) score += 50;
+      else if (artists.some((a) => tArtistSimp && (a.includes(tArtistSimp) || tArtistSimp.includes(a)))) score += 25;
+
+      const coverUrl = getHighestResSource(data?.albumOfTrack?.coverArt?.sources);
+      if (score > bestScore && coverUrl) {
         bestScore = score;
-        bestCover = getHighestResSource(data?.albumOfTrack?.coverArt?.sources) || null;
+        bestCover = coverUrl;
       }
     }
 
-    // Cache misses too — briefly — so absent tracks do not re-search forever.
+    // Cache misses too — briefly (1 day) — so absent tracks do not re-search forever
     if (bestCover) {
       this.trackCoverMemory.set(key, { url: bestCover, timestamp: Date.now() });
       if (typeof localStorage !== "undefined") {

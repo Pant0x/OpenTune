@@ -216,11 +216,19 @@ export function ArtistView({
       if (!active) return;
       setPage(updated);
       artistPageMemory.set(artist.id, updated);
+      if (updated?.isCreator) {
+        setSpotifyOverview(null);
+        setSpotifyReleases([]);
+      }
     })
       .then((result) => {
         if (!active) return;
         setPage(result);
         artistPageMemory.set(artist.id, result);
+        if (result?.isCreator) {
+          setSpotifyOverview(null);
+          setSpotifyReleases([]);
+        }
       })
       .catch(() => {
         if (active && !remembered) setError("Unable to load this artist.");
@@ -229,35 +237,37 @@ export function ArtistView({
         if (active) setIsLoading(false);
       });
 
-    // Fetch Spotify Overview, Discography & Playlists in parallel
-    const artistName = artist.name;
-    void SpotifyService.getArtistOverview(artistName)
-      .then((overview) => {
-        if (active && overview) {
-          setSpotifyOverview(overview);
-          artistOverviewMemory.set(artistName.toLowerCase(), overview);
-        }
-      })
-      .catch((err) => {
-        logInternalError("Spotify overview fetch failed", err);
-      });
+    // Only fetch Spotify Overview, Discography & Playlists for official music artists (not creator channels)
+    const isChannel = Boolean(artist.isCreator);
+    if (!isChannel) {
+      const artistName = artist.name;
+      void SpotifyService.getArtistOverview(artistName)
+        .then((overview) => {
+          if (active && overview) {
+            setSpotifyOverview(overview);
+            artistOverviewMemory.set(artistName.toLowerCase(), overview);
+          }
+        })
+        .catch((err) => {
+          logInternalError("Spotify overview fetch failed", err);
+        });
 
-    void SpotifyService.getArtistDiscography(artistName)
-      .then((releases) => {
-        if (active && releases.length > 0) {
-          setSpotifyReleases(releases);
-        }
-      })
-      .catch((err) => {
-        logInternalError("Spotify discography fetch failed", err);
-      });
+      void SpotifyService.getArtistDiscography(artistName)
+        .then((releases) => {
+          if (active && releases.length > 0) {
+            setSpotifyReleases(releases);
+          }
+        })
+        .catch((err) => {
+          logInternalError("Spotify discography fetch failed", err);
+        });
 
-    // Search for official playlists and community playlists
-    searchController.search(`Featuring ${artistName}`).then((res) => {
-      if (active && res.playlists?.length) {
-        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
-      }
-    }).catch(() => {});
+      // Search for official playlists and community playlists
+      searchController.search(`Featuring ${artistName}`).then((res) => {
+        if (active && res.playlists?.length) {
+          setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
+        }
+      }).catch(() => {});
 
     searchController.search(`Presenting ${artistName}`).then((res) => {
       if (active && res.playlists?.length) {
@@ -286,6 +296,7 @@ export function ArtistView({
         });
       }
     }).catch(() => {});
+    }
 
     return () => {
       active = false;
@@ -311,10 +322,11 @@ export function ArtistView({
   }, [page?.fansAlsoLike]);
 
   const displayedArtist = page?.artist ?? artist;
+  const isCreatorChannel = Boolean(displayedArtist?.isCreator || page?.isCreator);
 
   // Consistent Spotify-first picture with YouTube fallback
   const artistAvatar =
-    spotifyOverview?.avatarUrl ||
+    (!isCreatorChannel ? spotifyOverview?.avatarUrl : undefined) ||
     (displayedArtist?.id ? fansSpotifyAvatars[displayedArtist.id] : undefined) ||
     displayedArtist?.artworkUrl;
   /*
@@ -322,9 +334,13 @@ export function ArtistView({
    * header, else nothing at all — a square photo stretched across the hero is not a banner,
    * so with neither source the hero stays plain background.
    */
-  const heroBanner = spotifyOverview?.headerUrl || displayedArtist?.bannerUrl;
-  const artistHeaderBg = heroBanner || artistAvatar;
+  const heroBanner = (!isCreatorChannel ? spotifyOverview?.headerUrl : undefined) || displayedArtist?.bannerUrl;
   const heroBackgroundUrl = heroBanner || displayedArtist?.artworkUrl || artistAvatar;
+  const aboutCardImage =
+    (!isCreatorChannel ? (spotifyOverview?.galleryUrls?.[0] || spotifyOverview?.avatarUrl) : undefined) ||
+    displayedArtist?.bannerUrl ||
+    displayedArtist?.artworkUrl ||
+    artistAvatar;
 
   const isBlockedArtist = displayedArtist?.name
     ? blockedArtists.includes(displayedArtist.name.toLowerCase())
@@ -1568,44 +1584,50 @@ export function ArtistView({
           )}
 
           {/* 4. About Section (Card + Modal with Spotify Stats & Full Photo) */}
-          <section className="flex flex-col gap-4">
-            <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
-            <div
-              onClick={() => setIsAboutModalOpen(true)}
-              className="group relative h-[380px] md:h-[440px] w-full max-w-4xl cursor-pointer overflow-hidden rounded-2xl bg-black border border-white/10 transition-all duration-300 hover:shadow-2xl hover:border-white/30 flex items-center justify-center"
-            >
-              {/* Full Uncropped Photo - handles 16:9 and 9:16 cleanly with natural letterbox/pillarbox black bars */}
-              <img
-                src={artistHeaderBg || artistAvatar}
-                alt={displayedArtist.name}
-                referrerPolicy="no-referrer"
-                className="max-h-full max-w-full w-auto h-auto object-contain object-center z-0 transition-transform duration-500 group-hover:scale-[1.02]"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent pointer-events-none z-10" />
+          {(spotifyOverview?.monthlyListeners || spotifyOverview?.bio || spotifyOverview?.cleanBio || subCount) && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">About</h2>
+              <div
+                onClick={() => setIsAboutModalOpen(true)}
+                className="group relative h-[340px] md:h-[380px] w-full max-w-2xl cursor-pointer overflow-hidden rounded-2xl bg-black/40 border border-white/10 transition-all duration-300 hover:shadow-2xl hover:border-white/30 flex items-center justify-center"
+              >
+                {/* Full Bleed Spotify Artist Photo / Channel Banner */}
+                <img
+                  src={aboutCardImage}
+                  alt={displayedArtist.name}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover object-center z-0 transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none z-10" />
 
-              {/* Spotify About layout: listeners + bio bottom-left, world-rank circle bottom-right */}
-              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 z-10 flex items-end justify-between gap-6">
-                <div className="flex flex-col gap-2 min-w-0">
-                  {spotifyOverview?.monthlyListeners ? (
-                    <span className="text-base md:text-lg font-bold text-white/95">
-                      {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
-                    </span>
-                  ) : null}
-                  {spotifyOverview?.cleanBio || spotifyOverview?.bio ? (
-                    <p className="line-clamp-4 text-sm md:text-base text-white/80 leading-relaxed max-w-2xl">
-                      {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
-                    </p>
+                {/* Spotify About layout: listeners + bio bottom-left, world-rank circle bottom-right */}
+                <div className="absolute bottom-0 left-0 right-0 p-6 md:p-7 z-10 flex items-end justify-between gap-6">
+                  <div className="flex flex-col gap-2 min-w-0">
+                    {!isCreator && spotifyOverview?.monthlyListeners ? (
+                      <span className="text-base md:text-lg font-bold text-white/95">
+                        {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
+                      </span>
+                    ) : formattedSubCount ? (
+                      <span className="text-base md:text-lg font-bold text-white/95">
+                        {formattedSubCount}
+                      </span>
+                    ) : null}
+                    {!isCreator && (spotifyOverview?.cleanBio || spotifyOverview?.bio) ? (
+                      <p className="line-clamp-3 md:line-clamp-4 text-sm text-white/80 leading-relaxed max-w-xl">
+                        {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
+                      </p>
+                    ) : null}
+                  </div>
+                  {!isCreator && spotifyOverview?.worldRank ? (
+                    <div className="flex size-16 sm:size-18 shrink-0 flex-col items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-xl shadow-[#0D72EC]/40 select-none">
+                      <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">#{spotifyOverview.worldRank}</span>
+                      <span className="text-[10px] font-bold tracking-tight text-white/95 leading-tight mt-0.5">in the world</span>
+                    </div>
                   ) : null}
                 </div>
-                {spotifyOverview?.worldRank ? (
-                  <div className="flex size-16 sm:size-20 shrink-0 flex-col items-center justify-center rounded-full bg-[#0D72EC] text-white shadow-xl shadow-[#0D72EC]/40 select-none">
-                    <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">#{spotifyOverview.worldRank}</span>
-                    <span className="text-[10px] sm:text-[11px] font-bold tracking-tight text-white/95 leading-tight mt-0.5">in the world</span>
-                  </div>
-                ) : null}
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* 5. Discovered on (Mix of fanmade + YT music playlists) */}
           {discoveredOnPlaylists.length > 0 && (
@@ -1732,7 +1754,7 @@ export function ArtistView({
                         : subCount || "—"}
                     </div>
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-1">
-                      Monthly Listeners
+                      {spotifyOverview?.monthlyListeners ? "Monthly Listeners" : "Subscribers"}
                     </div>
                   </div>
 

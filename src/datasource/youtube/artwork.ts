@@ -145,27 +145,28 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
   const normalized = normalizeArtworkUrl(url);
   const candidates: Array<string | null> = [];
 
-  // If a specific size was requested, try the resized URL first
-  if (size != null) {
-    candidates.push(withYoutubeSize(normalized, size));
-  } else {
-    // Without a size, the original URL is the first candidate
-    candidates.push(normalized);
-  }
-
+  // 1. For Spotify images: always try the 640px full-res version FIRST
   const spotifyHighRes = toHighResSpotifyUrl(normalized);
   if (spotifyHighRes) {
     candidates.push(spotifyHighRes);
   }
 
-  // If it's a YouTube video thumbnail (matches i.ytimg.com or img.youtube.com video IDs), generate ladder
+  // 2. If a specific size was requested for Google/YT user content, try that size first;
+  // otherwise, the original URL is the primary candidate
+  if (size != null) {
+    candidates.push(withYoutubeSize(normalized, size));
+  } else {
+    candidates.push(normalized);
+  }
+
+  // 3. If it's a YouTube video thumbnail, prioritize resolution ladder (maxres -> sd -> hq -> mq -> default)
   const ytVideoMatch = normalized.match(/(?:i\d?\.ytimg\.com|img\.youtube\.com)\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})/i);
   if (ytVideoMatch?.[1]) {
     const videoId = ytVideoMatch[1];
-    candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-    candidates.push(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/sddefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+    candidates.push(`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`);
     candidates.push(`https://i.ytimg.com/vi/${videoId}/default.jpg`);
   }
 

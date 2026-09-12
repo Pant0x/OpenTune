@@ -4201,23 +4201,7 @@ export class YouTubeMusicDataSource extends DataSource {
     }
   }
 
-  private async hydrateArtistArtwork(artists: Artist[]): Promise<Artist[]> {
-    const priorityArtists = artists.slice(0, 4);
-    const hydrated = await Promise.all(
-      priorityArtists.map(async (artist) => {
-        const pageArtist = await this.getArtistArtworkFromPage(artist.id);
-        if (!pageArtist?.artworkUrl) return artist;
-        return {
-          ...artist,
-          name: artist.name || pageArtist.name,
-          artworkUrl: pageArtist.artworkUrl,
-          subscriberCount: artist.subscriberCount || pageArtist.subscriberCount,
-        };
-      }),
-    );
 
-    return [...hydrated, ...artists.slice(priorityArtists.length)];
-  }
 
   /**
    * The artist's YouTube channel avatar.
@@ -4275,6 +4259,23 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchArtistFresh(artistId: string): Promise<ArtistPage> {
     const client = await this.getMusicClient();
+
+    if (artistId.startsWith("spotify:")) {
+      const spId = artistId.replace(/^spotify:(?:artist:)?/, "");
+      try {
+        const overview = await SpotifyService.getArtistOverview(`spotify:artist:${spId}`).catch(() => null);
+        const artistName = overview?.name;
+        if (artistName) {
+          const searchRes = await client.music.search(artistName, { type: "artist" }).catch(() => null);
+          const ytArtist = searchRes?.artists?.contents?.[0] as any;
+          const browseId = ytArtist?.id || this.findBrowseId(ytArtist?.endpoint);
+          if (browseId && browseId.startsWith("UC")) {
+            return this.fetchArtistFresh(browseId);
+          }
+        }
+      } catch {}
+    }
+
     let artistPage: any;
     try {
       artistPage = await client.music.getArtist(artistId);
@@ -6193,10 +6194,11 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchMixedSearchFresh(query: string): Promise<SearchResults> {
     const client = await this.getMusicClient();
-    const [response, artistResponse, channelResponse] = await Promise.all([
+    const [response, artistResponse, channelResponse, spotifyArtists] = await Promise.all([
       client.music.search(query),
       client.music.search(query, { type: "artist" }).catch(() => null),
       this.getWebClient().then((web) => web.search(query, { type: "channel" })).catch(() => null),
+      SpotifyService.searchArtists(query, 3).catch(() => []),
     ]);
     const fromShelf = <T>(
       shelf: { contents?: unknown[] } | undefined,
@@ -6253,6 +6255,57 @@ export class YouTubeMusicDataSource extends DataSource {
         .filter((item): item is Album => Boolean(item)),
     ]);
 
+    // Official music artists from YouTube Music
+    const rawMusicArtists = [
+      ...shelfArtists,
+      ...fromShelf(artistResponse?.artists, (item) => this.toArtist(item)),
+      ...fallbackItems
+        .filter((item) => item.item_type === "artist")
+        .map((item) => this.toArtist(item))
+        .filter((item): item is Artist => Boolean(item)),
+      ...artistFallbackItems
+        .map((item) => this.toArtist(item))
+        .filter((item): item is Artist => Boolean(item)),
+      ...artistCardItems
+        .map((item) => this.toArtist(item))
+        .filter((item): item is Artist => Boolean(item)),
+      ...this.artistsFromReferences([...tracks, ...albums], query),
+    ];
+
+    const officialArtistIds = new Set(rawMusicArtists.map((a) => a.id));
+    const querySimp = query.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+
+    // Enhance official music artists with Spotify high-res avatars
+    const musicArtists: Artist[] = rawMusicArtists.map((artist) => {
+      const aSimp = artist.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+      const spMatch = spotifyArtists.find((sp) => {
+        const spSimp = sp.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+        return spSimp === aSimp;
+      });
+      return {
+        ...artist,
+        artworkUrl: spMatch?.artworkUrl || artist.artworkUrl,
+        isCreator: false,
+      };
+    });
+
+    // If Spotify has the main music artist for this search, ensure it's at the front
+    const topSpotify = spotifyArtists[0];
+    const hasTopSpotifyInMusic = topSpotify && musicArtists.some(
+      (a) => a.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim()
+        === topSpotify.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim(),
+    );
+
+    const spotifyLeadArtists: Artist[] = [];
+    if (topSpotify && !hasTopSpotifyInMusic) {
+      spotifyLeadArtists.push({
+        id: `spotify:${topSpotify.id}`,
+        name: topSpotify.name,
+        artworkUrl: topSpotify.artworkUrl,
+        isCreator: false,
+      });
+    }
+
     const channelArtists: Artist[] = [];
     if (channelResponse && Array.isArray((channelResponse as any).results)) {
       for (const item of (channelResponse as any).results) {
@@ -6271,32 +6324,33 @@ export class YouTubeMusicDataSource extends DataSource {
             ? item.subscriber_count?.toString?.()
             : undefined;
 
+        const cSimp = name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+        const isOfficialMatch = officialArtistIds.has(id) || (querySimp && cSimp === querySimp && (subText?.includes("M") || subText?.includes("B")));
+
         channelArtists.push({
           id,
           name,
           artworkUrl: thumbUrl,
           subscriberCount: subText,
-          isCreator: true,
+          isCreator: !isOfficialMatch,
         });
       }
     }
 
-    let artists = await this.hydrateArtistArtwork(this.uniqueById([
-      ...shelfArtists,
-      ...fromShelf(artistResponse?.artists, (item) => this.toArtist(item)),
-      ...fallbackItems
-        .filter((item) => item.item_type === "artist")
-        .map((item) => this.toArtist(item))
-        .filter((item): item is Artist => Boolean(item)),
-      ...artistFallbackItems
-        .map((item) => this.toArtist(item))
-        .filter((item): item is Artist => Boolean(item)),
-      ...artistCardItems
-        .map((item) => this.toArtist(item))
-        .filter((item): item is Artist => Boolean(item)),
+    // Merge and deduplicate: official artists take precedence over creator channels with the same id
+    const artistPool = [
+      ...spotifyLeadArtists,
+      ...musicArtists,
       ...channelArtists,
-      ...this.artistsFromReferences([...tracks, ...albums], query),
-    ]));
+    ];
+
+    const seenArtistIds = new Set<string>();
+    const artists: Artist[] = [];
+    for (const a of artistPool) {
+      if (!a.id || seenArtistIds.has(a.id)) continue;
+      seenArtistIds.add(a.id);
+      artists.push(a);
+    }
 
     const results = {
       artists,
@@ -6659,14 +6713,26 @@ export class YouTubeMusicDataSource extends DataSource {
           }
         }
 
+        // Strongly prioritize official song releases over music videos
+        if (item.item_type === "song") {
+          score += 50;
+        } else if (item.item_type === "video") {
+          score -= 50;
+        }
+
+        const albumName = this.getTrackAlbum(item)?.name;
+        if (albumName) {
+          score += 30;
+        }
+
         const lowerRaw = rawItemTitle.toLowerCase();
         if (lowerRaw.includes("music video") || lowerRaw.includes("official video") || lowerRaw.includes("video clip")) {
-          score -= 60;
+          score -= 70;
         }
 
         const isExplicit = this.isExplicitItem(item) || /\b(?:explicit|\[e\]|\(e\))\b/i.test(rawItemTitle);
         const isClean = /\b(?:clean|radio edit|censored)\b/i.test(rawItemTitle);
-        if (isExplicit) score += 35;
+        if (isExplicit) score += 20;
         if (isClean) score -= 60;
 
         if (durationSec && durationSec > 0) {
@@ -6685,7 +6751,7 @@ export class YouTubeMusicDataSource extends DataSource {
         }
       }
 
-      if (bestSongId && highestScore >= 100) {
+      if (bestSongId && highestScore >= 70) {
         logInternalInfo("YouTubeMusicDataSource: resolved official topic song from Music client", {
           originalId: currentId,
           topicId: bestSongId,
@@ -6749,14 +6815,22 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private async resolveTopicSongTargetId(track: Track): Promise<string> {
+    /*
+     * Songs play the official release, like a normal app: every YouTube id *is* a video id,
+     * so this used to pass video uploads straight through and a song listed as a music video
+     * played the video's audio. Now every streamed track resolves to the official Topic/album
+     * audio when one is confidently found; videos without an official release (and special
+     * audio versions — remixes, live takes, edits — which the caller picked deliberately) fall
+     * through to the original id. The lookup is cached per song, so the cost is once per
+     * track, not once per play.
+     */
     if (
       track.source === "local" ||
       !track.title ||
       !track.artist ||
       track.artist === "Unknown artist" ||
       track.artist.toLowerCase().endsWith("- topic") ||
-      this.isSpecialAudioVersion(track.title) ||
-      (isVideoId(track.id) && track.source !== "spotify")
+      this.isSpecialAudioVersion(track.title)
     ) {
       return track.id;
     }
@@ -7586,9 +7660,9 @@ export class YouTubeMusicDataSource extends DataSource {
       return { mimeType, rustSource: { kind: "offline", trackId: track.id, mimeType } };
     }
 
-    const targetId = (isVideoId(track.id) && track.source !== "spotify")
-      ? track.id
-      : await this.resolveTopicSongTargetId(track);
+    // resolveTopicSongTargetId applies its own skips (local, specials, unknown artists) —
+    // passed through for video ids too, so songs play the official release, not the upload.
+    const targetId = await this.resolveTopicSongTargetId(track);
 
     const { url, mimeType, cookie } = await this.resolveStream(
       { ...track, id: targetId },
