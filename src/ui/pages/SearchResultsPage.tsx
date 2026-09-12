@@ -25,6 +25,14 @@ function normalizeSearchKey(value: string): string {
     .toLocaleLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/y/g, "i")
+    .replace(/ou/g, "u")
+    .replace(/oo/g, "u")
+    .replace(/ee/g, "i")
+    .replace(/ph/g, "f")
+    .replace(/kh/g, "k")
+    .replace(/gh/g, "g")
+    .replace(/sh/g, "s")
     .replace(/[^a-z0-9]/g, "");
 }
 

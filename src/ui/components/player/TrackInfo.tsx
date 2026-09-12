@@ -37,7 +37,7 @@ export function TrackInfo() {
     setSpotifyCover(null);
     if (!currentTrack || currentTrack.source === "local" || !currentTrack.title) return;
     let active = true;
-    void SpotifyService.getTrackCoverUrl(currentTrack.title, currentTrack.artist)
+    void SpotifyService.getTrackCoverUrl(currentTrack.title, currentTrack.artist, currentTrack.album)
       .then((url) => {
         if (active && url) setSpotifyCover(url);
       })
@@ -45,7 +45,7 @@ export function TrackInfo() {
     return () => {
       active = false;
     };
-  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist]);
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.album]);
 
   // Only scroll a title that actually overflows — a permanent marquee on short
   // titles is noise. Measured rather than guessed from character count.

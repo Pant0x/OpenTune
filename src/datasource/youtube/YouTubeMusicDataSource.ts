@@ -6273,14 +6273,46 @@ export class YouTubeMusicDataSource extends DataSource {
     ];
 
     const officialArtistIds = new Set(rawMusicArtists.map((a) => a.id));
-    const querySimp = query.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+
+    const normSimp = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+    const normTranslit = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/y/g, "i")
+        .replace(/ou/g, "u")
+        .replace(/oo/g, "u")
+        .replace(/ee/g, "i")
+        .replace(/ph/g, "f")
+        .replace(/kh/g, "k")
+        .replace(/gh/g, "g")
+        .replace(/sh/g, "s")
+        .replace(/[^a-z0-9\u0600-\u06FF]/g, "")
+        .trim();
+    };
+
+    const parseSubs = (text?: string): number => {
+      if (!text) return 0;
+      const clean = text.toLowerCase().replace(/subscribers?/g, "").trim();
+      if (clean.endsWith("b")) return (parseFloat(clean) || 0) * 1e9;
+      if (clean.endsWith("m")) return (parseFloat(clean) || 0) * 1e6;
+      if (clean.endsWith("k")) return (parseFloat(clean) || 0) * 1e3;
+      const num = parseFloat(clean.replace(/,/g, ""));
+      return isNaN(num) ? 0 : num;
+    };
+
+    const querySimp = normSimp(query);
+    const queryTranslit = normTranslit(query);
 
     // Enhance official music artists with Spotify high-res avatars
     const musicArtists: Artist[] = rawMusicArtists.map((artist) => {
-      const aSimp = artist.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
+      const aSimp = normSimp(artist.name);
+      const aTranslit = normTranslit(artist.name);
       const spMatch = spotifyArtists.find((sp) => {
-        const spSimp = sp.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
-        return spSimp === aSimp;
+        const spSimp = normSimp(sp.name);
+        const spTranslit = normTranslit(sp.name);
+        return spSimp === aSimp || spTranslit === aTranslit;
       });
       return {
         ...artist,
@@ -6288,23 +6320,6 @@ export class YouTubeMusicDataSource extends DataSource {
         isCreator: false,
       };
     });
-
-    // If Spotify has the main music artist for this search, ensure it's at the front
-    const topSpotify = spotifyArtists[0];
-    const hasTopSpotifyInMusic = topSpotify && musicArtists.some(
-      (a) => a.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim()
-        === topSpotify.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim(),
-    );
-
-    const spotifyLeadArtists: Artist[] = [];
-    if (topSpotify && !hasTopSpotifyInMusic) {
-      spotifyLeadArtists.push({
-        id: `spotify:${topSpotify.id}`,
-        name: topSpotify.name,
-        artworkUrl: topSpotify.artworkUrl,
-        isCreator: false,
-      });
-    }
 
     const channelArtists: Artist[] = [];
     if (channelResponse && Array.isArray((channelResponse as any).results)) {
@@ -6324,8 +6339,11 @@ export class YouTubeMusicDataSource extends DataSource {
             ? item.subscriber_count?.toString?.()
             : undefined;
 
-        const cSimp = name.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
-        const isOfficialMatch = officialArtistIds.has(id) || (querySimp && cSimp === querySimp && (subText?.includes("M") || subText?.includes("B")));
+        const cSimp = normSimp(name);
+        const cTranslit = normTranslit(name);
+        const isOfficialMatch =
+          officialArtistIds.has(id) ||
+          (querySimp && (cSimp === querySimp || cTranslit === queryTranslit) && (subText?.includes("M") || subText?.includes("B")));
 
         channelArtists.push({
           id,
@@ -6337,20 +6355,93 @@ export class YouTubeMusicDataSource extends DataSource {
       }
     }
 
-    // Merge and deduplicate: official artists take precedence over creator channels with the same id
-    const artistPool = [
-      ...spotifyLeadArtists,
-      ...musicArtists,
-      ...channelArtists,
-    ];
+    // Top artist from Spotify (authoritative for official music artists)
+    const topSpotify = spotifyArtists[0];
+    const spTopSimp = topSpotify ? normSimp(topSpotify.name) : "";
+    const spTopTranslit = topSpotify ? normTranslit(topSpotify.name) : "";
 
+    // Candidate pool of all artists
+    const rawArtistPool = [...musicArtists, ...channelArtists];
+
+    // Check if any artist in the pool matches Spotify's #1 artist
+    const matchingSpotifyArtist = topSpotify
+      ? rawArtistPool.find((a) => {
+          const aSimp = normSimp(a.name);
+          const aTranslit = normTranslit(a.name);
+          return (
+            (spTopSimp && aSimp === spTopSimp) ||
+            (spTopTranslit && aTranslit === spTopTranslit) ||
+            (queryTranslit && aTranslit === queryTranslit)
+          );
+        })
+      : undefined;
+
+    const spotifyLeadArtists: Artist[] = [];
+    if (topSpotify && !matchingSpotifyArtist) {
+      spotifyLeadArtists.push({
+        id: `spotify:${topSpotify.id}`,
+        name: topSpotify.name,
+        artworkUrl: topSpotify.artworkUrl,
+        isCreator: false,
+      });
+    }
+
+    // Deduplicate by ID while preserving the highest-quality metadata
     const seenArtistIds = new Set<string>();
-    const artists: Artist[] = [];
-    for (const a of artistPool) {
+    const deduplicatedArtists: Artist[] = [];
+    for (const a of [...spotifyLeadArtists, ...rawArtistPool]) {
       if (!a.id || seenArtistIds.has(a.id)) continue;
       seenArtistIds.add(a.id);
-      artists.push(a);
+
+      // If this artist matches Spotify's #1 artist, enrich it with Spotify's avatar and mark official
+      if (topSpotify && (normSimp(a.name) === spTopSimp || normTranslit(a.name) === spTopTranslit)) {
+        deduplicatedArtists.push({
+          ...a,
+          artworkUrl: topSpotify.artworkUrl || a.artworkUrl,
+          isCreator: false,
+        });
+      } else {
+        deduplicatedArtists.push(a);
+      }
     }
+
+    // Intelligent artist ranking: ensure the true artist (from Spotify / exact match / top subscriber) is #1
+    const qWords = query.trim().split(/\s+/).length;
+    const scoreArtist = (a: Artist): number => {
+      const aSimp = normSimp(a.name);
+      const aTranslit = normTranslit(a.name);
+      let score = 0;
+
+      // 1. Match with Spotify's #1 artist
+      if (spTopSimp && aSimp === spTopSimp) score += 10000;
+      else if (spTopTranslit && aTranslit === spTopTranslit) score += 9000;
+
+      // 2. Match with search query
+      if (querySimp && aSimp === querySimp) score += 6000;
+      else if (queryTranslit && aTranslit === queryTranslit) score += 5000;
+      else if (querySimp && aSimp.startsWith(querySimp)) score += 2500;
+      else if (queryTranslit && aTranslit.startsWith(queryTranslit)) score += 2000;
+
+      // 3. Extra words penalty (e.g. "Farid" in "Fairouz Farid" when query is "fayrouz")
+      const aWords = a.name.trim().split(/\s+/).length;
+      if (aWords > qWords) {
+        score -= (aWords - qWords) * 1500;
+      }
+
+      // 4. Subscriber count weight (logarithmic: 682K >> 1 subscriber)
+      const subs = parseSubs(a.subscriberCount);
+      if (subs > 0) {
+        score += Math.log10(subs + 1) * 350;
+      }
+
+      // 5. Official music artist vs creator channel bonus
+      if (!a.isCreator) score += 800;
+
+      return score;
+    };
+
+    deduplicatedArtists.sort((a, b) => scoreArtist(b) - scoreArtist(a));
+    const artists = deduplicatedArtists;
 
     const results = {
       artists,

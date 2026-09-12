@@ -812,7 +812,7 @@ class SpotifyServiceManager {
    * once per machine, not once per play. Null means "nothing found" and is cached briefly so
    * a track with no Spotify presence does not re-search on every render.
    */
-  async getTrackCoverUrl(trackTitle: string, artist: string): Promise<string | null> {
+  async getTrackCoverUrl(trackTitle: string, artist: string, album?: string): Promise<string | null> {
     if (!trackTitle?.trim()) return null;
 
     // Clean title and artist to maximize Spotify search matches
@@ -843,7 +843,7 @@ class SpotifyServiceManager {
       }
     }
 
-    const key = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}`;
+    const key = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}${album ? `|${album.toLowerCase().trim()}` : ""}`;
     const DAY_MS = 86_400_000;
     const mem = this.trackCoverMemory.get(key);
     if (mem && Date.now() - mem.timestamp < 30 * DAY_MS) return mem.url;
@@ -879,6 +879,7 @@ class SpotifyServiceManager {
     const normSimp = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
     const tTitleSimp = normSimp(cleanTitle);
     const tArtistSimp = normSimp(cleanArtist);
+    const tAlbumSimp = album ? normSimp(album) : "";
 
     let bestCover: string | null = null;
     let bestScore = -1;
@@ -899,8 +900,26 @@ class SpotifyServiceManager {
         ? data.artists.items.map((a: any) => normSimp(String(a?.profile?.name ?? "")))
         : [];
 
-      if (artists.some((a) => a === tArtistSimp)) score += 50;
-      else if (artists.some((a) => tArtistSimp && (a.includes(tArtistSimp) || tArtistSimp.includes(a)))) score += 25;
+      let hasArtistMatch = false;
+      if (artists.some((a) => a === tArtistSimp)) {
+        score += 50;
+        hasArtistMatch = true;
+      } else if (artists.some((a) => tArtistSimp && (a.includes(tArtistSimp) || tArtistSimp.includes(a)))) {
+        score += 25;
+        hasArtistMatch = true;
+      }
+
+      // CRITICAL: If artist was specified, reject any result where the artist doesn't match!
+      // This prevents cross-artist mismatches (e.g. random guy's single "Loser" for Tame Impala).
+      if (tArtistSimp && !hasArtistMatch) continue;
+
+      if (tAlbumSimp) {
+        const albumName = normSimp(String(data?.albumOfTrack?.name ?? ""));
+        if (albumName) {
+          if (albumName === tAlbumSimp) score += 40;
+          else if (albumName.includes(tAlbumSimp) || tAlbumSimp.includes(albumName)) score += 20;
+        }
+      }
 
       const coverUrl = getHighestResSource(data?.albumOfTrack?.coverArt?.sources);
       if (score > bestScore && coverUrl) {
