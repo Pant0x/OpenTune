@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-interface DominantColorResult {
+export interface DominantColorResult {
   rgb: { r: number; g: number; b: number } | null;
   backgroundGradient: string;
   borderColor: string;

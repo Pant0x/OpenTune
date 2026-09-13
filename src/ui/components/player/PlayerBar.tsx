@@ -203,21 +203,13 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
       </AnimatePresence>
 
       <div
-        className="group/playerbar relative flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden"
+        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden"
         onClick={handlePlayerBarClick}
       >
-        {dominantColor.rgb && (
-          <div
-            className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-700 ease-out"
-            style={{
-              background: `linear-gradient(90deg, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.35) 0%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.14) 22%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.03) 45%, transparent 68%)`,
-            }}
-          />
-        )}
-        <div className="relative z-10 grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
+        <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}
           <div className="min-w-0 max-w-full flex items-center justify-start flex-1">
-            <TrackInfo artworkUrl={effectiveArtworkUrl} />
+            <TrackInfo artworkUrl={effectiveArtworkUrl} dominantColor={dominantColor} />
           </div>
 
           {/* Center: Playback Transport + Spotify Centered Seekbar */}

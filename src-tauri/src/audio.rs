@@ -694,6 +694,11 @@ struct Engine {
     fade: Option<Fade>,
 }
 
+/// Standard loudness normalization target: -14 LUFS (Spotify / YouTube Music / Apple Music standard).
+/// Commercial streaming audio masters typically peak hot around -8.5 LUFS (0 dBFS peak).
+/// An attenuation of -5.5 dB (linear factor ~0.531) normalizes output level to -14 LUFS.
+const LUFS_14_NORMALIZATION_GAIN: f32 = 0.531;
+
 impl Engine {
     fn standby(&self) -> usize {
         1 - self.active
@@ -703,7 +708,7 @@ impl Engine {
         if self.muted {
             0.0
         } else {
-            self.volume
+            self.volume * LUFS_14_NORMALIZATION_GAIN
         }
     }
 

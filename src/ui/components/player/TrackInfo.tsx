@@ -11,12 +11,14 @@ import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
+import { useArtworkDominantColor, type DominantColorResult } from "../../hooks/useArtworkDominantColor";
 
 interface TrackInfoProps {
   artworkUrl?: string;
+  dominantColor?: DominantColorResult;
 }
 
-export function TrackInfo({ artworkUrl: propArtworkUrl }: TrackInfoProps = {}) {
+export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDominantColor }: TrackInfoProps = {}) {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
@@ -143,17 +145,28 @@ export function TrackInfo({ artworkUrl: propArtworkUrl }: TrackInfoProps = {}) {
     ?? (currentTrack.artworkUrl
       || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
 
+  const fallbackDominantColor = useArtworkDominantColor(effectiveArtworkUrl);
+  const dominantColor = propDominantColor ?? fallbackDominantColor;
+
   return (
     <div
-      className="flex min-w-0 max-w-full items-center gap-3 py-1"
+      className="relative flex min-w-0 max-w-full items-center gap-3 py-1"
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
+      {dominantColor?.rgb && (
+        <div
+          className="pointer-events-none absolute -left-4 -top-3 -bottom-3 -right-8 z-0 transition-opacity duration-700 ease-out"
+          style={{
+            background: `linear-gradient(90deg, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.38) 0%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.22) 55%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.06) 80%, transparent 100%)`,
+          }}
+        />
+      )}
       {uiState.showAlbumArt && (
         <button
           type="button"
           onClick={() => playerUIStore.openNowPlaying()}
           title="Open Now Playing view"
-          className="group relative size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group relative z-10 size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TrackArtwork
             className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105"
@@ -165,7 +178,7 @@ export function TrackInfo({ artworkUrl: propArtworkUrl }: TrackInfoProps = {}) {
           />
         </button>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-0.5">
         <div
           ref={titleViewportRef}
           className="relative min-w-0 overflow-hidden cursor-pointer"
@@ -282,7 +295,7 @@ export function TrackInfo({ artworkUrl: propArtworkUrl }: TrackInfoProps = {}) {
         <button
           type="button"
           className={cn(
-            "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
+            "group/like relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
             "disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-foreground hover:scale-110",
           )}
