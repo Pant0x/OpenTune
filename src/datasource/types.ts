@@ -33,6 +33,7 @@ export interface Track {
   releaseType?: "album" | "single" | "ep";
   releaseDate?: string;
   year?: string;
+  originalId?: string;
 }
 
 export interface LyricLine {

@@ -438,39 +438,30 @@ export class PlayerController {
     this.pendingSeekTime = null;
     try {
       if (playbackQueue?.length) {
-        const startIndex = playbackQueue.findIndex((track) => track.id === videoId);
+        const startIndex = playbackQueue.findIndex((track) => track.id === videoId || track.originalId === videoId);
         const resolvedStartIndex = startIndex >= 0 ? startIndex : 0;
-        const currentSelectedTrack = playbackQueue[resolvedStartIndex];
 
-        // Capture existing upcoming tracks and manual queue to preserve them
+        // Capture existing manual queue to preserve user-queued tracks
         const existingCurrentIndex = this.queue.currentIndex;
         const existingUpcoming = existingCurrentIndex >= 0 && existingCurrentIndex < this.queue.all.length
           ? this.queue.all.slice(existingCurrentIndex + 1)
           : [];
         const existingManualCount = this.queue.queuedManually;
-
-        // Separate existing upcoming into manual and automatic
         const existingManual = existingUpcoming.slice(0, existingManualCount);
-        const remainingAlbumTracks = playbackQueue.filter((_, idx) => idx !== resolvedStartIndex && _.id !== videoId);
 
         if (existingManual.length > 0) {
-          // If the user had manually queued tracks, keep them right after the new track, followed by the rest of the album
+          // If the user had explicitly queued tracks, place them immediately after the current song,
+          // while keeping the entire album in its proper natural order!
+          const beforeCurrent = playbackQueue.slice(0, resolvedStartIndex + 1);
+          const afterCurrent = playbackQueue.slice(resolvedStartIndex + 1);
           const combinedQueue = [
-            currentSelectedTrack,
+            ...beforeCurrent,
             ...existingManual,
-            ...remainingAlbumTracks,
+            ...afterCurrent,
           ];
-          this.queue.set(combinedQueue, 0, existingManual.length);
-        } else if (existingUpcoming.length > 0 && !this.isPlaylistMode) {
-          // If the user had an active custom queue, preserve it after the current track
-          const filteredExisting = existingUpcoming.filter((t) => t.id !== videoId);
-          const combinedQueue = [
-            currentSelectedTrack,
-            ...filteredExisting,
-            ...remainingAlbumTracks,
-          ];
-          this.queue.set(combinedQueue, 0, filteredExisting.length);
+          this.queue.set(combinedQueue, resolvedStartIndex, existingManual.length);
         } else {
+          // Play album/playlist in its authentic track order with selected track active
           this.queue.set([...playbackQueue], resolvedStartIndex, 0);
         }
 
@@ -482,8 +473,8 @@ export class PlayerController {
       }
       this.setState({ status: "loading", error: null });
 
-      const queuedTrack = playbackQueue?.find((item) => item.id === videoId)
-        ?? this.queue.all.find((item) => item.id === videoId);
+      const queuedTrack = playbackQueue?.find((item) => item.id === videoId || item.originalId === videoId)
+        ?? this.queue.all.find((item) => item.id === videoId || item.originalId === videoId);
       /*
        * Metadata is a refresh, not a prerequisite.
        *
@@ -496,26 +487,33 @@ export class PlayerController {
       const knownTrack = queuedTrack ?? getOfflineTrack(videoId);
       const mergeWithQueued = (fetched: Track): Track => {
         if (!queuedTrack) return sanitizeTrackArtists(fetched);
-        const preferredArtist = (fetched.artist && fetched.artist !== "Unknown artist" && !fetched.artist.includes("EsDeeKid"))
-          ? fetched.artist
-          : queuedTrack.artist;
-        const preferredArtists = (fetched.artists && fetched.artists.length > 0)
-          ? fetched.artists
-          : queuedTrack.artists;
-        const preferredAlbum = fetched.album || queuedTrack.album;
-        const preferredAlbumId = fetched.albumId || queuedTrack.albumId;
+        // Always prioritize the exact album/playlist track title so features (e.g. feat. Don Toliver)
+        // and accurate naming are not overwritten by a generic YouTube title.
+        const preferredTitle = queuedTrack.title?.trim() || fetched.title;
+        const preferredArtist = (queuedTrack.artist && queuedTrack.artist !== "Unknown artist" && !queuedTrack.artist.includes("EsDeeKid"))
+          ? queuedTrack.artist
+          : (fetched.artist && fetched.artist !== "Unknown artist" && !fetched.artist.includes("EsDeeKid") ? fetched.artist : queuedTrack.artist);
+        const preferredArtists = (queuedTrack.artists && queuedTrack.artists.length > 0)
+          ? queuedTrack.artists
+          : (fetched.artists && fetched.artists.length > 0 ? fetched.artists : queuedTrack.artists);
+        const preferredAlbum = queuedTrack.album || fetched.album;
+        const preferredAlbumId = queuedTrack.albumId || fetched.albumId;
+        const preferredArtworkUrl = queuedTrack.artworkUrl || fetched.artworkUrl;
 
         const merged: Track = {
-          ...queuedTrack,
           ...fetched,
+          ...queuedTrack,
+          id: fetched.id || queuedTrack.id,
+          originalId: queuedTrack.originalId || queuedTrack.id,
+          title: preferredTitle,
           durationSec: fetched.durationSec ?? queuedTrack.durationSec,
-          artworkUrl: queuedTrack.artworkUrl ?? fetched.artworkUrl,
+          artworkUrl: preferredArtworkUrl,
           artists: preferredArtists,
           artist: preferredArtist,
           album: preferredAlbum,
           albumId: preferredAlbumId,
-          year: fetched.year ?? queuedTrack.year,
-          releaseDate: fetched.releaseDate ?? queuedTrack.releaseDate,
+          year: queuedTrack.year ?? fetched.year,
+          releaseDate: queuedTrack.releaseDate ?? fetched.releaseDate,
           viewCount: fetched.viewCount ?? queuedTrack.viewCount,
           viewCountText: fetched.viewCountText ?? queuedTrack.viewCountText,
         };
@@ -648,17 +646,28 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
             if (bestMatch) {
               track = {
                 ...bestMatch,
+                id: bestMatch.id,
+                originalId: videoId,
                 title: knownTrack.title || bestMatch.title,
                 artist: knownTrack.artist || bestMatch.artist,
+                artists: knownTrack.artists || bestMatch.artists,
+                album: knownTrack.album || bestMatch.album,
+                albumId: knownTrack.albumId || bestMatch.albumId,
                 artworkUrl: knownTrack.artworkUrl || bestMatch.artworkUrl,
                 durationSec: knownTrack.durationSec || bestMatch.durationSec,
+                year: knownTrack.year || bestMatch.year,
+                releaseDate: knownTrack.releaseDate || bestMatch.releaseDate,
               };
               spotifyToYoutubeTrackCache.set(videoId, track);
-              // Update queue so subsequent checks or replays use the resolved video ID
-              const qItem = this.queue.all.find((item) => item.id === videoId);
+              // Update queue so subsequent checks or replays use the resolved video ID while preserving original ID
+              const qItem = this.queue.all.find((item) => item.id === videoId || item.originalId === videoId);
               if (qItem) {
                 qItem.id = bestMatch.id;
+                qItem.originalId = videoId;
                 qItem.source = bestMatch.source || "youtube";
+                qItem.title = track.title;
+                qItem.album = track.album;
+                qItem.albumId = track.albumId;
               }
             } else {
               track = knownTrack;

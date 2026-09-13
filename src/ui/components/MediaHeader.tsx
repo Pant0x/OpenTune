@@ -210,6 +210,7 @@ export function MediaHeader({
               className="size-full object-cover"
               artworkUrl={artworkUrl}
               iconSize={72}
+              size={800}
               loading="eager"
               variant={artworkVariant}
             />

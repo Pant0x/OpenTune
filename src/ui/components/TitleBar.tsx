@@ -20,6 +20,7 @@ import { AccountAvatar, AccountSwitcher, GoogleAccountSwitcher } from "./Account
 import { DownloadsPanel } from "./DownloadsPanel";
 import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { ZoomMeter } from "./ZoomMeter";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
@@ -244,6 +245,7 @@ export function TitleBar({
           toggle rather than only a setting buried in a panel. Dimmed when off so the current
           state reads at a glance without a label.
         */}
+        <ZoomMeter />
         {notificationsVisible && (
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
         )}

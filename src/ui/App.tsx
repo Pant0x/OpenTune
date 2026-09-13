@@ -5,6 +5,7 @@ import type { Album, Artist, Playlist, SearchResults, Track } from "../datasourc
 import { looksLikeYouTubeLink } from "../datasource/youtube/links";
 import { useDisableContextMenu } from "./hooks/useDisableContextMenu";
 import { useZoom } from "./hooks/useZoom";
+import { ZoomHudOverlay } from "./components/ZoomMeter";
 import { HomePage } from "./pages/HomePage";
 
 /*
@@ -1507,6 +1508,8 @@ export default function App() {
           <NowPlayingFullscreenView onClose={() => playerUIStore.setNowPlayingFullscreen(false)} />
         </Suspense>
       )}
+
+      <ZoomHudOverlay />
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}

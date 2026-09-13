@@ -903,6 +903,7 @@ export function ArtistView({
               className="size-full object-cover"
               artworkUrl={artistAvatar}
               iconSize={72}
+              size={800}
               loading="eager"
               variant="artist"
             />

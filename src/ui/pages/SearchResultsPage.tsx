@@ -337,7 +337,7 @@ export function SearchResultsPage({
                             ? "size-24 rounded-full"
                             : "size-24 rounded-xl"
                         )}
-                        size={topResult.kind === "track" ? 80 : 96}
+                        size={400}
                         preferProxy
                         artworkUrl={
                           topResult.item.artworkUrl ||

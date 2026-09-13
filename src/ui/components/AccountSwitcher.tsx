@@ -36,10 +36,17 @@ export function AccountAvatar({
   // for every account shown in it afterwards.
   useEffect(() => setFailed(false), [artworkUrl]);
 
-  if (artworkUrl && !failed) {
+  const highResUrl = artworkUrl
+    ? artworkUrl
+        .replace(/=s\d+(-c.*)?$/, "=s320-c-k-c0x00ffffff-no-rj")
+        .replace(/=w\d+-h\d+(-.*)?$/, "=s320-c-k-c0x00ffffff-no-rj")
+        .replace(/ab6761610000(?:f178|5174)/, "ab6761610000e5eb")
+    : undefined;
+
+  if (highResUrl && !failed) {
     return (
       <img
-        src={artworkUrl}
+        src={highResUrl}
         alt=""
         className={cn("shrink-0 rounded-full object-cover", className)}
         onError={() => setFailed(true)}

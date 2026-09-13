@@ -112,11 +112,15 @@ function withYoutubeSize(url: string, size: number): string | null {
  * One extra bucket is the whole cost. It was chosen to catch both card widths at 2× rather than
  * splitting them across two new entries, which is what would actually fragment the cache.
  */
-function toHighResSpotifyUrl(url: string): string | null {
+export function toHighResSpotifyUrl(url: string): string | null {
   if (!url.includes("i.scdn.co/image/")) return null;
   // ab67616d00004851 (64px) or ab67616d00001e02 (300px) -> ab67616d0000b273 (640px full res)
   if (url.includes("ab67616d00004851") || url.includes("ab67616d00001e02")) {
     return url.replace(/ab67616d0000(?:4851|1e02)/, "ab67616d0000b273");
+  }
+  // ab6761610000f178 (160px) or ab67616100005174 (320px) -> ab6761610000e5eb (640px full res artist avatar)
+  if (url.includes("ab6761610000f178") || url.includes("ab67616100005174")) {
+    return url.replace(/ab6761610000(?:f178|5174)/, "ab6761610000e5eb");
   }
   return null;
 }
@@ -151,10 +155,22 @@ export function getArtworkUrlCandidates(url?: string, size?: number | null): str
     candidates.push(spotifyHighRes);
   }
 
-  // 2. If a specific size was requested for Google/YT user content, try that size first;
-  // otherwise, the original URL is the primary candidate
+  // 2. If a specific size was requested for Google/YT user content, try that size first.
+  // If no size was specified and the URL carries a tiny Google thumbnail (<500px),
+  // prioritize high-res rewritten candidates (1200px / 800px) so hero, avatar, and lightbox
+  // views are crystal-clear and never pixelated.
+  const isGoogleCdn = /googleusercontent\.com|ggpht\.com|yt3\.ggpht\.com|yt3\.googleusercontent\.com/.test(normalized);
+  const smallGoogleMatch = isGoogleCdn && normalized.match(/(?:=w(\d+)-h(\d+)|=s(\d+))/);
+  const googleDimension = smallGoogleMatch
+    ? Math.max(Number(smallGoogleMatch[1] || 0), Number(smallGoogleMatch[2] || 0), Number(smallGoogleMatch[3] || 0))
+    : 0;
+
   if (size != null) {
     candidates.push(withYoutubeSize(normalized, size));
+  } else if (isGoogleCdn && googleDimension > 0 && googleDimension < 500) {
+    candidates.push(withYoutubeSize(normalized, 1200));
+    candidates.push(withYoutubeSize(normalized, 800));
+    candidates.push(normalized);
   } else {
     candidates.push(normalized);
   }

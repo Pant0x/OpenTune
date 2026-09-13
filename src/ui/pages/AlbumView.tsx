@@ -746,12 +746,26 @@ export function AlbumView({
           ) : (
             <div className="flex flex-col gap-0.5">
               {visibleTracks.map((track, index) => {
+                const cleanT = (s: string) =>
+                  s
+                    .replace(/\s*(?:\(|\[)(?:feat\.?|ft\.?|with|prod\.?|explicit|clean|remix|version)[^()\[\]]*(?:\)|\])/gi, "")
+                    .replace(/[^a-z0-9]/gi, "")
+                    .toLowerCase()
+                    .trim();
+
                 const isCurrent = Boolean(
-                  (currentTrackId !== null && track.id === currentTrackId) ||
-                  (currentTrack?.id && track.id === currentTrack.id) ||
-                  (currentTrack?.title &&
-                    track.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase() &&
-                    (!track.artist || !currentTrack.artist || track.artist.trim().toLowerCase() === currentTrack.artist.trim().toLowerCase()))
+                  (currentTrackId !== null && (track.id === currentTrackId || track.originalId === currentTrackId)) ||
+                  (currentTrack?.id && (track.id === currentTrack.id || track.id === currentTrack.originalId || (track.originalId && track.originalId === currentTrack.id))) ||
+                  (currentTrack?.title && (
+                    track.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase() ||
+                    (cleanT(track.title).length > 2 && cleanT(track.title) === cleanT(currentTrack.title))
+                  ) && (
+                    !track.artist || !currentTrack.artist ||
+                    track.artist.trim().toLowerCase() === currentTrack.artist.trim().toLowerCase() ||
+                    cleanT(track.artist).includes(cleanT(currentTrack.artist)) ||
+                    cleanT(currentTrack.artist).includes(cleanT(track.artist))
+                  )) ||
+                  (currentTrack?.albumId && album?.id && currentTrack.albumId === album.id && cleanT(track.title) === cleanT(currentTrack.title || ""))
                 );
                 const viewFormatted = formatCompactNumber(track.viewCount ?? track.viewCountText)
                   || (typeof track.viewCountText === "string" ? track.viewCountText.replace(/\s*plays?/i, "").trim() : "");

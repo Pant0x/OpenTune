@@ -115,7 +115,11 @@ export function getHighestResSource(sources?: Array<{ url?: string; width?: numb
   const valid = sources.filter((s): s is { url: string; width?: number; height?: number } => typeof s?.url === "string" && s.url.length > 0);
   if (valid.length === 0) return undefined;
   const sorted = [...valid].sort((a, b) => ((b.width ?? 0) * (b.height ?? 0)) - ((a.width ?? 0) * (a.height ?? 0)));
-  return sorted[0]?.url;
+  const url = sorted[0]?.url;
+  if (!url) return undefined;
+  return url
+    .replace(/ab67616d0000(?:4851|1e02)/, "ab67616d0000b273")
+    .replace(/ab6761610000(?:f178|5174)/, "ab6761610000e5eb");
 }
 
 /**
