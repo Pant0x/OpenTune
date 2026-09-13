@@ -92,6 +92,7 @@ interface PopularSongItem {
 
 const artistPageMemory = new Map<string, ArtistPage>();
 const artistOverviewMemory = new Map<string, SpotifyArtistOverview>();
+const artistDiscographyMemory = new Map<string, SpotifyRelease[]>();
 
 const FOLLOWED_ARTISTS_STORAGE_KEY = "amber_followed_artists";
 
@@ -199,9 +200,10 @@ export function ArtistView({
 
     const remembered = artistPageMemory.get(artist.id) ?? null;
     const rememberedOverview = artistOverviewMemory.get(artist.name.toLowerCase()) ?? null;
+    const rememberedReleases = artistDiscographyMemory.get(artist.name.toLowerCase()) ?? [];
     setPage(remembered);
     setSpotifyOverview(rememberedOverview);
-    setSpotifyReleases([]);
+    setSpotifyReleases(rememberedReleases);
     setIsLoading(!remembered);
     setError(null);
     setFilter("all");
@@ -237,8 +239,9 @@ export function ArtistView({
         if (active) setIsLoading(false);
       });
 
-    // Only fetch Spotify Overview, Discography & Playlists for official music artists (not creator channels)
+    // Only fetch Spotify Overview & Discography for official music artists (not creator channels)
     const isChannel = Boolean(artist.isCreator);
+    let searchTimer: number | null = null;
     if (!isChannel) {
       const artistName = artist.name;
       void SpotifyService.getArtistOverview(artistName)
@@ -256,50 +259,37 @@ export function ArtistView({
         .then((releases) => {
           if (active && releases.length > 0) {
             setSpotifyReleases(releases);
+            artistDiscographyMemory.set(artistName.toLowerCase(), releases);
           }
         })
         .catch((err) => {
           logInternalError("Spotify discography fetch failed", err);
         });
 
-      // Search for official playlists and community playlists
-      searchController.search(`Featuring ${artistName}`).then((res) => {
-        if (active && res.playlists?.length) {
-          setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
-        }
-      }).catch(() => {});
+      // Defer community playlist searches so the main artist page and songs load instantly without blocking the network
+      searchTimer = window.setTimeout(() => {
+        if (!active) return;
+        searchController.search(`Featuring ${artistName}`).then((res) => {
+          if (active && res.playlists?.length) {
+            setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists.slice(0, 8)]);
+          }
+        }).catch(() => {});
 
-    searchController.search(`Presenting ${artistName}`).then((res) => {
-      if (active && res.playlists?.length) {
-        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
-      }
-    }).catch(() => {});
-
-    searchController.search(`${artistName} Hits`).then((res) => {
-      if (active && res.playlists?.length) {
-        setExtraFeaturingPlaylists((prev) => [...prev, ...res.playlists]);
-      }
-    }).catch(() => {});
-
-    searchController.search(`${artistName} playlist`).then((res) => {
-      if (active && res.playlists?.length) {
-        setExtraDiscoveredOnPlaylists((prev) => [...prev, ...res.playlists]);
-      }
-    }).catch(() => {});
-
-    searchController.search(`feat. ${artistName}`).then((res) => {
-      if (active && res.albums?.length) {
-        setExtraAppearsOn((prev) => {
-          const ids = new Set(prev.map((a) => a.id));
-          const additions = res.albums.filter((a) => !ids.has(a.id));
-          return [...prev, ...additions];
-        });
-      }
-    }).catch(() => {});
+        searchController.search(`feat. ${artistName}`).then((res) => {
+          if (active && res.albums?.length) {
+            setExtraAppearsOn((prev) => {
+              const ids = new Set(prev.map((a) => a.id));
+              const additions = res.albums.filter((a) => !ids.has(a.id));
+              return [...prev, ...additions.slice(0, 8)];
+            });
+          }
+        }).catch(() => {});
+      }, 1000);
     }
 
     return () => {
       active = false;
+      if (searchTimer !== null) window.clearTimeout(searchTimer);
     };
   }, [artist, libraryController]);
 

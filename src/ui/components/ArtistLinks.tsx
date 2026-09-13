@@ -153,18 +153,39 @@ export function parseTrackArtistsWithFeatures(
     );
   }
 
-  const existingArtists = (
-    artists && artists.length > 0
-      ? [...artists]
-      : artistFallback
-          .replace(featRegex, "")
-          .split(/,\s*|\s*&\s*|\s+and\s+|•/i)
-          .map(cleanArtistName)
-          .filter(isValidArtistName)
-          .map((name) => ({ id: "", name }))
-  )
-    .map((a) => ({ ...a, name: cleanArtistName(a.name) }))
-    .filter((a) => isValidArtistName(a.name));
+  const rawArtistsList: ArtistReference[] = [];
+  const baseList = (artists && artists.length > 0)
+    ? artists
+    : [{ id: "", name: artistFallback }];
+
+  for (const item of baseList) {
+    if (!item?.name) continue;
+    const withoutFeat = item.name.replace(featRegex, "").trim();
+    // Split on comma, ampersand, or "and" if separating distinct artists (e.g. "Metro Boomin & Future")
+    const subNames = withoutFeat
+      .split(/,\s*|\s+&\s+|\s+and\s+|•/i)
+      .map(cleanArtistName)
+      .filter(isValidArtistName);
+
+    if (subNames.length > 1) {
+      subNames.forEach((sName, idx) => {
+        rawArtistsList.push({
+          id: idx === 0 ? item.id : "",
+          name: sName,
+        });
+      });
+    } else {
+      const cleaned = cleanArtistName(withoutFeat);
+      if (isValidArtistName(cleaned)) {
+        rawArtistsList.push({
+          id: item.id,
+          name: cleaned,
+        });
+      }
+    }
+  }
+
+  const existingArtists = rawArtistsList;
 
   const mainArtists: ArtistReference[] = [];
   const featuredArtists: ArtistReference[] = [];

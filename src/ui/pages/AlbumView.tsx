@@ -133,8 +133,12 @@ export function AlbumView({
         ? inferredArtistFromTitle
         : trackArtist;
 
-  const resolvedArtistName = isInvalidArtist(rawArtistName) ? undefined : rawArtistName;
-  const albumMainArtistId = (album?.artists?.[0]?.name && !isInvalidArtist(album.artists[0].name) && album.artists[0].name === resolvedArtistName)
+  // For solo artist profile searches, strip joint features/collaborators from search query
+  const primaryArtist = rawArtistName ? rawArtistName.split(/,\s*|\s+&\s+|\s+and\s+|•/i)[0]?.trim() : undefined;
+  const resolvedArtistName = primaryArtist && !isInvalidArtist(primaryArtist)
+    ? primaryArtist
+    : (isInvalidArtist(rawArtistName) ? undefined : rawArtistName);
+  const albumMainArtistId = (album?.artists?.[0]?.name && !isInvalidArtist(album.artists[0].name) && (album.artists[0].name === resolvedArtistName || album.artists[0].name === rawArtistName))
     ? album.artists[0].id
     : undefined;
   const resolvedArtistId = albumMainArtistId || undefined;

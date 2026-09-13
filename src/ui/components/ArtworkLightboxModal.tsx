@@ -22,7 +22,6 @@ export function ArtworkLightboxModal({
   artworkUrl,
 }: ArtworkLightboxModalProps) {
   const [toast, setToast] = useState<string | null>(null);
-  const [backdropFailed, setBackdropFailed] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
 
@@ -39,10 +38,6 @@ export function ArtworkLightboxModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (isOpen) setBackdropFailed(false);
-  }, [isOpen, artworkUrl]);
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -73,20 +68,6 @@ export function ArtworkLightboxModal({
       transition={{ duration: reducedMotion ? 0 : 0.2 }}
       className="fixed inset-0 z-[300] flex items-center justify-center overflow-hidden bg-black/80 p-6 select-none cursor-pointer"
     >
-      {/* Ambient wash: the artwork itself, blurred to fill the screen. Dropped if it 404s. */}
-      {!backdropFailed && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <img
-            src={artworkUrl}
-            alt=""
-            referrerPolicy="no-referrer"
-            onError={() => setBackdropFailed(true)}
-            className="h-full w-full scale-125 object-cover opacity-60 blur-3xl saturate-150"
-          />
-          <div className="absolute inset-0 bg-black/55" />
-        </div>
-      )}
-
       {/* Top action buttons */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <button
@@ -111,13 +92,13 @@ export function ArtworkLightboxModal({
 
       <motion.div
         onClick={(e) => e.stopPropagation()}
-        initial={reducedMotion ? false : { scale: 0.9, opacity: 0 }}
+        initial={reducedMotion ? false : { scale: 0.92, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
         className={cn(
           "relative z-10 flex items-center justify-center overflow-hidden rounded-2xl",
-          "size-[min(65vh,65vw,460px)] sm:size-[420px] md:size-[460px]",
-          "shadow-[0_40px_120px_rgba(0,0,0,0.85)] ring-1 ring-white/15 bg-black/40 cursor-default",
+          "size-[min(76vh,76vw,540px)] sm:size-[480px] md:size-[540px]",
+          "shadow-[0_25px_80px_rgba(0,0,0,0.95)] ring-1 ring-white/20 bg-zinc-950 cursor-default",
         )}
       >
         {/*

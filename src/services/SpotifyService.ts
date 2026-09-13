@@ -158,6 +158,7 @@ class SpotifyServiceManager {
   private artistOverviewCache = new Map<string, { data: SpotifyArtistOverview; timestamp: number }>();
   private discographyCache = new Map<string, { data: SpotifyRelease[]; timestamp: number }>();
   private playlistCache = new Map<string, { data: SpotifyPlaylist[]; timestamp: number }>();
+  private artistUriCache = new Map<string, string>();
 
   constructor() {
     if (typeof localStorage !== "undefined") {
@@ -279,6 +280,19 @@ class SpotifyServiceManager {
     const cleanName = artistName.trim().toLowerCase();
     if (!cleanName) return null;
 
+    if (this.artistUriCache.has(cleanName)) {
+      return this.artistUriCache.get(cleanName)!;
+    }
+    if (typeof localStorage !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`sp_uri_${cleanName}`);
+        if (cached) {
+          this.artistUriCache.set(cleanName, cached);
+          return cached;
+        }
+      } catch {}
+    }
+
     const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
       searchTerm: artistName,
       offset: 0,
@@ -291,12 +305,22 @@ class SpotifyServiceManager {
     if (Array.isArray(artists) && artists.length > 0) {
       const cleanSimp = cleanName.replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
 
+      const saveMatch = (uri: string) => {
+        this.artistUriCache.set(cleanName, uri);
+        if (typeof localStorage !== "undefined") {
+          try {
+            localStorage.setItem(`sp_uri_${cleanName}`, uri);
+          } catch {}
+        }
+        return uri;
+      };
+
       // 1. Exact match (case-insensitive)
       const exactMatch = artists.find((a: any) => {
         const aName = a?.data?.profile?.name?.toLowerCase()?.trim();
         return aName === cleanName;
       });
-      if (exactMatch) return exactMatch?.data?.uri || null;
+      if (exactMatch?.data?.uri) return saveMatch(exactMatch.data.uri);
 
       // 2. Simplified match (ignoring hyphens, punctuation, spaces, e.g. "lege-cy" == "legecy")
       const simpMatch = artists.find((a: any) => {
@@ -304,7 +328,7 @@ class SpotifyServiceManager {
         const aSimp = aName.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
         return aSimp && aSimp === cleanSimp;
       });
-      if (simpMatch) return simpMatch?.data?.uri || null;
+      if (simpMatch?.data?.uri) return saveMatch(simpMatch.data.uri);
 
       // 3. Close alias (e.g. "The Weeknd" vs "Weeknd") - must be closely related
       const closeMatch = artists.find((a: any) => {
@@ -314,7 +338,7 @@ class SpotifyServiceManager {
         return stripThe(aName) === stripThe(cleanName)
           || (aSimp.length >= 6 && cleanSimp.length >= 6 && (aSimp.startsWith(cleanSimp) || cleanSimp.startsWith(aSimp)));
       });
-      if (closeMatch) return closeMatch?.data?.uri || null;
+      if (closeMatch?.data?.uri) return saveMatch(closeMatch.data.uri);
 
       return null;
     }

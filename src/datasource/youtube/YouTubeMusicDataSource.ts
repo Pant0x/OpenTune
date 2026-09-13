@@ -6761,6 +6761,15 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const key = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
     if (this.topicSongCache.has(key)) return this.topicSongCache.get(key)!;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`yt_topic_${key}`);
+        if (cached) {
+          this.topicSongCache.set(key, cached);
+          return cached;
+        }
+      } catch {}
+    }
 
     // 1. First priority: Search YouTube Music for song items (official label releases)
     try {
@@ -6851,6 +6860,9 @@ export class YouTubeMusicDataSource extends DataSource {
           score: highestScore,
         });
         this.topicSongCache.set(key, bestSongId);
+        if (typeof localStorage !== "undefined") {
+          try { localStorage.setItem(`yt_topic_${key}`, bestSongId); } catch {}
+        }
         return bestSongId;
       }
     } catch (e) {
@@ -6890,6 +6902,9 @@ export class YouTubeMusicDataSource extends DataSource {
             author: vAuthor,
           });
           this.topicSongCache.set(key, vId);
+          if (typeof localStorage !== "undefined") {
+            try { localStorage.setItem(`yt_topic_${key}`, vId); } catch {}
+          }
           return vId;
         }
       }
@@ -6902,6 +6917,9 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     this.topicSongCache.set(key, currentId);
+    if (typeof localStorage !== "undefined") {
+      try { localStorage.setItem(`yt_topic_${key}`, currentId); } catch {}
+    }
     return currentId;
   }
 
@@ -6921,7 +6939,9 @@ export class YouTubeMusicDataSource extends DataSource {
       !track.artist ||
       track.artist === "Unknown artist" ||
       track.artist.toLowerCase().endsWith("- topic") ||
-      this.isSpecialAudioVersion(track.title)
+      this.isSpecialAudioVersion(track.title) ||
+      // Official album tracks already point directly to the authentic studio release
+      ((Boolean(track.albumId) || Boolean(track.album)) && isVideoId(track.id))
     ) {
       return track.id;
     }

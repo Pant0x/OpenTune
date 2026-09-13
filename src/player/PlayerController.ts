@@ -615,12 +615,26 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
       let track: Track;
       if (videoId.startsWith("spotify:") && knownTrack) {
-        const cached = spotifyToYoutubeTrackCache.get(videoId);
+        let cached = spotifyToYoutubeTrackCache.get(videoId);
+        if (!cached && typeof localStorage !== "undefined") {
+          try {
+            const raw = localStorage.getItem(`sp_yt_v2_${videoId}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && parsed.id) {
+                cached = parsed;
+                spotifyToYoutubeTrackCache.set(videoId, parsed);
+              }
+            }
+          } catch {}
+        }
+
         if (cached) {
           track = cached;
-          const qItem = this.queue.all.find((item) => item.id === videoId);
+          const qItem = this.queue.all.find((item) => item.id === videoId || item.originalId === videoId);
           if (qItem) {
             qItem.id = cached.id;
+            qItem.originalId = videoId;
             qItem.source = cached.source || "youtube";
           }
         } else {
@@ -659,6 +673,11 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
                 releaseDate: knownTrack.releaseDate || bestMatch.releaseDate,
               };
               spotifyToYoutubeTrackCache.set(videoId, track);
+              if (typeof localStorage !== "undefined") {
+                try {
+                  localStorage.setItem(`sp_yt_v2_${videoId}`, JSON.stringify(track));
+                } catch {}
+              }
               // Update queue so subsequent checks or replays use the resolved video ID while preserving original ID
               const qItem = this.queue.all.find((item) => item.id === videoId || item.originalId === videoId);
               if (qItem) {

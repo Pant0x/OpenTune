@@ -20,7 +20,6 @@ import { AccountAvatar, AccountSwitcher, GoogleAccountSwitcher } from "./Account
 import { DownloadsPanel } from "./DownloadsPanel";
 import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
-import { ZoomMeter } from "./ZoomMeter";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
 import appIcon from "../../../assets/img/logo2-noBG.png";
@@ -237,15 +236,7 @@ export function TitleBar({
         chrome the window buttons disappear but these still belong here.
       */}
       <div className="flex shrink-0 items-center gap-1 pl-2 pr-1" aria-label="App actions">
-        {/*
-          Integration toggles.
-
-          Both share what the user is listening to with a third party, which is exactly the kind
-          of thing worth being able to stop in one click rather than three — hence a toolbar
-          toggle rather than only a setting buried in a panel. Dimmed when off so the current
-          state reads at a glance without a label.
-        */}
-        <ZoomMeter />
+        {/* Integration toggles */}
         {notificationsVisible && (
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
         )}
