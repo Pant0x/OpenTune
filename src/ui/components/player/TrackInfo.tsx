@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { Marquee } from "@/components/motion/marquee";
 import { cn } from "@/lib/utils";
-import { CheckActiveIcon, PlusIcon } from "@/ui/icons";
+import { HeartActiveIcon, HeartBrokenIcon, HeartIcon } from "@/ui/icons";
 import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
@@ -11,9 +11,12 @@ import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
-import { useArtworkDominantColor } from "../../hooks/useArtworkDominantColor";
 
-export function TrackInfo() {
+interface TrackInfoProps {
+  artworkUrl?: string;
+}
+
+export function TrackInfo({ artworkUrl: propArtworkUrl }: TrackInfoProps = {}) {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
@@ -135,19 +138,14 @@ export function TrackInfo() {
     }
   };
 
-  const effectiveArtworkUrl = spotifyCover
+  const effectiveArtworkUrl = propArtworkUrl
+    ?? spotifyCover
     ?? (currentTrack.artworkUrl
       || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
-  const dominantColor = useArtworkDominantColor(effectiveArtworkUrl);
 
   return (
     <div
-      className="flex min-w-0 max-w-full items-center gap-3 rounded-xl p-1.5 pr-3 border transition-all duration-300 backdrop-blur-md"
-      style={{
-        background: dominantColor.backgroundGradient,
-        borderColor: dominantColor.borderColor,
-        boxShadow: dominantColor.boxShadow,
-      }}
+      className="flex min-w-0 max-w-full items-center gap-3 py-1"
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
       {uiState.showAlbumArt && (
@@ -284,35 +282,45 @@ export function TrackInfo() {
         <button
           type="button"
           className={cn(
-            "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
+            "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
             "disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-white hover:scale-110",
+            isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-foreground hover:scale-110",
           )}
           onClick={() => void toggleTrackLike(currentTrack)}
           disabled={isLikeStatusLoading || isLikePending}
           aria-label={
             isLikeStatusLoading || isLikePending
-              ? "Loading save status"
+              ? "Loading like status"
               : isLiked
-                ? "Remove from Your Library"
+                ? "Remove like"
                 : libraryState.status === "signed-out"
-                  ? "Sign in to save"
-                  : "Save to Your Library"
+                  ? "Sign in to like"
+                  : "Like song"
           }
           title={
             libraryState.status === "signed-out"
-              ? "Sign in to save"
+              ? "Sign in to like"
               : isLiked
-                ? "Saved to Your Library"
-                : "Save to Your Library"
+                ? "Remove like"
+                : "Like song"
           }
         >
           {isLikeStatusLoading || isLikePending ? (
             <SpinnerSteps size={18} color="currentColor" />
           ) : isLiked ? (
-            <CheckActiveIcon size={20} className="text-primary" />
+            // Hovering a liked track previews the un-like action.
+            <span className="relative grid size-[18px] place-items-center" aria-hidden="true">
+              <HeartActiveIcon
+                size={18}
+                className="absolute transition-opacity group-hover/like:opacity-0"
+              />
+              <HeartBrokenIcon
+                size={18}
+                className="absolute opacity-0 transition-opacity group-hover/like:opacity-100"
+              />
+            </span>
           ) : (
-            <PlusIcon size={20} />
+            <HeartIcon size={18} />
           )}
         </button>
       )}

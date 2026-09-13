@@ -5,6 +5,10 @@ import { cn } from "@/lib/utils";
 import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
 import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
+import { usePlayerSelector } from "../../../player/playerStore";
+import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
+import { SpotifyService } from "../../../services/SpotifyService";
+import { useArtworkDominantColor } from "../../hooks/useArtworkDominantColor";
 import { TrackInfo } from "./TrackInfo";
 import { PlaybackControls } from "./PlaybackControls";
 import { SeekBar } from "./SeekBar";
@@ -36,6 +40,29 @@ const CONNECTION_CHECK_URLS = [
 
 export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnectionRestored,handlePlayerBarClick }: PlayerBarProps) {
   const uiState = usePlayerUIState();
+  const currentTrack = usePlayerSelector((player) => player.currentTrack);
+  const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSpotifyCover(null);
+    if (!currentTrack || currentTrack.source === "local" || !currentTrack.title) return;
+    let active = true;
+    void SpotifyService.getTrackCoverUrl(currentTrack.title, currentTrack.artist, currentTrack.album)
+      .then((url) => {
+        if (active && url) setSpotifyCover(url);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.album]);
+
+  const effectiveArtworkUrl = spotifyCover
+    ?? (currentTrack?.artworkUrl
+      || (currentTrack?.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
+
+  const dominantColor = useArtworkDominantColor(effectiveArtworkUrl);
+
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
  
@@ -176,13 +203,21 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
       </AnimatePresence>
 
       <div
-        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px]"
+        className="group/playerbar relative flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden"
         onClick={handlePlayerBarClick}
       >
-        <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
+        {dominantColor.rgb && (
+          <div
+            className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-700 ease-out"
+            style={{
+              background: `linear-gradient(90deg, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.35) 0%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.14) 22%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.03) 45%, transparent 68%)`,
+            }}
+          />
+        )}
+        <div className="relative z-10 grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}
           <div className="min-w-0 max-w-full flex items-center justify-start flex-1">
-            <TrackInfo />
+            <TrackInfo artworkUrl={effectiveArtworkUrl} />
           </div>
 
           {/* Center: Playback Transport + Spotify Centered Seekbar */}
