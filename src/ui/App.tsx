@@ -1131,8 +1131,17 @@ export default function App() {
         return;
       }
 
+      const isHardwarePlayPause =
+        event.code === "MediaPlayPause" || event.key === "MediaPlayPause";
+      const isHardwareNext =
+        event.code === "MediaTrackNext" || event.key === "MediaTrackNext";
+      const isHardwarePrevious =
+        event.code === "MediaTrackPrevious" || event.key === "MediaTrackPrevious";
+      const isHardwareStop =
+        event.code === "MediaStop" || event.key === "MediaStop";
+
       if (
-        eventMatchesShortcut(event, keyboardShortcuts.playPause)
+        (isHardwarePlayPause || eventMatchesShortcut(event, keyboardShortcuts.playPause))
         && playerState.currentTrack
         && playerState.status !== "loading"
       ) {
@@ -1142,6 +1151,17 @@ export default function App() {
           event.target.blur();
         }
         void playerController.togglePlayPause();
+        return;
+      }
+
+      if (
+        isHardwareStop
+        && playerState.currentTrack
+        && playerState.status !== "loading"
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        void playerController.pause();
         return;
       }
 
@@ -1156,7 +1176,7 @@ export default function App() {
       }
 
       if (
-        eventMatchesShortcut(event, keyboardShortcuts.previousTrack)
+        (isHardwarePrevious || eventMatchesShortcut(event, keyboardShortcuts.previousTrack))
         && playerState.currentTrack
         && playerState.status !== "loading"
       ) {
@@ -1166,7 +1186,7 @@ export default function App() {
       }
 
       if (
-        eventMatchesShortcut(event, keyboardShortcuts.nextTrack)
+        (isHardwareNext || eventMatchesShortcut(event, keyboardShortcuts.nextTrack))
         && playerState.currentTrack
         && playerState.status !== "loading"
       ) {

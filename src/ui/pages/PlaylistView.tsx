@@ -677,14 +677,12 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     };
   }, [canReorderTracks, libraryController, playlist]);
 
-  if (!playlist) return null;
-
   const playPlaylistTrack = async (track: Track) => {
     const started = await playerController.playTrackById(track.id, visibleTracks);
-    if (started) markPlaylistPlayed(playlist.id);
+    if (started && playlist) markPlaylistPlayed(playlist.id);
   };
 
-  const isLikedSongs = isLikedSongsId(playlist.id, playlist.kind);
+  const isLikedSongs = Boolean(playlist && isLikedSongsId(playlist.id, playlist.kind));
 
   /*
    * O(1) membership test instead of scanning the track array on every render — these lists
@@ -710,7 +708,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     if (!firstTrack) return;
 
     const started = await playerController.playTrackById(firstTrack.id, enrichedTracks);
-    if (started) markPlaylistPlayed(playlist.id);
+    if (started && playlist) markPlaylistPlayed(playlist.id);
   };
 
   const playInLoop = async () => {
@@ -720,7 +718,7 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     // Set before starting, so a very short first track cannot end before the mode applies.
     playerController.setPlaybackOrderMode("repeat-all");
     const started = await playerController.playTrackById(firstTrack.id, enrichedTracks);
-    if (started) markPlaylistPlayed(playlist.id);
+    if (started && playlist) markPlaylistPlayed(playlist.id);
   };
 
   /*
@@ -737,12 +735,13 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
     const started = await playerController.playTrackById(firstTrack.id, enrichedTracks, false, true);
     if (!started) return;
     playerController.setShuffleEnabled(true);
-    markPlaylistPlayed(playlist.id);
+    if (playlist) markPlaylistPlayed(playlist.id);
   };
 
   const selection = useTrackSelection(visibleTracks);
 
   const removeTrackFromList = (removedTrack: Track) => {
+    if (!playlist) return;
     setTracks((current) => current.filter((item) =>
       playlist.kind === "liked-songs" || playlist.id === "LM"
         ? item.id !== removedTrack.id
@@ -776,6 +775,8 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
       isDragging: false,
     };
   };
+
+  if (!playlist) return null;
 
   return (
     <div className="flex flex-col gap-8">

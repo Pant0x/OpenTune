@@ -468,9 +468,6 @@ export function AlbumView({
     return () => window.removeEventListener("keydown", handlePageSearchKeyDown);
   }, [album, error, isLoading, keyboardShortcuts, tracks.length]);
 
-  if (!album) return null;
-
-
   const trackIds = useMemo(() => new Set(tracks.map((track) => track.id)), [tracks]);
   const isCurrentCollection = currentTrackId !== null && trackIds.has(currentTrackId);
 
@@ -597,6 +594,7 @@ export function AlbumView({
     }
   };
 
+  if (!album) return null;
 
   return (
     <div className="flex flex-col gap-8 pb-16">

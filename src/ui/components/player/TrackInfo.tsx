@@ -87,6 +87,14 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
     return () => observer.disconnect();
   }, [currentTrack?.artist, currentTrack?.artists, currentTrack?.album]);
 
+  const effectiveArtworkUrl = propArtworkUrl
+    ?? spotifyCover
+    ?? (currentTrack?.artworkUrl
+      || (currentTrack?.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
+
+  const fallbackDominantColor = useArtworkDominantColor(effectiveArtworkUrl);
+  const dominantColor = propDominantColor ?? fallbackDominantColor;
+
   if (!currentTrack) {
     return null;
   }
@@ -139,14 +147,6 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
       }
     }
   };
-
-  const effectiveArtworkUrl = propArtworkUrl
-    ?? spotifyCover
-    ?? (currentTrack.artworkUrl
-      || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
-
-  const fallbackDominantColor = useArtworkDominantColor(effectiveArtworkUrl);
-  const dominantColor = propDominantColor ?? fallbackDominantColor;
 
   return (
     <div
