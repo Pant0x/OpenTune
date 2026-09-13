@@ -1736,6 +1736,17 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     return next;
   }
 
+  private peekPreviousTrack(): Track | null {
+    if (this.queue.all.length === 0) return null;
+    if (this.queue.currentIndex > 0) {
+      return this.queue.all[this.queue.currentIndex - 1] ?? null;
+    }
+    if (this.state.history.length > 0) {
+      return this.state.history[this.state.history.length - 1] ?? null;
+    }
+    return null;
+  }
+
   /**
    * Warms whatever the next track will need: its metadata always, its audio on the native engine.
    *
@@ -1749,6 +1760,16 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
    */
   private warmNextTrack(): void {
     const next = this.peekNextTrack();
+    const prev = this.peekPreviousTrack();
+
+    // Pre-resolve previous track in the background so backward skip is instant
+    if (prev && prev.source === "youtube") {
+      void this.dataSource.getTrack(prev.id).catch(() => {});
+      if (this.dataSource.getStreamData) {
+        void this.dataSource.getStreamData(prev).catch(() => {});
+      }
+    }
+
     if (!next) return;
 
     /*
@@ -2137,8 +2158,9 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       previousTrackId: previousTrack?.id ?? null,
     });
     if (!previousTrack || previousTrack.id === this.state.currentTrack?.id) return;
+    const isPreloaded = this.audioEngine.hasPreloaded(previousTrack.id);
     if (shouldResume) {
-      await this.playTrackById(previousTrack.id);
+      await this.playTrackById(previousTrack.id, undefined, true, isPreloaded, isPreloaded);
     } else {
       await this.loadTrack(previousTrack);
     }

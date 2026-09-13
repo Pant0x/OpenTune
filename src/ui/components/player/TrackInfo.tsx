@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { Marquee } from "@/components/motion/marquee";
 import { cn } from "@/lib/utils";
-import { HeartActiveIcon, HeartBrokenIcon, HeartIcon } from "@/ui/icons";
+import { CheckActiveIcon, PlusIcon } from "@/ui/icons";
 import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { useLibraryState } from "../../../player/playerStore";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
@@ -11,6 +11,7 @@ import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
+import { useArtworkDominantColor } from "../../hooks/useArtworkDominantColor";
 
 export function TrackInfo() {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
@@ -134,9 +135,19 @@ export function TrackInfo() {
     }
   };
 
+  const effectiveArtworkUrl = spotifyCover
+    ?? (currentTrack.artworkUrl
+      || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
+  const dominantColor = useArtworkDominantColor(effectiveArtworkUrl);
+
   return (
     <div
-      className="flex min-w-0 max-w-full flex-1 items-center gap-3"
+      className="flex min-w-0 max-w-full items-center gap-3 rounded-xl p-1.5 pr-3 border transition-all duration-300 backdrop-blur-md"
+      style={{
+        background: dominantColor.backgroundGradient,
+        borderColor: dominantColor.borderColor,
+        boxShadow: dominantColor.boxShadow,
+      }}
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
       {uiState.showAlbumArt && (
@@ -144,16 +155,14 @@ export function TrackInfo() {
           type="button"
           onClick={() => playerUIStore.openNowPlaying()}
           title="Open Now Playing view"
-          className="group relative size-12 shrink-0 overflow-hidden rounded cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group relative size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TrackArtwork
             className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105"
             size={48}
             loading="eager"
             preferProxy
-            artworkUrl={spotifyCover
-              ?? (currentTrack.artworkUrl
-                || (currentTrack.id ? getVideoArtworkFallback(currentTrack.id) : undefined))}
+            artworkUrl={effectiveArtworkUrl}
             iconSize={22}
           />
         </button>
@@ -275,45 +284,35 @@ export function TrackInfo() {
         <button
           type="button"
           className={cn(
-            "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+            "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
             "disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            isLiked ? "text-primary" : "text-muted-foreground hover:text-foreground",
+            isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-white hover:scale-110",
           )}
           onClick={() => void toggleTrackLike(currentTrack)}
           disabled={isLikeStatusLoading || isLikePending}
           aria-label={
             isLikeStatusLoading || isLikePending
-              ? "Loading like status"
+              ? "Loading save status"
               : isLiked
-                ? "Remove like"
+                ? "Remove from Your Library"
                 : libraryState.status === "signed-out"
-                  ? "Sign in to like"
-                  : "Like song"
+                  ? "Sign in to save"
+                  : "Save to Your Library"
           }
           title={
             libraryState.status === "signed-out"
-              ? "Sign in to like"
+              ? "Sign in to save"
               : isLiked
-                ? "Remove like"
-                : "Like song"
+                ? "Saved to Your Library"
+                : "Save to Your Library"
           }
         >
           {isLikeStatusLoading || isLikePending ? (
             <SpinnerSteps size={18} color="currentColor" />
           ) : isLiked ? (
-            // Hovering a liked track previews the un-like action.
-            <span className="relative grid size-[18px] place-items-center" aria-hidden="true">
-              <HeartActiveIcon
-                size={18}
-                className="absolute transition-opacity group-hover/like:opacity-0"
-              />
-              <HeartBrokenIcon
-                size={18}
-                className="absolute opacity-0 transition-opacity group-hover/like:opacity-100"
-              />
-            </span>
+            <CheckActiveIcon size={20} className="text-primary" />
           ) : (
-            <HeartIcon size={18} />
+            <PlusIcon size={20} />
           )}
         </button>
       )}

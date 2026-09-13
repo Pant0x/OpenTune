@@ -37,6 +37,7 @@ import { AlbumCard } from "../components/AlbumCard";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
+import { ArtistLinks, parseTrackArtistsWithFeatures } from "../components/ArtistLinks";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { cn, formatCompactNumber } from "@/lib/utils";
@@ -713,11 +714,16 @@ export function ArtistView({
         durationStr = "3:18";
       }
 
+      const cleanYtArtist = (yt.artist && yt.artist !== "Unknown artist") ? yt.artist : undefined;
+      const spotifyArtists = matchedSpotify?.artists?.join(", ");
+      const cleanSpotifyArtist = (spotifyArtists && spotifyArtists !== "Unknown artist") ? spotifyArtists : undefined;
+      const resolvedArtist = cleanYtArtist || cleanSpotifyArtist || displayedArtist?.name || "";
+
       return {
         id: yt.id,
         spotifyTrackId: matchedSpotify?.id,
         name: yt.title,
-        artist: yt.artist || displayedArtist?.name || "",
+        artist: resolvedArtist,
         isExplicit: Boolean(yt.isExplicit || matchedSpotify?.isExplicit),
         plays: matchedSpotify?.playcount || (yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt)),
         duration: durationStr,
@@ -1252,15 +1258,11 @@ export function ArtistView({
                               </span>
                             )}
                           </div>
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenArtist?.({ id: "", name: item.artist });
-                            }}
-                            className="truncate text-xs text-muted-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] cursor-pointer inline-block mt-0.5 w-fit transition-all"
-                          >
-                            {item.artist}
-                          </span>
+                          <ArtistLinks
+                            className="truncate text-xs text-muted-foreground mt-0.5"
+                            fallback={item.artist}
+                            trackTitle={item.name}
+                          />
                         </div>
 
                         {/* Plays count in middle right */}
@@ -1325,17 +1327,25 @@ export function ArtistView({
                                   <span>Go to album</span>
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveSongMenuId(null);
-                                  onOpenArtist?.({ id: "", name: item.artist });
-                                }}
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                              >
-                                <UserPlusIcon size={14} />
-                                <span>Go to artist</span>
-                              </button>
+                              {(() => {
+                                const parsed = parseTrackArtistsWithFeatures(item.name, item.artist);
+                                const allArtists = [...parsed.mainArtists, ...parsed.featuredArtists];
+                                const list = allArtists.length > 0 ? allArtists : [{ id: "", name: item.artist }];
+                                return list.map((art) => (
+                                  <button
+                                    key={`menu-art-${art.id || art.name}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveSongMenuId(null);
+                                      onOpenArtist?.({ id: art.id || "", name: art.name });
+                                    }}
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                  >
+                                    <UserPlusIcon size={14} />
+                                    <span className="truncate">Go to {art.name}</span>
+                                  </button>
+                                ));
+                              })()}
                               <div className="my-1 h-px bg-white/10" />
                               <button
                                 type="button"

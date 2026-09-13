@@ -4691,14 +4691,27 @@ export class YouTubeMusicDataSource extends DataSource {
     const subscriptionToggle = this.findArtistSubscriptionToggle(artistPage.page);
     const subscribed = this.getArtistSubscriptionOverride(artistId) ?? subscriptionToggle?.subscribed;
 
+    const artistFallback = artist.name && this.isValidArtistString(artist.name) ? artist.name : undefined;
+    const patchArtistTracks = (tracks: Track[]) =>
+      tracks.map((t) => {
+        if ((!t.artist || t.artist === "Unknown artist") && artistFallback) {
+          return {
+            ...t,
+            artist: artistFallback,
+            artists: t.artists?.length ? t.artists : [{ id: artist.id, name: artistFallback }],
+          };
+        }
+        return t;
+      });
+
     return {
       artist: {
         ...artist,
         isCreator,
       },
       subscribed,
-      popularSongs: enrichedPopularSongs,
-      allSongs: this.uniqueById(allSongs),
+      popularSongs: patchArtistTracks(enrichedPopularSongs),
+      allSongs: patchArtistTracks(this.uniqueById(allSongs)),
       releases: this.uniqueById(releases),
       playlists: this.uniqueById(playlists),
       appearsOn: this.uniqueById(appearsOn),
@@ -6748,6 +6761,7 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private topicSongCache = new Map<string, string>();
+  private resolvedStreamUrlCache = new Map<string, { url: string; mimeType: string; cookie?: string; expiresAt: number }>();
 
   private async findOfficialTopicSongId(
     title: string,
@@ -6924,15 +6938,6 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private async resolveTopicSongTargetId(track: Track): Promise<string> {
-    /*
-     * Songs play the official release, like a normal app: every YouTube id *is* a video id,
-     * so this used to pass video uploads straight through and a song listed as a music video
-     * played the video's audio. Now every streamed track resolves to the official Topic/album
-     * audio when one is confidently found; videos without an official release (and special
-     * audio versions — remixes, live takes, edits — which the caller picked deliberately) fall
-     * through to the original id. The lookup is cached per song, so the cost is once per
-     * track, not once per play.
-     */
     if (
       track.source === "local" ||
       !track.title ||
@@ -6946,13 +6951,24 @@ export class YouTubeMusicDataSource extends DataSource {
       return track.id;
     }
 
+    // Fast-path: If the track is already a valid YouTube track and NOT explicitly labeled as a video upload,
+    // play it instantly without blocking network searches.
+    const isExplicitVideo = /(?:official\s+)?(?:music\s+)?video|short\s+film|video\s+clip|visualizer/i.test(track.title);
+    if (!isExplicitVideo && isVideoId(track.id)) {
+      return track.id;
+    }
+
     try {
-      const topicId = await this.findOfficialTopicSongId(
+      const topicPromise = this.findOfficialTopicSongId(
         track.title,
         track.artist,
         track.id,
         track.durationSec,
       );
+      const timeoutPromise = new Promise<string>((resolve) => {
+        setTimeout(() => resolve(track.id), 650);
+      });
+      const topicId = await Promise.race([topicPromise, timeoutPromise]);
       return topicId || track.id;
     } catch {
       return track.id;
@@ -6983,6 +6999,12 @@ export class YouTubeMusicDataSource extends DataSource {
     quality: AudioQuality,
     clientOrder: readonly ClientLabel[],
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
+    const cacheKey = `${track.id}:${quality}`;
+    const cached = this.resolvedStreamUrlCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return { url: cached.url, mimeType: cached.mimeType, cookie: cached.cookie };
+    }
+
     let streamUrl: string | null = null;
     let streamMimeType = "audio/mp4";
     let winningClient: ClientLabel | null = null;
@@ -7098,11 +7120,17 @@ export class YouTubeMusicDataSource extends DataSource {
       throw new Error("Unable to resolve a playable audio stream.");
     }
 
-    return {
+    const streamResult = {
       url: streamUrl,
       mimeType: streamMimeType,
       cookie: winningClient === "music" ? (this.musicCookie ?? undefined) : undefined,
     };
+    this.resolvedStreamUrlCache.set(cacheKey, {
+      ...streamResult,
+      expiresAt: Date.now() + 3 * 60 * 60 * 1000,
+    });
+
+    return streamResult;
   }
 
   /**
