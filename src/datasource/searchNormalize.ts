@@ -97,12 +97,17 @@ export function getArtworkKey(url?: string): string {
   if (!url) return "";
   try {
     const u = new URL(url);
+    const hostname = u.hostname.replace(/^(?:lh|yt)\d+\./i, "cdn.");
     const pathname = u.pathname
       .replace(/=[swh]\d+.*$/i, "")
       .replace(/=s\d+.*$/i, "");
-    return `${u.hostname}${pathname}`;
+    return `${hostname}${pathname}`;
   } catch {
-    return url.replace(/=[swh]\d+.*$/i, "").replace(/=s\d+.*$/i, "");
+    return url
+      .replace(/^(?:https?:\/\/)?(?:lh|yt)\d+\./i, "cdn.")
+      .replace(/=[swh]\d+.*$/i, "")
+      .replace(/=s\d+.*$/i, "")
+      .split("?")[0];
   }
 }
 
@@ -181,6 +186,7 @@ export function deduplicateArtists(artists: Artist[]): Artist[] {
   const list: Artist[] = [];
   const idToIndex = new Map<string, number>();
   const artKeyToIndex = new Map<string, number>();
+  const simpToIndex = new Map<string, number>();
   const translitToIndex = new Map<string, number>();
 
   for (const artist of artists) {
@@ -188,6 +194,7 @@ export function deduplicateArtists(artists: Artist[]): Artist[] {
 
     const id = artist.id;
     const artKey = getArtworkKey(artist.artworkUrl);
+    const simp = normSimp(artist.name);
     const translit = normTranslit(artist.name);
 
     // Check if this artist has already been seen under any identifier
@@ -196,6 +203,8 @@ export function deduplicateArtists(artists: Artist[]): Artist[] {
       existingIndex = idToIndex.get(id);
     } else if (artKey && artKeyToIndex.has(artKey)) {
       existingIndex = artKeyToIndex.get(artKey);
+    } else if (simp && simpToIndex.has(simp)) {
+      existingIndex = simpToIndex.get(simp);
     } else if (translit && translitToIndex.has(translit)) {
       existingIndex = translitToIndex.get(translit);
     }
@@ -209,6 +218,8 @@ export function deduplicateArtists(artists: Artist[]): Artist[] {
       if (merged.id) idToIndex.set(merged.id, existingIndex);
       const newArtKey = getArtworkKey(merged.artworkUrl);
       if (newArtKey) artKeyToIndex.set(newArtKey, existingIndex);
+      const newSimp = normSimp(merged.name);
+      if (newSimp) simpToIndex.set(newSimp, existingIndex);
       const newTranslit = normTranslit(merged.name);
       if (newTranslit) translitToIndex.set(newTranslit, existingIndex);
     } else {
@@ -218,6 +229,7 @@ export function deduplicateArtists(artists: Artist[]): Artist[] {
 
       if (id) idToIndex.set(id, index);
       if (artKey) artKeyToIndex.set(artKey, index);
+      if (simp) simpToIndex.set(simp, index);
       if (translit) translitToIndex.set(translit, index);
     }
   }

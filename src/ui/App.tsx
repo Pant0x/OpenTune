@@ -1387,6 +1387,7 @@ export default function App() {
                 }}
                 isLoading={currentView.searchLoading ?? false}
                 playerController={playerController}
+                onSearch={(q) => handleSearch(q)}
                 onPlayTrack={handlePlaySearchResult}
                 onOpenArtist={(artist) => handleNavigateArtist(artist)}
                 onOpenAlbum={handleNavigateAlbum}

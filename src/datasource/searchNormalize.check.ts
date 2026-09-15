@@ -164,4 +164,25 @@ check(
   "deduplicated artist should be official artist",
 );
 
+check(
+  getArtworkKey("https://lh3.googleusercontent.com/avatar123=w120") ===
+  getArtworkKey("https://lh4.googleusercontent.com/avatar123=s500"),
+  "CDN subdomain differences (lh3 vs lh4) should normalize to identical key",
+);
+
+// Check deduplication of 'Fairuz' vs 'fairuz'
+const caseVariations: Artist[] = [
+  { id: "1", name: "Fairuz", artworkUrl: "https://lh3.googleusercontent.com/a1=s120", subscriberCount: "1.2M subscribers" },
+  { id: "2", name: "fairuz", artworkUrl: "https://lh4.googleusercontent.com/a2=s120", subscriberCount: "50K subscribers" },
+];
+const dedupedCase = deduplicateArtists(caseVariations);
+check(
+  dedupedCase.length === 1,
+  `Fairuz and fairuz should merge into 1 artist, got ${dedupedCase.length}`,
+);
+check(
+  dedupedCase[0].subscriberCount === "1.2M subscribers",
+  "Merged artist should retain higher subscriber count",
+);
+
 console.log("searchNormalize: ok");

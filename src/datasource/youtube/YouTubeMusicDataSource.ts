@@ -6175,9 +6175,12 @@ export class YouTubeMusicDataSource extends DataSource {
       return { artists: [], tracks: [], albums: [], playlists: [] };
     }
     const cacheId = normalizedQuery.toLocaleLowerCase();
-    const cacheKey = `youtube-music:mixed-search:v5:${cacheId}`;
+    const cacheKey = `youtube-music:mixed-search:v6:${cacheId}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached && this.hasSearchResults(cached)) {
+      if (cached.artists) {
+        cached.artists = deduplicateArtists(cached.artists);
+      }
       globalThis.setTimeout(() => {
         void this.refreshMixedSearch(normalizedQuery, cacheId, cacheKey)
           .then(({ changed, value }) => {
@@ -6304,6 +6307,7 @@ export class YouTubeMusicDataSource extends DataSource {
     ];
     const shelfArtists = fromShelf(response.artists, (item) => this.toArtist(item));
     const shelfTracks = fromShelf(response.songs, (item) => this.toTrack(item));
+    const shelfVideos = fromShelf((response as any).videos, (item) => this.toTrack(item));
     const shelfAlbums = fromShelf(response.albums, (item) => this.toAlbum(item));
     const shelfPlaylists = fromShelf(response.playlists, (item) => this.toPlaylist(item));
     const playlists = [
@@ -6320,6 +6324,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     let tracks = this.uniqueById([
       ...shelfTracks,
+      ...shelfVideos,
       ...this.songOrVideoItems(fallbackItems)
         .map((item) => this.toTrack(item))
         .filter((item): item is Track => Boolean(item)),
