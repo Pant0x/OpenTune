@@ -1,0 +1,209 @@
+﻿import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+import { CloseIcon } from "@/ui/icons";
+import { SpinnerSteps } from "@/components/motion/loader";
+import { SpotifyService, type SpotifyTrackCredits } from "../../../services/SpotifyService";
+import type { Track } from "../../../datasource/types";
+
+interface SpotifyCreditsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  track: Track;
+  isFollowingArtist: boolean;
+  onToggleFollowArtist: () => void;
+}
+
+export function SpotifyCreditsModal({
+  isOpen,
+  onClose,
+  track,
+  isFollowingArtist,
+  onToggleFollowArtist,
+}: SpotifyCreditsModalProps) {
+  const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen || !track) return;
+    let active = true;
+    setIsLoading(true);
+
+    void SpotifyService.getTrackCredits(track.title, track.artist).then((data) => {
+      if (!active) return;
+      if (data) {
+        setCredits(data);
+      } else {
+        // Fallback default credits from track data
+        setCredits({
+          trackTitle: track.title,
+          artists: [
+            {
+              name: track.artist,
+              role: "Main Artist",
+              avatarUrl: track.artworkUrl,
+            },
+          ],
+          writers: [{ name: track.artist, role: "Composer, Lyricist" }],
+          producers: [{ name: "Production Team", role: "Producer, Engineer" }],
+          label: track.album ? `Released by ${track.album}` : undefined,
+        });
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, track?.title, track?.artist]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200 cursor-pointer"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg rounded-2xl bg-[#282828] border border-white/10 p-6 shadow-2xl flex flex-col gap-6 text-white cursor-default max-h-[85vh] overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-white/10 pb-4 shrink-0">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-xl font-bold tracking-tight text-white">Credits</h2>
+            <span className="text-sm font-semibold text-white/70 line-clamp-1">
+              {credits?.trackTitle || track.title}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-8 items-center justify-center rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <CloseIcon size={18} />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex flex-col gap-6 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/60">
+              <SpinnerSteps size={24} color="currentColor" />
+              <span className="text-sm font-medium">Loading credits from Spotify...</span>
+            </div>
+          ) : (
+            <>
+              {/* 1. Performed by */}
+              <div className="flex flex-col gap-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                  Performed by
+                </span>
+
+                <div className="flex flex-col gap-3">
+                  {credits?.artists.map((artist, i) => (
+                    <div
+                      key={artist.name + i}
+                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {artist.avatarUrl ? (
+                          <img
+                            src={artist.avatarUrl}
+                            alt={artist.name}
+                            className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0"
+                          />
+                        ) : (
+                          <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0">
+                            {artist.name[0]?.toUpperCase() || "A"}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-bold text-white truncate">
+                            {artist.name}
+                          </span>
+                          <span className="text-xs text-white/60 font-medium">
+                            {artist.role}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Follow toggle button connected to Amber library & YouTube */}
+                      {i === 0 && (
+                        <button
+                          type="button"
+                          onClick={onToggleFollowArtist}
+                          className={cn(
+                            "rounded-full px-4 py-1.5 text-xs font-bold border transition-all cursor-pointer shrink-0",
+                            isFollowingArtist
+                              ? "border-white/60 bg-white text-black hover:bg-white/90"
+                              : "border-white/40 text-white hover:bg-white/15",
+                          )}
+                        >
+                          {isFollowingArtist ? "Following" : "Follow"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Written by */}
+              <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                  Written by
+                </span>
+
+                <div className="flex flex-col gap-2.5">
+                  {credits?.writers.map((w, i) => (
+                    <div key={w.name + i} className="flex flex-col">
+                      <span className="text-sm font-semibold text-white/90">{w.name}</span>
+                      <span className="text-xs text-white/60">{w.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Produced by */}
+              <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                  Produced by
+                </span>
+
+                <div className="flex flex-col gap-2.5">
+                  {credits?.producers.map((p, i) => (
+                    <div key={p.name + i} className="flex flex-col">
+                      <span className="text-sm font-semibold text-white/90">{p.name}</span>
+                      <span className="text-xs text-white/60">{p.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Source / Record Label */}
+              {(credits?.label || credits?.releaseDate) && (
+                <div className="flex flex-col gap-1.5 border-t border-white/10 pt-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                    Source
+                  </span>
+                  {credits.label && (
+                    <span className="text-xs text-white/70 leading-relaxed font-medium">
+                      {credits.label}
+                    </span>
+                  )}
+                  {credits.releaseDate && (
+                    <span className="text-[11px] text-white/50">
+                      Released: {credits.releaseDate}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

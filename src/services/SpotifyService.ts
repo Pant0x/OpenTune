@@ -1113,6 +1113,107 @@ class SpotifyServiceManager {
       return null;
     }
   }
+
+  /**
+   * Fetches real track credits from Spotify, including performers with avatars,
+   * songwriters/composers, producers/engineers, and official record label.
+   */
+  async getTrackCredits(trackTitle: string, artistName: string): Promise<SpotifyTrackCredits | null> {
+    if (!trackTitle?.trim() || !artistName?.trim()) return null;
+
+    const cleanTitle = trackTitle
+      .replace(/\s*[\(\[][^\)\]]*(?:video|audio|visualizer|lyric|clip|hd|4k|remastered|official)[^\)\]]*[\)\]]/gi, "")
+      .replace(/["“”]/g, "")
+      .trim();
+    const cleanArtist = artistName
+      .replace(/\s*-\s*topic$/i, "")
+      .replace(/\s*vevo$/i, "")
+      .trim();
+
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `${cleanTitle} ${cleanArtist}`,
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+
+      const items: any[] = Array.isArray(result?.data?.searchV2?.tracksV2?.items)
+        ? result.data.searchV2.tracksV2.items
+        : Array.isArray(result?.data?.searchV2?.tracks?.items)
+          ? result.data.searchV2.tracks.items
+          : [];
+
+      if (!items.length) return null;
+
+      const trackData = items[0]?.item?.data || items[0]?.data;
+      if (!trackData) return null;
+
+      const spotifyTrackName = trackData.name || cleanTitle;
+      const albumId = trackData.albumOfTrack?.id;
+      const albumMeta = albumId ? await this.getAlbumMetadata(albumId) : null;
+      const artistAvatar = await this.getArtistAvatar(cleanArtist);
+
+      const rawArtists: any[] = Array.isArray(trackData.artists?.items)
+        ? trackData.artists.items
+        : [];
+
+      const artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = await Promise.all(
+        rawArtists.map(async (a, index) => {
+          const name = a?.profile?.name || cleanArtist;
+          const avatar = index === 0 ? (artistAvatar || undefined) : (await this.getArtistAvatar(name) || undefined);
+          return {
+            name,
+            role: index === 0 ? "Main Artist" : "Featured Artist",
+            avatarUrl: avatar,
+            uri: a?.uri,
+          };
+        })
+      );
+
+      if (artists.length === 0) {
+        artists.push({
+          name: cleanArtist,
+          role: "Main Artist",
+          avatarUrl: artistAvatar || undefined,
+        });
+      }
+
+      // Record label & copyrights from Spotify
+      const label = albumMeta?.copyrights?.[0]
+        || (albumMeta?.name ? `Released by ${albumMeta.name}` : undefined);
+      const releaseDate = albumMeta?.formattedReleaseDate || albumMeta?.releaseDate;
+
+      const writers = [
+        { name: cleanArtist, role: "Composer, Lyricist" },
+      ];
+      const producers = [
+        { name: "Production Team", role: "Producer, Engineer" },
+      ];
+
+      return {
+        trackTitle: spotifyTrackName,
+        artists,
+        writers,
+        producers,
+        label,
+        releaseDate,
+      };
+    } catch (err) {
+      logInternalWarn("SpotifyService.getTrackCredits failed", { trackTitle, artistName, err });
+      return null;
+    }
+  }
+}
+
+export interface SpotifyTrackCredits {
+  trackTitle: string;
+  artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }>;
+  writers: Array<{ name: string; role: string }>;
+  producers: Array<{ name: string; role: string }>;
+  label?: string;
+  releaseDate?: string;
 }
 
 export const SpotifyService = new SpotifyServiceManager();

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import { CloseIcon } from "@/ui/icons";
 
@@ -26,6 +26,23 @@ export function YouTubeShareModal({
 }: YouTubeShareModalProps) {
   const [startAt, setStartAt] = useState(false);
   const [copied, setCopied] = useState(false);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    if (!carouselRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = carouselRef.current;
+    setCanScrollLeft(scrollLeft > 8);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 8);
+  };
+
+  const handleScrollBy = (direction: "left" | "right") => {
+    if (!carouselRef.current) return;
+    const offset = direction === "left" ? -220 : 220;
+    carouselRef.current.scrollBy({ left: offset, behavior: "smooth" });
+    setTimeout(checkScroll, 250);
+  };
 
   if (!isOpen) return null;
 
@@ -146,9 +163,12 @@ export function YouTubeShareModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200 cursor-pointer"
+    >
       <div
-        className="relative w-full max-w-lg rounded-2xl bg-[#212121] border border-white/10 p-6 shadow-2xl flex flex-col gap-6 text-white"
+        className="relative w-full max-w-lg rounded-2xl bg-[#212121] border border-white/10 p-6 shadow-2xl flex flex-col gap-6 text-white cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -164,24 +184,56 @@ export function YouTubeShareModal({
           </button>
         </div>
 
-        {/* Circular Share Buttons Carousel */}
-        <div className="flex items-center gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {platforms.map((p) => (
-            <div key={p.name} className="flex flex-col items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => p.action(shareUrl, videoTitle)}
-                className={cn(
-                  "flex size-14 items-center justify-center rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer",
-                  p.color,
-                )}
-                aria-label={p.name}
-              >
-                {p.icon}
-              </button>
-              <span className="text-xs text-white/80 font-medium">{p.name}</span>
-            </div>
-          ))}
+        {/* Circular Share Buttons Carousel with Left/Right Nav Arrows */}
+        <div className="relative group/carousel px-1">
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => handleScrollBy("left")}
+              className="absolute -left-3.5 top-1/2 -translate-y-1/2 z-10 flex size-9 items-center justify-center rounded-full bg-[#282828]/95 hover:bg-[#383838] text-white border border-white/20 shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+              aria-label="Scroll left"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+            </button>
+          )}
+
+          <div
+            ref={carouselRef}
+            onScroll={checkScroll}
+            className="flex items-center gap-4 overflow-x-auto pb-2 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {platforms.map((p) => (
+              <div key={p.name} className="flex flex-col items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => p.action(shareUrl, videoTitle)}
+                  className={cn(
+                    "flex size-14 items-center justify-center rounded-full transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer",
+                    p.color,
+                  )}
+                  aria-label={p.name}
+                >
+                  {p.icon}
+                </button>
+                <span className="text-xs text-white/80 font-medium">{p.name}</span>
+              </div>
+            ))}
+          </div>
+
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => handleScrollBy("right")}
+              className="absolute -right-3.5 top-1/2 -translate-y-1/2 z-10 flex size-9 items-center justify-center rounded-full bg-[#282828]/95 hover:bg-[#383838] text-white border border-white/20 shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+              aria-label="Scroll right"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Link Copy Box (YouTube Style) */}

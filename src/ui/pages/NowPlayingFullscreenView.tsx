@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
-  CloseIcon,
   PlayActiveIcon,
   RefreshIcon,
 } from "@/ui/icons";
 import {
+  libraryController,
   playerController,
+  useLibraryState,
   usePlayerSelector,
   usePlayerSessionSelector,
 } from "../../player/playerStore";
@@ -14,6 +15,7 @@ import type { PlayerSession } from "../../player/PlayerController";
 import type { Lyrics, Track } from "../../datasource/types";
 import { playerUIStore } from "../stores/playerUIStore";
 import { SpotifyService, type SpotifyArtistOverview } from "../../services/SpotifyService";
+import { SpotifyCreditsModal } from "../components/player/SpotifyCreditsModal";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useArtistNavigation } from "../components/ArtistLinks";
 import { findActiveLineIndex, isRtlText, isSyncedLyrics } from "./lyricsTiming";
@@ -133,6 +135,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   }, [track, mediaMode, songCounterpart, currentTime]);
 
   // Artist Overview for "About the artist"
+  const libraryState = useLibraryState();
+  const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
   const [isFollowingArtist, setIsFollowingArtist] = useState(false);
 
@@ -228,45 +232,60 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     };
   }, [track?.artist]);
 
-  // Follow state for the About-the-artist card
+  // Follow state unified across About-the-artist, Credits, and Library
   useEffect(() => {
     if (!track?.artist) {
       setIsFollowingArtist(false);
       return;
     }
+    const artistNameLower = track.artist.toLowerCase();
+    const artistId = track.artists?.[0]?.id;
+    const followedInLibrary = (libraryState.library?.artists ?? []).some(
+      (a) => a.name.toLowerCase() === artistNameLower || (artistId && a.id === artistId),
+    );
     try {
       const raw = localStorage.getItem("amber_followed_artists");
       const parsed = raw ? JSON.parse(raw) : [];
-      setIsFollowingArtist(
-        Array.isArray(parsed) && parsed.includes(track.artist.toLowerCase()),
+      const followedInStorage = Array.isArray(parsed) && (
+        parsed.includes(artistNameLower) ||
+        (artistId && parsed.includes(artistId))
       );
+      setIsFollowingArtist(Boolean(followedInLibrary || followedInStorage));
     } catch {
-      setIsFollowingArtist(false);
+      setIsFollowingArtist(Boolean(followedInLibrary));
     }
-  }, [track?.artist]);
+  }, [track?.artist, track?.artists, libraryState.library?.artists]);
 
-  const toggleFollowingArtist = () => {
+  const toggleFollowingArtist = async () => {
     const name = track?.artist;
     if (!name) return;
+    const nextState = !isFollowingArtist;
+    setIsFollowingArtist(nextState);
+
     const key = name.toLowerCase();
-    let next: Set<string>;
+    const artistId = track.artists?.[0]?.id;
     try {
       const raw = localStorage.getItem("amber_followed_artists");
       const parsed = raw ? JSON.parse(raw) : [];
-      next = new Set(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      next = new Set();
-    }
-    if (next.has(key)) {
-      next.delete(key);
-      setIsFollowingArtist(false);
-    } else {
-      next.add(key);
-      setIsFollowingArtist(true);
-    }
-    try {
+      const next = new Set(Array.isArray(parsed) ? parsed : []);
+      if (nextState) {
+        next.add(key);
+        if (artistId) next.add(artistId);
+      } else {
+        next.delete(key);
+        if (artistId) next.delete(artistId);
+      }
       localStorage.setItem("amber_followed_artists", JSON.stringify([...next]));
     } catch {}
+
+    try {
+      await libraryController.setArtistSubscribed(
+        { id: artistId || "", name },
+        nextState,
+      );
+    } catch (err) {
+      console.warn("Could not sync artist subscription:", err);
+    }
   };
 
   // Fetch Lyrics
@@ -407,18 +426,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
         </button>
       </div>
 
-      {/* Right Action: Close */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex size-9 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white border border-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-sm"
-          aria-label="Close"
-          title="Close"
-        >
-          <CloseIcon size={18} />
-        </button>
-      </div>
+      {/* Right Action: Spacer to keep Song/Video switch centered */}
+      <div className="w-9" />
     </header>
 
     {/* Main Scrollable Area containing Hero Screen and Details Section */}
@@ -636,9 +645,13 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold text-white tracking-tight">Credits</h3>
-                  <span className="text-xs font-semibold text-white/60 hover:text-white cursor-pointer transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreditsModalOpen(true)}
+                    className="text-xs font-semibold text-white/60 hover:text-white cursor-pointer transition-colors bg-transparent border-0 p-0"
+                  >
                     Show all
-                  </span>
+                  </button>
                 </div>
 
                 <div className="rounded-2xl bg-white/5 border border-white/10 p-5 flex flex-col gap-4 shadow-lg">
@@ -649,9 +662,15 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                     </div>
                     <button
                       type="button"
-                      className="rounded-full border border-white/30 px-3 py-1 text-xs font-semibold text-white hover:bg-white/15 transition-colors"
+                      onClick={toggleFollowingArtist}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
+                        isFollowingArtist
+                          ? "border-white/60 bg-white text-black hover:bg-white/90"
+                          : "border-white/30 text-white hover:bg-white/15",
+                      )}
                     >
-                      Following
+                      {isFollowingArtist ? "Following" : "Follow"}
                     </button>
                   </div>
 
@@ -730,6 +749,16 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           </>
         )}
       </div>
+
+      {track && (
+        <SpotifyCreditsModal
+          isOpen={isCreditsModalOpen}
+          onClose={() => setIsCreditsModalOpen(false)}
+          track={track}
+          isFollowingArtist={isFollowingArtist}
+          onToggleFollowArtist={toggleFollowingArtist}
+        />
+      )}
     </div>
   );
 }

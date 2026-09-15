@@ -96,6 +96,13 @@ export interface PlayerSession {
   isPlaylistMode?: boolean;
 }
 
+export interface VideoPlaybackDelegate {
+  play: () => void;
+  pause: () => void;
+  seekTo: (time: number) => void;
+  getCurrentTime?: () => number;
+}
+
 type Listener = () => void;
 /** How long the sleep timer spends fading out before it pauses. */
 const SLEEP_FADE_MS = 20_000;
@@ -232,6 +239,25 @@ export class PlayerController {
   private scrobbleTimerId: number | null = null;
   private playbackSettingsTimerId: ReturnType<typeof setTimeout> | null = null;
   private transitioning = false;
+  private videoDelegate: VideoPlaybackDelegate | null = null;
+
+  setVideoDelegate(delegate: VideoPlaybackDelegate | null): void {
+    this.videoDelegate = delegate;
+  }
+
+  notifyVideoState(state: "playing" | "paused" | "ended", currentTime?: number): void {
+    logInternalInfo("PlayerController.notifyVideoState", { state, currentTime });
+    if (state === "playing") {
+      this.audioEngine.pause();
+      this.setState({ status: "playing", error: null });
+      void DiscordRpcService.resumePlayback();
+    } else if (state === "paused") {
+      this.setState({ status: "paused", error: null });
+      void DiscordRpcService.pausePlayback();
+    } else if (state === "ended") {
+      void this.skipToNext();
+    }
+  }
 
   private state: PlayerState = {
     status: "idle",
@@ -774,6 +800,12 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       currentStatus: this.state.status,
       currentTrackId: this.state.currentTrack?.id ?? null,
     });
+    if (this.videoDelegate) {
+      this.videoDelegate.pause();
+      this.setState({ status: "paused", error: null });
+      void DiscordRpcService.pausePlayback();
+      return;
+    }
     try {
       this.audioEngine.pause();
       this.setState({ status: "paused", error: null });
@@ -790,6 +822,13 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       currentStatus: this.state.status,
       currentTrackId: this.state.currentTrack?.id ?? null,
     });
+    if (this.videoDelegate) {
+      this.audioEngine.pause();
+      this.videoDelegate.play();
+      this.setState({ status: "playing", error: null });
+      void DiscordRpcService.resumePlayback();
+      return;
+    }
     try {
       let track = this.state.currentTrack;
       if (!track) {
@@ -838,6 +877,20 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
   async togglePlayPause(): Promise<void> {
     logInternalDebug("PlayerController.togglePlayPause", { currentStatus: this.state.status });
+    if (this.videoDelegate) {
+      if (this.state.status === "playing") {
+        this.videoDelegate.pause();
+        this.setState({ status: "paused", error: null });
+        void DiscordRpcService.pausePlayback();
+      } else {
+        this.audioEngine.pause();
+        this.videoDelegate.play();
+        this.setState({ status: "playing", error: null });
+        void DiscordRpcService.resumePlayback();
+      }
+      return;
+    }
+
     if (this.state.status === "playing") {
       await this.pause();
       return;
@@ -2051,6 +2104,12 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     const seekTime = Math.max(0, time);
     logInternalInfo("PlayerController.seekTo", { time: seekTime, loadedTrackId: this.loadedTrackId, currentTrackId: this.state.currentTrack?.id });
 
+    if (this.videoDelegate) {
+      this.videoDelegate.seekTo(seekTime);
+      this.emit();
+      return;
+    }
+
     const currentTrack = this.state.currentTrack;
     if (!currentTrack) {
       logInternalWarn("PlayerController.seekTo no current track");
@@ -2228,6 +2287,9 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
   }
 
   getCurrentTime(): number {
+    if (this.videoDelegate?.getCurrentTime) {
+      return this.videoDelegate.getCurrentTime();
+    }
     if (this.loadedTrackId === null && this.pendingSeekTime !== null) {
       return this.pendingSeekTime;
     }
