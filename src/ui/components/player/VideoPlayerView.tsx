@@ -8,6 +8,9 @@ import {
   type VideoComment,
 } from "../../../datasource/youtube/videoService";
 import type { Track } from "../../../datasource/types";
+import { isSavedVideo, subscribeToSavedVideos, toggleSaveVideo } from "../../../player/savedVideos";
+import { YouTubeShareModal } from "./YouTubeShareModal";
+import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
 
 interface VideoPlayerViewProps {
   videoId: string;
@@ -29,8 +32,27 @@ export function VideoPlayerView({
   const [totalComments, setTotalComments] = useState<string>("");
   const [isLoadingComments, setIsLoadingComments] = useState(true);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
+
+  // User interactions
+  const [userRating, setUserRating] = useState<"like" | "dislike" | "none">("none");
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [bellState, setBellState] = useState<"all" | "personalized" | "none">("all");
+  const [showBellMenu, setShowBellMenu] = useState(false);
+  const [isSaved, setIsSaved] = useState(() => isSavedVideo(track.id));
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Comment posting
+  const [newCommentText, setNewCommentText] = useState("");
+  const [isCommentInputFocused, setIsCommentInputFocused] = useState(false);
+  const [commentSort, setCommentSort] = useState<"top" | "newest">("top");
+
+  // Track saved state
+  useEffect(() => {
+    setIsSaved(isSavedVideo(track.id));
+    return subscribeToSavedVideos(() => {
+      setIsSaved(isSavedVideo(track.id));
+    });
+  }, [track.id]);
 
   // Fetch video details and comments
   useEffect(() => {
@@ -62,18 +84,58 @@ export function VideoPlayerView({
     };
   }, [videoId]);
 
-  const handleShare = () => {
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    void navigator.clipboard.writeText(url);
-    setIsCopied(true);
-    window.setTimeout(() => setIsCopied(false), 2000);
+  const handleToggleLike = () => {
+    setUserRating((prev) => (prev === "like" ? "none" : "like"));
+  };
+
+  const handleToggleDislike = () => {
+    setUserRating((prev) => (prev === "dislike" ? "none" : "dislike"));
+  };
+
+  const handleToggleSubscribe = () => {
+    setIsSubscribed((prev) => !prev);
+    setShowBellMenu(false);
+  };
+
+  const handleToggleSave = () => {
+    const saved = toggleSaveVideo(track);
+    setIsSaved(saved);
+  };
+
+  const handlePostComment = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newCommentText.trim()) return;
+
+    const userComment: VideoComment = {
+      id: `user_${Date.now()}`,
+      authorName: "You",
+      text: newCommentText.trim(),
+      publishedTime: "Just now",
+      likeCount: "0",
+    };
+
+    setComments([userComment, ...comments]);
+    setNewCommentText("");
+    setIsCommentInputFocused(false);
   };
 
   const startTimeParam = Math.floor(initialTime) > 0 ? `&start=${Math.floor(initialTime)}` : "";
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${startTimeParam}`;
+  // autoplay=0 per user request ("w lma a7wl m4 lazm yb2a fy autoplay tmam")
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=0&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${startTimeParam}`;
+
+  const displayedLikes = details?.likeCount || "Like";
+
+  const sortedComments = [...comments].sort((a, b) => {
+    if (commentSort === "newest") {
+      if (a.publishedTime === "Just now") return -1;
+      if (b.publishedTime === "Just now") return 1;
+      return 0;
+    }
+    return 0;
+  });
 
   return (
-    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 pb-24 text-white">
+    <div className="flex flex-col w-full max-w-5xl mx-auto gap-6 pb-20 text-white">
       {/* 1. Video Player Surface */}
       <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
         <iframe
@@ -85,15 +147,15 @@ export function VideoPlayerView({
         />
       </div>
 
-      {/* 2. Video Header & Info */}
+      {/* 2. Video Title */}
       <div className="flex flex-col gap-3 px-1">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white line-clamp-2">
           {details?.title || track.title}
         </h1>
 
-        {/* Channel & Actions Row (YouTube interface) */}
+        {/* 3. YouTube Channel & Action Buttons Row (Exact YouTube Style) */}
         <div className="flex flex-wrap items-center justify-between gap-4 py-1 border-b border-white/10 pb-4">
-          {/* Channel metadata */}
+          {/* Left: Channel info + Subscribe Button + Bell */}
           <div className="flex items-center gap-3">
             {details?.channelAvatarUrl ? (
               <img
@@ -106,7 +168,8 @@ export function VideoPlayerView({
                 {(details?.channelTitle || track.artist || "Y")[0].toUpperCase()}
               </div>
             )}
-            <div className="flex flex-col">
+
+            <div className="flex flex-col mr-2">
               <span className="font-semibold text-sm sm:text-base text-white hover:underline cursor-pointer">
                 {details?.channelTitle || track.artist}
               </span>
@@ -115,135 +178,354 @@ export function VideoPlayerView({
               )}
             </div>
 
+            {/* Subscribe & Notification Bell Pill */}
+            <div className="relative flex items-center">
+              {!isSubscribed ? (
+                <button
+                  type="button"
+                  onClick={handleToggleSubscribe}
+                  className="rounded-full bg-white text-black px-4 py-2 text-xs sm:text-sm font-bold transition-all hover:bg-white/90 active:scale-95 shadow cursor-pointer"
+                >
+                  Subscribe
+                </button>
+              ) : (
+                <div className="flex items-center rounded-full bg-white/10 hover:bg-white/15 px-3 py-1.5 gap-1.5 border border-white/10 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => setShowBellMenu(!showBellMenu)}
+                    className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white/90 cursor-pointer"
+                    aria-label="Notification settings"
+                  >
+                    {bellState === "all" ? (
+                      <BellRingIcon size={16} className="text-white" />
+                    ) : (
+                      <BellIcon size={16} className="text-white/80" />
+                    )}
+                    <span>Subscribed</span>
+                    <ChevronDownIcon size={14} className="text-white/70" />
+                  </button>
+
+                  {/* Bell Options Dropdown */}
+                  {showBellMenu && (
+                    <div className="absolute top-full left-0 mt-2 w-44 rounded-xl bg-[#282828] border border-white/10 p-1.5 shadow-2xl z-40 flex flex-col gap-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBellState("all");
+                          setShowBellMenu(false);
+                        }}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer",
+                          bellState === "all" ? "bg-white/20 font-bold" : "hover:bg-white/10",
+                        )}
+                      >
+                        <BellRingIcon size={16} />
+                        <span>All</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBellState("personalized");
+                          setShowBellMenu(false);
+                        }}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer",
+                          bellState === "personalized" ? "bg-white/20 font-bold" : "hover:bg-white/10",
+                        )}
+                      >
+                        <BellIcon size={16} />
+                        <span>Personalized</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBellState("none");
+                          setShowBellMenu(false);
+                        }}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer",
+                          bellState === "none" ? "bg-white/20 font-bold" : "hover:bg-white/10",
+                        )}
+                      >
+                        <BellIcon size={16} className="opacity-50" />
+                        <span>None</span>
+                      </button>
+                      <div className="border-t border-white/10 my-0.5" />
+                      <button
+                        type="button"
+                        onClick={handleToggleSubscribe}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-red-400 hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <span>Unsubscribe</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Switch to Song button */}
             {onSwitchToSong && (
               <button
                 type="button"
                 onClick={onSwitchToSong}
-                className="ml-3 rounded-full bg-white/10 hover:bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white transition-all cursor-pointer border border-white/10"
+                className="ml-2 rounded-full bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white/90 transition-all cursor-pointer border border-white/10"
               >
-                {isPodcast ? "Switch to Audio" : "Switch to Song (No SFX)"}
+                {isPodcast ? "Switch to Audio" : "Switch to Song"}
               </button>
             )}
           </div>
 
-          {/* Action Buttons: Like, Share, Copy */}
+          {/* Right: Actions Row (Segmented Like/Dislike, Share, Save) */}
           <div className="flex items-center gap-2">
-            {/* Like Pill */}
+            {/* Segmented Like / Dislike Button */}
+            <div className="flex items-center rounded-full bg-white/10 border border-white/10 overflow-hidden text-xs font-semibold">
+              <button
+                type="button"
+                onClick={handleToggleLike}
+                className={cn(
+                  "flex items-center gap-1.5 px-3.5 py-2 transition-colors cursor-pointer hover:bg-white/10",
+                  userRating === "like" ? "text-primary font-bold" : "text-white/90",
+                )}
+                aria-label="Like"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M18.77 11h-4.23l1.52-4.94C16.38 5.03 15.54 4 14.38 4c-.58 0-1.14.24-1.52.65L7 11H3v10h4l1 1h9.43c1.06 0 1.98-.67 2.19-1.61l1.34-6.03C21.2 13.13 20.19 11 18.77 11zM7 20H5v-7h2v7zm12.04-6.02-1.34 6.03H9v-7.59l5.12-5.55c.1-.11.23-.17.37-.17.28 0 .49.25.43.52L13.1 13h5.67c.53 0 .93.44.88.98z" />
+                </svg>
+                <span>{displayedLikes}</span>
+              </button>
+
+              <div className="w-px h-5 bg-white/20" />
+
+              <button
+                type="button"
+                onClick={handleToggleDislike}
+                className={cn(
+                  "px-3 py-2 transition-colors cursor-pointer hover:bg-white/10",
+                  userRating === "dislike" ? "text-primary font-bold" : "text-white/80",
+                )}
+                aria-label="Dislike"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M17 4h-4l-1-1H2.57C1.51 3 .59 3.67.38 4.61L.96 10.64C1.19 11.87 2.2 13 3.62 13H7.85l-1.52 4.94c-.32 1.03.52 2.06 1.68 2.06.58 0 1.14-.24 1.52-.65L14 13h4V4zm-2 7.59-5.12 5.55c-.1.11-.23.17-.37.17-.28 0-.49-.25-.43-.52L10.9 11H5.23c-.53 0-.93-.44-.88-.98l.58-6.02H15v7.59zM19 4h2v7h-2V4z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Share Button (Official curved arrow) */}
             <button
               type="button"
-              onClick={() => setIsLiked(!isLiked)}
-              className={cn(
-                "flex items-center gap-2 rounded-full px-4 py-2 text-xs sm:text-sm font-semibold transition-all cursor-pointer",
-                isLiked
-                  ? "bg-white text-black font-bold"
-                  : "bg-white/10 hover:bg-white/15 text-white border border-white/10",
-              )}
+              onClick={() => setIsShareModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3.5 py-2 text-xs font-semibold text-white/90 transition-all cursor-pointer"
             >
-              <span>{isLiked ? "❤️" : "👍"}</span>
-              <span>{details?.likeCount || "Like"}</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M15 5.63 20.66 12 15 18.37V14h-1c-3.96 0-7.14 1-9.75 3.09 1.84-4.07 5.11-6.4 9.89-7.1l.86-.13V5.63M14 3v6C6.22 10.13 3.11 15.33 2 21c2.78-3.97 6.44-6 12-6v6l8-9-8-9z" />
+              </svg>
+              <span>Share</span>
             </button>
 
-            {/* Share Pill */}
+            {/* Save to Videos Button */}
             <button
               type="button"
-              onClick={handleShare}
-              className="flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/15 px-4 py-2 text-xs sm:text-sm font-semibold text-white transition-all cursor-pointer border border-white/10"
+              onClick={handleToggleSave}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border border-white/10 px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer",
+                isSaved
+                  ? "bg-white text-black font-bold shadow"
+                  : "bg-white/10 hover:bg-white/20 text-white/90",
+              )}
             >
-              <span>🔗</span>
-              <span>{isCopied ? "Copied!" : "Share"}</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill={isSaved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>{isSaved ? "Saved" : "Save"}</span>
             </button>
           </div>
         </div>
 
-        {/* Description Box */}
-        {(details?.description || details?.viewCount || details?.publishDate) && (
-          <div
-            className="rounded-xl bg-white/[0.05] hover:bg-white/[0.08] p-3.5 transition-colors cursor-pointer text-xs sm:text-sm"
-            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-          >
-            <div className="flex items-center gap-2 font-semibold text-white/90 mb-1.5">
-              {details?.viewCount && <span>{details.viewCount}</span>}
-              {details?.publishDate && (
-                <>
-                  <span>•</span>
-                  <span>{details.publishDate}</span>
-                </>
-              )}
-            </div>
-            <p
-              className={cn(
-                "text-muted-foreground whitespace-pre-wrap leading-relaxed",
-                !isDescriptionExpanded && "line-clamp-2",
-              )}
-            >
-              {details?.description || "No description provided."}
-            </p>
+        {/* 4. Description Box (YouTube Style) */}
+        <div className="rounded-xl bg-white/[0.06] hover:bg-white/[0.08] p-4 text-sm text-white/90 transition-colors flex flex-col gap-2">
+          <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-white/80">
+            {details?.viewCount && <span>{details.viewCount} views</span>}
+            {details?.publishDate && (
+              <>
+                <span>•</span>
+                <span>{details.publishDate}</span>
+              </>
+            )}
+          </div>
+
+          <p className={cn("text-xs sm:text-sm text-white/70 whitespace-pre-wrap leading-relaxed", !isDescriptionExpanded && "line-clamp-3")}>
+            {details?.description || "No description provided for this video."}
+          </p>
+
+          {details?.description && details.description.length > 120 && (
             <button
               type="button"
-              className="mt-1 font-semibold text-white/80 hover:text-white"
+              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+              className="text-xs font-bold text-white hover:underline self-start mt-1 cursor-pointer"
             >
               {isDescriptionExpanded ? "Show less" : "...more"}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* 3. YouTube Comments Section */}
-      <div className="flex flex-col gap-4 px-1 pt-2">
-        <div className="flex items-center gap-3">
+      {/* 5. Real YouTube Comments Section */}
+      <div className="flex flex-col gap-6 px-1 pt-2">
+        {/* Comments Header & Sort */}
+        <div className="flex items-center gap-6">
           <h2 className="text-lg sm:text-xl font-bold text-white">
             {totalComments ? `${totalComments} Comments` : "Comments"}
           </h2>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCommentSort("top")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
+                commentSort === "top" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
+              )}
+            >
+              Top comments
+            </button>
+            <button
+              type="button"
+              onClick={() => setCommentSort("newest")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
+                commentSort === "newest" ? "bg-white/20 text-white" : "text-white/60 hover:text-white",
+              )}
+            >
+              Newest first
+            </button>
+          </div>
         </div>
 
-        {isLoadingComments ? (
-          <div className="flex items-center justify-center py-12 text-muted-foreground">
-            <SpinnerSteps size={24} color="currentColor" />
-            <span className="ml-3 text-sm">Loading comments...</span>
+        {/* Add a comment... Interactive Form (Exact YouTube Style) */}
+        <form onSubmit={handlePostComment} className="flex gap-3.5 items-start">
+          <div className="size-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-sm shrink-0 ring-1 ring-white/10">
+            Y
           </div>
-        ) : comments.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6">
-            Comments are unavailable or turned off for this video.
-          </p>
+
+          <div className="flex flex-col gap-2 flex-1 min-w-0">
+            <input
+              type="text"
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              onFocus={() => setIsCommentInputFocused(true)}
+              placeholder="Add a comment..."
+              className="w-full bg-transparent border-b border-white/20 focus:border-white py-1.5 text-sm text-white placeholder:text-white/40 outline-none transition-colors"
+            />
+
+            {isCommentInputFocused && (
+              <div className="flex items-center justify-end gap-2 pt-1 animate-in fade-in duration-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCommentInputFocused(false);
+                    setNewCommentText("");
+                  }}
+                  className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newCommentText.trim()}
+                  className="rounded-full bg-primary disabled:bg-white/10 text-primary-foreground disabled:text-white/40 px-4 py-1.5 text-xs font-bold transition-all cursor-pointer disabled:cursor-default"
+                >
+                  Comment
+                </button>
+              </div>
+            )}
+          </div>
+        </form>
+
+        {/* Comments List */}
+        {isLoadingComments ? (
+          <div className="flex items-center justify-center py-12 text-white/50 gap-2">
+            <SpinnerSteps size={20} color="currentColor" />
+            <span className="text-sm font-medium">Loading comments...</span>
+          </div>
+        ) : sortedComments.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-white/40 text-sm">
+            No comments yet. Be the first to comment!
+          </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            {comments.map((comment) => (
-              <div key={comment.id} className="flex items-start gap-3 group">
-                {comment.authorAvatarUrl ? (
+          <div className="flex flex-col gap-6 pt-2">
+            {sortedComments.map((c) => (
+              <div key={c.id} className="flex gap-3.5 items-start">
+                {c.authorAvatarUrl ? (
                   <img
-                    src={comment.authorAvatarUrl}
-                    alt={comment.authorName}
-                    className="size-9 rounded-full object-cover shrink-0 mt-0.5"
+                    src={c.authorAvatarUrl}
+                    alt={c.authorName}
+                    className="size-9 rounded-full object-cover ring-1 ring-white/10 shrink-0"
                   />
                 ) : (
-                  <div className="size-9 rounded-full bg-white/10 flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">
-                    {comment.authorName[0]?.toUpperCase() || "U"}
+                  <div className="size-9 rounded-full bg-white/10 flex items-center justify-center font-bold text-xs shrink-0">
+                    {(c.authorName || "U")[0].toUpperCase()}
                   </div>
                 )}
+
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-semibold text-white/90 truncate">
-                      {comment.authorName}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white hover:underline cursor-pointer">
+                      {c.authorName}
                     </span>
-                    {comment.publishedTime && (
-                      <span className="text-muted-foreground">{comment.publishedTime}</span>
+                    {c.publishedTime && (
+                      <span className="text-[11px] text-white/50">{c.publishedTime}</span>
                     )}
                   </div>
-                  <p className="text-xs sm:text-sm text-white/80 leading-relaxed whitespace-pre-wrap select-text">
-                    {comment.text}
+
+                  <p className="text-xs sm:text-sm text-white/90 whitespace-pre-wrap leading-relaxed">
+                    {c.text}
                   </p>
-                  {comment.likeCount && (
-                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground pt-0.5">
-                      <span>👍</span>
-                      <span>{comment.likeCount}</span>
-                    </div>
-                  )}
+
+                  {/* Comment Actions (Thumbs up, Thumbs down, Reply) */}
+                  <div className="flex items-center gap-3 pt-1 text-white/60">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer text-xs"
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                        <path d="M18.77 11h-4.23l1.52-4.94C16.38 5.03 15.54 4 14.38 4c-.58 0-1.14.24-1.52.65L7 11H3v10h4l1 1h9.43c1.06 0 1.98-.67 2.19-1.61l1.34-6.03C21.2 13.13 20.19 11 18.77 11zM7 20H5v-7h2v7zm12.04-6.02-1.34 6.03H9v-7.59l5.12-5.55c.1-.11.23-.17.37-.17.28 0 .49.25.43.52L13.1 13h5.67c.53 0 .93.44.88.98z" />
+                      </svg>
+                      {c.likeCount && <span>{c.likeCount}</span>}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="hover:text-white transition-colors cursor-pointer"
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                        <path d="M17 4h-4l-1-1H2.57C1.51 3 .59 3.67.38 4.61L.96 10.64C1.19 11.87 2.2 13 3.62 13H7.85l-1.52 4.94c-.32 1.03.52 2.06 1.68 2.06.58 0 1.14-.24 1.52-.65L14 13h4V4zm-2 7.59-5.12 5.55c-.1.11-.23.17-.37.17-.28 0-.49-.25-.43-.52L10.9 11H5.23c-.53 0-.93-.44-.88-.98l.58-6.02H15v7.59zM19 4h2v7h-2V4z" />
+                      </svg>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="text-xs font-semibold hover:text-white transition-colors cursor-pointer ml-1"
+                    >
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* 6. YouTube Share Modal Dialog */}
+      <YouTubeShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        videoId={videoId}
+        videoTitle={details?.title || track.title}
+        currentTimeSec={initialTime}
+      />
     </div>
   );
 }

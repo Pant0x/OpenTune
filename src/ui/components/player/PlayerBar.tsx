@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon, VideoIcon } from "@/ui/icons";
-import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
+import { PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { usePlayerSelector } from "../../../player/playerStore";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
@@ -39,7 +38,6 @@ const CONNECTION_CHECK_URLS = [
 ];
 
 export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnectionRestored,handlePlayerBarClick }: PlayerBarProps) {
-  const uiState = usePlayerUIState();
   const currentTrack = usePlayerSelector((player) => player.currentTrack);
   const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
 
@@ -203,8 +201,13 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
       </AnimatePresence>
 
       <div
-        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden"
-        onClick={handlePlayerBarClick}
+        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden cursor-pointer"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button, input, [role='slider'], a")) {
+            return;
+          }
+          handlePlayerBarClick();
+        }}
       >
         <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}
@@ -229,21 +232,6 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
                   "opacity-0 focus-within:opacity-100 group-hover/playerbar:opacity-100",
               )}
             >
-              <button
-                type="button"
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                  "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => {
-                  playerUIStore.setNowPlayingFullscreen(true);
-                }}
-                aria-label="Watch video"
-                title="Watch video"
-              >
-                <VideoIcon size={18} />
-              </button>
-
               <LyricsButton onToggle={onToggleLyrics} />
 
               <button
@@ -264,22 +252,6 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
 
             <DownloadButton />
             <VolumeControl />
-
-            {/* Unified In-App Fullscreen Now Playing */}
-            <button
-              type="button"
-              className={cn(
-                "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                uiState.isNowPlayingFullscreen
-                  ? "bg-card text-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => playerUIStore.toggleNowPlayingFullscreen()}
-              aria-label="Now Playing full screen"
-              title="Now Playing full screen"
-            >
-              <FullScreenIcon size={16} />
-            </button>
           </div>
         </div>
       </div>

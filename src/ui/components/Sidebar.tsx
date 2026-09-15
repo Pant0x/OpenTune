@@ -28,9 +28,12 @@ import {
   SidebarToggleIcon,
   SortIcon,
   UserIcon,
+  VideoIcon,
 } from "@/ui/icons";
 import type { Album, Artist, Playlist } from "../../datasource/types";
-import { libraryController, useLibraryState } from "../../player/playerStore";
+import { libraryController, playerController, useLibraryState } from "../../player/playerStore";
+import { playerUIStore } from "../stores/playerUIStore";
+import { getSavedVideos, subscribeToSavedVideos } from "../../player/savedVideos";
 import {
   getRecentPlaylistTimestamp,
   subscribeToRecentPlaylists,
@@ -182,7 +185,7 @@ function SidebarItemTooltip({
 const COLLAPSED_WIDTH = 100;
 const TEXT_HIDE_THRESHOLD = 120;
 
-type LibraryView = "playlists" | "albums" | "artists";
+type LibraryView = "playlists" | "albums" | "artists" | "videos";
 const EMPTY_STATE =
   "flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground";
 const RETRY_BUTTON =
@@ -493,6 +496,7 @@ const LIBRARY_VIEWS: Array<{
   { value: "playlists", label: "Playlists", hint: "Your playlists", icon: PlaylistIcon },
   { value: "albums", label: "Albums", hint: "Saved albums", icon: AlbumIcon },
   { value: "artists", label: "Artists", hint: "Subscribed artists", icon: UserIcon },
+  { value: "videos", label: "Videos", hint: "Saved videos", icon: VideoIcon },
 ];
 
 const ARTWORK_TILE = "size-10 shrink-0 rounded object-cover";
@@ -935,6 +939,26 @@ export function Sidebar({
     [albums, libraryFilter, librarySort],
   );
 
+  const savedVideos = useSyncExternalStore(
+    subscribeToSavedVideos,
+    getSavedVideos,
+    getSavedVideos,
+  );
+
+  const visibleVideos = useMemo(
+    () =>
+      filterLibraryEntries(
+        savedVideos.map((video) => ({
+          ...video,
+          id: video.id,
+          title: video.title,
+          subtitle: video.artist || "Video",
+        })),
+        libraryFilter,
+      ),
+    [savedVideos, libraryFilter],
+  );
+
   useEffect(() => {
     try {
       localStorage.setItem(LIBRARY_SORT_KEY, librarySort);
@@ -1136,7 +1160,9 @@ export function Sidebar({
       ? artists.length
       : libraryView === "albums"
         ? albums.length
-        : playlists.length;
+        : libraryView === "videos"
+          ? savedVideos.length
+          : playlists.length;
   const activeSortLabel =
     LIBRARY_SORTS.find((option) => option.value === librarySort)?.label ?? "Custom";
   const canReorder = canReorderLibrary(librarySort, libraryFilter);
@@ -1192,7 +1218,7 @@ export function Sidebar({
   /** Row styling shared by album and playlist entries, including drop indicators. */
   const itemClasses = (
     id: string,
-    type: "albums" | "playlists" | "artists",
+    type: LibraryView,
   ) => cn(
     "group relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
     "hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1369,14 +1395,18 @@ export function Sidebar({
                     ? "Filter artists"
                     : libraryView === "albums"
                       ? "Filter albums"
-                      : "Filter playlists"
+                      : libraryView === "videos"
+                        ? "Filter videos"
+                        : "Filter playlists"
                 }
                 aria-label={
                   libraryView === "artists"
                     ? "Filter artists"
                     : libraryView === "albums"
                       ? "Filter albums"
-                      : "Filter playlists"
+                      : libraryView === "videos"
+                        ? "Filter videos"
+                        : "Filter playlists"
                 }
                 type="text"
               />
@@ -1565,6 +1595,78 @@ export function Sidebar({
                 <AlbumIcon size={28} aria-hidden="true" />
                 {!shouldHideText && (
                   <span>No saved albums yet. Like an album to save it here.</span>
+                )}
+              </div>
+            )
+          ) : libraryView === "videos" ? (
+            visibleVideos.length ? (
+              visibleVideos.map((video) => (
+                <SidebarItemTooltip
+                  key={video.id}
+                  enabled={shouldHideText}
+                  title={video.title}
+                  subtitle={video.artist || "Video"}
+                >
+                  <button
+                    type="button"
+                    data-sidebar-item-id={video.id}
+                    data-sidebar-item-type="videos"
+                    className={itemClasses(video.id, "videos")}
+                    onClick={() =>
+                      handleSidebarItemClick(() => {
+                        void playerController.playTrackById(video.id, [
+                          {
+                            id: video.id,
+                            title: video.title,
+                            artist: video.artist || "Unknown Artist",
+                            artworkUrl: video.artworkUrl,
+                            source: "youtube",
+                            isVideo: true,
+                          },
+                        ]);
+                        playerUIStore.setLyricsOpen(true);
+                      })
+                    }
+                  >
+                    <TrackArtwork
+                      className={ARTWORK_TILE}
+                      size={ARTWORK_TILE_PX}
+                      artworkUrl={video.artworkUrl}
+                      iconSize={24}
+                      variant="track"
+                    />
+                    {!shouldHideText && (
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm text-foreground">{video.title}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {video.artist || "Video"}
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                </SidebarItemTooltip>
+              ))
+            ) : libraryFilter.trim() ? (
+              <div className={EMPTY_STATE}>
+                <SearchIcon size={26} aria-hidden="true" />
+                {!shouldHideText && <span>Nothing matches “{libraryFilter.trim()}”.</span>}
+                <button
+                  type="button"
+                  className={RETRY_BUTTON}
+                  onClick={() => {
+                    setLibraryFilter("");
+                    filterInputRef.current?.focus();
+                  }}
+                >
+                  <CloseIcon size={15} aria-hidden="true" />
+                  {!shouldHideText && <span>Clear filter</span>}
+                </button>
+              </div>
+            ) : (
+              <div className={EMPTY_STATE}>
+                <VideoIcon size={28} aria-hidden="true" />
+                {!shouldHideText && (
+                  <span>No saved videos yet. Save a video to bookmark it here.</span>
                 )}
               </div>
             )

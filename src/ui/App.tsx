@@ -345,7 +345,6 @@ export default function App() {
       cleanup?.();
     };
   }, []);
-  const [isExpandedPlayerBar, setIsExpandedPlayerBar] = useState(false);
   const lastErrorAlertRef = useRef<string | null>(null);
   const sessionStateRef = useRef({ currentView, navigationHistory, forwardHistory });
   const sessionPersistenceDisabledRef = useRef(false);
@@ -1210,7 +1209,7 @@ export default function App() {
   ]);
 
   const handlePlayerBarClick = () => {
-    setIsExpandedPlayerBar(!isExpandedPlayerBar);
+    playerUIStore.setLyricsOpen(!playerUIState.isLyricsOpen);
   };
 
   return (
@@ -1287,8 +1286,8 @@ export default function App() {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen && currentView.view !== "settings" ? (
-            <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
+          {playerUIState.isLyricsOpen && currentView.view !== "settings" ? (
+            <NowPlayingFullscreenView onClose={() => playerUIStore.setLyricsOpen(false)} />
           ) : (
           <div key={activeViewKey} className="min-h-0 flex-1">
             {currentView.view === "home" && (
@@ -1524,11 +1523,7 @@ export default function App() {
         </Suspense>
       )}
 
-      {playerUIState.isNowPlayingFullscreen && (
-        <Suspense fallback={null}>
-          <NowPlayingFullscreenView onClose={() => playerUIStore.setNowPlayingFullscreen(false)} />
-        </Suspense>
-      )}
+
 
       <ZoomHudOverlay />
 
