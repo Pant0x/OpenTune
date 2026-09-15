@@ -48,4 +48,10 @@ check(isSavedVideo("test_vid_123") === true, "isSavedVideo is true after toggle 
 removeSavedVideo("test_vid_123");
 check(isSavedVideo("test_vid_123") === false, "removeSavedVideo removes video");
 
+// Reference stability guard for useSyncExternalStore to prevent React Error #185 infinite loop
+const snap1 = getSavedVideos();
+const snap2 = getSavedVideos();
+check(snap1 === snap2, "getSavedVideos returns identical array reference when data has not changed");
+
 console.log("savedVideos.check: passed");
+

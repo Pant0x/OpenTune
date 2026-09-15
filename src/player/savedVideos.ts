@@ -15,20 +15,21 @@ export interface SavedVideo {
   savedAt: number;
 }
 
+const EMPTY_VIDEOS: SavedVideo[] = [];
 let cachedVideos: SavedVideo[] | null = null;
 const listeners = new Set<() => void>();
 
 function loadVideos(): SavedVideo[] {
   if (cachedVideos !== null) return cachedVideos;
   if (typeof window === "undefined" || !window.localStorage) {
-    cachedVideos = [];
+    cachedVideos = EMPTY_VIDEOS;
     return cachedVideos;
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      cachedVideos = [];
+      cachedVideos = EMPTY_VIDEOS;
       return cachedVideos;
     }
     const parsed = JSON.parse(raw);
@@ -45,7 +46,7 @@ function loadVideos(): SavedVideo[] {
     // fallback on error
   }
 
-  cachedVideos = [];
+  cachedVideos = EMPTY_VIDEOS;
   return cachedVideos;
 }
 
@@ -68,7 +69,7 @@ function persistVideos(videos: SavedVideo[]) {
 }
 
 export function getSavedVideos(): SavedVideo[] {
-  return [...loadVideos()];
+  return loadVideos();
 }
 
 export function isSavedVideo(id: string): boolean {
@@ -116,8 +117,25 @@ export function toggleSaveVideo(track: Track): boolean {
 }
 
 export function subscribeToSavedVideos(listener: () => void): () => void {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) {
+      cachedVideos = null;
+      listener();
+    }
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage);
+  }
   listeners.add(listener);
   return () => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage);
+    }
     listeners.delete(listener);
   };
 }
+
+export function clearSavedVideosForTesting() {
+  cachedVideos = null;
+}
+
