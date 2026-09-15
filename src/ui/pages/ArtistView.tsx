@@ -48,6 +48,7 @@ import {
   type SpotifyArtistOverview,
   type SpotifyRelease,
 } from "../../services/SpotifyService";
+import { mergeArtistReleases } from "./mergedReleases";
 import { logInternalError } from "../../internal/logging";
 
 type ReleaseFilter = "all" | "album" | "singles_eps";
@@ -429,88 +430,17 @@ export function ArtistView({
     }
   };
 
-  // Merge YouTube Music releases with Spotify discography, prioritizing Spotify for instant newest drops & accurate dates
+  // Merge YouTube Music releases with Spotify discography, prioritizing YouTube Music for authentic live covers & native IDs,
+  // and enriching with Spotify for accurate release dates, missing singles, and newest drops.
   const mergedReleases = useMemo(() => {
-    const ytReleases = page?.releases ?? [];
-    const seenTitles = new Set<string>();
-    const combined: Album[] = [];
-
-    // 1. Add Spotify releases first (already sorted by release date descending)
-    for (const sr of spotifyReleases) {
-      const clean = sr.name.toLowerCase().trim();
-      if (!seenTitles.has(clean)) {
-        seenTitles.add(clean);
-        combined.push({
-          id: `spotify:${sr.id}`,
-          title: sr.name,
-          artist: displayedArtist?.name || "",
-          artworkUrl: sr.coverUrl,
-          year: sr.year ? String(sr.year) : undefined,
-          releaseDate: sr.date,
-          releaseType: sr.type,
-        });
-      }
-    }
-
-    // 2. Add YouTube Music releases if not already present
-    for (const yr of ytReleases) {
-      const clean = yr.title.toLowerCase().trim();
-      if (!seenTitles.has(clean)) {
-        seenTitles.add(clean);
-        combined.push(yr);
-      }
-    }
-
-    // 3. For YouTube creators, beatmakers, and remixers: include their channel playlists
-    for (const p of page?.playlists ?? []) {
-      if (!p || !p.title) continue;
-      const clean = p.title.toLowerCase().trim();
-      const ownerLower = (p.owner || "").toLowerCase().trim();
-      // Exclude official YouTube Music compilations
-      const isOfficial =
-        ownerLower.includes("youtube") ||
-        ownerLower.includes("yt") ||
-        clean.startsWith("featuring") ||
-        clean.startsWith("presenting") ||
-        clean.startsWith("this is") ||
-        clean.includes("hits") ||
-        clean.includes("best of") ||
-        clean.includes("essential");
-      if (isOfficial) continue;
-
-      if (!seenTitles.has(clean)) {
-        seenTitles.add(clean);
-        combined.push({
-          id: p.id,
-          title: p.title,
-          artist: displayedArtist?.name || p.owner || "",
-          artworkUrl: p.artworkUrl,
-          releaseType: "album",
-        });
-      }
-    }
-
-    // 4. If an artist has few or no album releases (e.g. YT users dropping singles/freetype beats),
-    // include their video/song uploads as singles so their discography is fully populated
-    if (combined.length < 5 && (page?.allSongs?.length || page?.popularSongs?.length)) {
-      const songs = page?.allSongs && page.allSongs.length > 0 ? page.allSongs : (page?.popularSongs ?? []);
-      for (const s of songs) {
-        if (!s || !s.title) continue;
-        const clean = s.title.toLowerCase().trim();
-        if (!seenTitles.has(clean)) {
-          seenTitles.add(clean);
-          combined.push({
-            id: s.albumId || s.id,
-            title: s.title,
-            artist: s.artist || displayedArtist?.name || "",
-            artworkUrl: s.artworkUrl,
-            releaseType: "single",
-          });
-        }
-      }
-    }
-
-    return combined;
+    return mergeArtistReleases({
+      ytReleases: page?.releases ?? [],
+      spotifyReleases,
+      channelPlaylists: page?.playlists ?? [],
+      allSongs: page?.allSongs ?? [],
+      popularSongs: page?.popularSongs ?? [],
+      artistName: displayedArtist?.name || "",
+    });
   }, [page?.releases, page?.playlists, page?.allSongs, page?.popularSongs, spotifyReleases, displayedArtist?.name]);
 
   const releaseFilters = useMemo(

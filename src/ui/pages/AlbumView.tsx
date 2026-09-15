@@ -92,6 +92,7 @@ export function AlbumView({
   const [error, setError] = useState<string | null>(null);
   const [albumSearchQuery, setAlbumSearchQuery] = useState("");
   const [moreReleases, setMoreReleases] = useState<Album[]>([]);
+  const [allArtistReleases, setAllArtistReleases] = useState<Album[]>([]);
   const [artistDetails, setArtistDetails] = useState<Artist | null>(null);
   const [spotifyAlbumMeta, setSpotifyAlbumMeta] = useState<SpotifyAlbumMetadata | null>(null);
   const albumSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -156,6 +157,7 @@ export function AlbumView({
   useEffect(() => {
     setArtistDetails(null);
     setMoreReleases([]);
+    setAllArtistReleases([]);
     setTracks([]);
     setSpotifyAlbumMeta(null);
     setIsLoading(true);
@@ -222,7 +224,9 @@ export function AlbumView({
         if (!active) return;
         if (artistPage && !isInvalidArtist(artistPage.artist.name)) {
           setArtistDetails(artistPage.artist);
-          const otherReleases = (artistPage.releases ?? []).filter((r) => r.id !== album?.id);
+          const all = artistPage.releases ?? [];
+          setAllArtistReleases(all);
+          const otherReleases = all.filter((r) => r.id !== album?.id);
           setMoreReleases(otherReleases.slice(0, 10));
         }
       } catch {
@@ -830,12 +834,10 @@ export function AlbumView({
         <div
           onClick={() => {
             if (artistDetails) {
-              if (onOpenDiscography) onOpenDiscography(artistDetails, moreReleases);
-              else onOpenArtist?.(artistDetails);
+              onOpenArtist?.(artistDetails);
             } else if (resolvedArtistId) {
               const target = { id: resolvedArtistId, name: displayArtistName };
-              if (onOpenDiscography) onOpenDiscography(target, moreReleases);
-              else onOpenArtist?.(target);
+              onOpenArtist?.(target);
             }
           }}
           className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 transition-colors cursor-pointer"
@@ -872,7 +874,7 @@ export function AlbumView({
             {onOpenDiscography && (
               <button
                 type="button"
-                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: displayArtistName }, moreReleases)}
+                onClick={() => onOpenDiscography(artistDetails || { id: resolvedArtistId || "", name: displayArtistName }, allArtistReleases.length > 0 ? allArtistReleases : moreReleases)}
                 className="text-xs font-semibold text-muted-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all focus-visible:outline-none cursor-pointer"
               >
                 See discography

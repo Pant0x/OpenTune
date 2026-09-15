@@ -750,7 +750,7 @@ class SpotifyServiceManager {
   async getArtistDiscography(artistNameOrUri: string): Promise<SpotifyRelease[]> {
     const cacheKey = artistNameOrUri.toLowerCase();
     const cached = this.discographyCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < 3600_000 * 24) {
+    if (cached && Date.now() - cached.timestamp < 3600_000 * 4) {
       return cached.data;
     }
 
@@ -759,7 +759,7 @@ class SpotifyServiceManager {
         const raw = localStorage.getItem(`sp_disc_${cacheKey}`);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 72) {
+          if (parsed && Date.now() - parsed.timestamp < 3600_000 * 12) {
             this.discographyCache.set(cacheKey, parsed);
             return parsed.data;
           }
@@ -807,7 +807,7 @@ class SpotifyServiceManager {
         type,
         year,
         date,
-        coverUrl: release.coverArt?.sources?.[0]?.url || undefined,
+        coverUrl: getHighestResSource(release.coverArt?.sources) || release.coverArt?.sources?.[0]?.url || undefined,
         trackCount: release.tracks?.totalCount || 1,
         uri: release.uri || "",
       });
@@ -827,6 +827,19 @@ class SpotifyServiceManager {
       } catch {}
     }
     return releases;
+  }
+
+  /**
+   * Invalidates cached discography for an artist to force fresh fetch.
+   */
+  invalidateArtistDiscography(artistNameOrUri: string): void {
+    const cacheKey = artistNameOrUri.toLowerCase();
+    this.discographyCache.delete(cacheKey);
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.removeItem(`sp_disc_${cacheKey}`);
+      } catch {}
+    }
   }
 
   private trackCoverMemory = new Map<string, { url: string; timestamp: number }>();
