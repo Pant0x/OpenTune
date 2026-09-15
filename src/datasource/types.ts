@@ -34,6 +34,7 @@ export interface Track {
   releaseDate?: string;
   year?: string;
   originalId?: string;
+  isVideo?: boolean;
 }
 
 export interface LyricLine {

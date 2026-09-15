@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
   CloseIcon,
@@ -37,6 +37,8 @@ import { SpotifyService, type SpotifyArtistOverview } from "../../services/Spoti
 import { TrackArtwork } from "../components/TrackArtwork";
 import { ArtistLinks, useArtistNavigation } from "../components/ArtistLinks";
 import { findActiveLineIndex, isRtlText, isSyncedLyrics } from "./lyricsTiming";
+import { VideoPlayerView } from "../components/player/VideoPlayerView";
+import { getMediaCounterpart } from "../../datasource/youtube/videoService";
 
 interface NowPlayingFullscreenViewProps {
   onClose: () => void;
@@ -83,6 +85,44 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   // View mode: "artwork" | "lyrics" | "split"
   const [viewMode, setViewMode] = useState<"artwork" | "lyrics" | "split">("split");
+  const [mediaMode, setMediaMode] = useState<"song" | "video">(() => (track?.isVideo ? "video" : "song"));
+  const [videoCounterpart, setVideoCounterpart] = useState<Track | null>(null);
+  const [songCounterpart, setSongCounterpart] = useState<Track | null>(null);
+
+  const isPodcast = useMemo(() => {
+    if (!track) return false;
+    const lower = `${track.title} ${track.artist || ""}`.toLowerCase();
+    return lower.includes("podcast") || lower.includes("episode") || lower.includes("show");
+  }, [track]);
+
+  const activeVideoId = useMemo(() => {
+    if (!track) return "";
+    if (track.isVideo) return track.id;
+    if (videoCounterpart?.id) return videoCounterpart.id;
+    return track.id;
+  }, [track, videoCounterpart]);
+
+  useEffect(() => {
+    if (!track) return;
+    setVideoCounterpart(null);
+    setSongCounterpart(null);
+    setMediaMode(track.isVideo ? "video" : "song");
+
+    let active = true;
+    if (track.isVideo) {
+      void getMediaCounterpart(track, "song").then((res) => {
+        if (active && res) setSongCounterpart(res);
+      });
+    } else {
+      void getMediaCounterpart(track, "video").then((res) => {
+        if (active && res) setVideoCounterpart(res);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [track?.id]);
+
   const [isIdle, setIsIdle] = useState(false);
   const idleTimerRef = useRef<number | null>(null);
 
@@ -115,6 +155,24 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     const threshold = window.innerHeight * 0.35;
     setIsDetailsInView(scrollTop > threshold);
   };
+
+  const handleSwitchMediaMode = useCallback(async (mode: "song" | "video") => {
+    if (!track || mode === mediaMode) return;
+    if (mode === "video") {
+      void playerController.pause();
+      setMediaMode("video");
+    } else {
+      setMediaMode("song");
+      if (track.isVideo && songCounterpart) {
+        void playerController.playTrackById(songCounterpart.id, [songCounterpart], true);
+      } else {
+        void playerController.play();
+      }
+      if (currentTime > 0) {
+        void playerController.seekTo(currentTime);
+      }
+    }
+  }, [track, mediaMode, songCounterpart, currentTime]);
 
   // Artist Overview for "About the artist"
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
@@ -413,65 +471,98 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           <span>{isDetailsInView ? "← Back to Player" : "Back"}</span>
         </button>
 
-        {/* View Switcher Pill: Artwork / Lyrics / Split / Details */}
-        <div className="flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg">
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("artwork");
-              scrollToPlayerTop();
-            }}
-            className={cn(
-              "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              !isDetailsInView && viewMode === "artwork"
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white",
-            )}
-          >
-            Artwork
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("lyrics");
-              scrollToPlayerTop();
-            }}
-            className={cn(
-              "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              !isDetailsInView && viewMode === "lyrics"
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white",
-            )}
-          >
-            Lyrics
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode("split");
-              scrollToPlayerTop();
-            }}
-            className={cn(
-              "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              !isDetailsInView && viewMode === "split"
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white",
-            )}
-          >
-            Split
-          </button>
-          <button
-            type="button"
-            onClick={scrollToDetails}
-            className={cn(
-              "rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              isDetailsInView
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white",
-            )}
-          >
-            Details
-          </button>
+        {/* Media & View Switcher Pills */}
+        <div className="flex items-center gap-2">
+          {/* Song / Video Switcher */}
+          <div className="flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg">
+            <button
+              type="button"
+              onClick={() => void handleSwitchMediaMode("song")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 transition-all cursor-pointer",
+                mediaMode === "song"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white",
+              )}
+            >
+              <span>{isPodcast ? "Audio" : "Song"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSwitchMediaMode("video")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 transition-all cursor-pointer",
+                mediaMode === "video"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white",
+              )}
+            >
+              <span>Video</span>
+            </button>
+          </div>
+
+          {/* View Switcher Pill: Artwork / Lyrics / Split / Details */}
+          {mediaMode === "song" && (
+            <div className="flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("artwork");
+                  scrollToPlayerTop();
+                }}
+                className={cn(
+                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                  !isDetailsInView && viewMode === "artwork"
+                    ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                    : "hover:text-white",
+                )}
+              >
+                Artwork
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("lyrics");
+                  scrollToPlayerTop();
+                }}
+                className={cn(
+                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                  !isDetailsInView && viewMode === "lyrics"
+                    ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                    : "hover:text-white",
+                )}
+              >
+                Lyrics
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("split");
+                  scrollToPlayerTop();
+                }}
+                className={cn(
+                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                  !isDetailsInView && viewMode === "split"
+                    ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                    : "hover:text-white",
+                )}
+              >
+                Split
+              </button>
+              <button
+                type="button"
+                onClick={scrollToDetails}
+                className={cn(
+                  "rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                  isDetailsInView
+                    ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                    : "hover:text-white",
+                )}
+              >
+                Details
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Action Icons: In-app Fullscreen Toggle & Exit */}
@@ -504,8 +595,22 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
         onScroll={handleScroll}
         className="relative h-full w-full overflow-y-auto overflow-x-hidden scroll-smooth [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 hover:[&::-webkit-scrollbar-thumb]:bg-white/40 [&::-webkit-scrollbar-track]:bg-transparent"
       >
-        {/* Screen 1: Hero Player (Artwork / Lyrics / Split) */}
-        <div className="relative min-h-screen w-full flex flex-col justify-center items-center p-6 sm:p-10 pt-20 pb-28">
+        {mediaMode === "video" ? (
+          <div className="relative min-h-screen w-full flex flex-col justify-start items-center p-4 sm:p-8 pt-20 pb-20 max-w-6xl mx-auto">
+            {track && (
+              <VideoPlayerView
+                videoId={activeVideoId}
+                track={track}
+                initialTime={currentTime}
+                onSwitchToSong={() => void handleSwitchMediaMode("song")}
+                isPodcast={isPodcast}
+              />
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Screen 1: Hero Player (Artwork / Lyrics / Split) */}
+            <div className="relative min-h-screen w-full flex flex-col justify-center items-center p-6 sm:p-10 pt-20 pb-28">
           {/* Center Display: Album Art, Lyrics, or Split */}
           <main className="relative my-auto flex-1 flex items-center justify-center py-6 w-full">
             {viewMode === "artwork" && (
@@ -870,13 +975,15 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
             </div>
           </div>
         </section>
+          </>
+        )}
       </div>
 
     {/* Full-Width Bottom Spotify Player Dock - Slides in when mouse is active */}
     <footer
       className={cn(
         "fixed bottom-0 inset-x-0 h-20 bg-[#121212]/95 backdrop-blur-2xl border-t border-white/10 px-6 sm:px-8 flex items-center justify-between z-40 transition-transform duration-300 ease-out",
-        isIdle && !isDetailsInView ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
+        (isIdle && !isDetailsInView) || mediaMode === "video" ? "translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
       )}
     >
       {/* Left section: Thumbnail + Title + Artist + Like */}

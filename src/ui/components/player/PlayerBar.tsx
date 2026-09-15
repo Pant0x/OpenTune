@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { FullScreenIcon, PlayActiveIcon, QueuePanelIcon, VideoIcon } from "@/ui/icons";
 import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { usePlayerSelector } from "../../../player/playerStore";
@@ -229,6 +229,21 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
                   "opacity-0 focus-within:opacity-100 group-hover/playerbar:opacity-100",
               )}
             >
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => {
+                  playerUIStore.setNowPlayingFullscreen(true);
+                }}
+                aria-label="Watch video"
+                title="Watch video"
+              >
+                <VideoIcon size={18} />
+              </button>
+
               <LyricsButton onToggle={onToggleLyrics} />
 
               <button

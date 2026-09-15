@@ -565,7 +565,7 @@ export class YouTubeMusicDataSource extends DataSource {
     return client;
   }
 
-  private getMusicClient(): Promise<Innertube> {
+  getMusicClient(): Promise<Innertube> {
     if (!this.musicClientPromise) {
       logInternalInfo("YouTubeMusicDataSource.getMusicClient creating client");
       this.musicClientPromise = this.createMusicClient(true);
@@ -574,7 +574,7 @@ export class YouTubeMusicDataSource extends DataSource {
     return this.musicClientPromise;
   }
 
-  private getWebClient(): Promise<Innertube> {
+  getWebClient(): Promise<Innertube> {
     if (!this.webClientPromise) {
       logInternalInfo("YouTubeMusicDataSource.getWebClient creating client");
       // No player needed: this client only enumerates accounts and resolves like endpoints,

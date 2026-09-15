@@ -13,7 +13,7 @@ import {
   startOfflineProgressFeed,
 } from "./offlineStore";
 
-const dataSource = new YouTubeMusicDataSource();
+export const dataSource = new YouTubeMusicDataSource();
 
 export const libraryController = new LibraryController(dataSource);
 export const searchController = new SearchController(dataSource);

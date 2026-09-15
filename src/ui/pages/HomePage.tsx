@@ -17,6 +17,8 @@ interface HomeMoodChip {
 
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
+  { id: "podcasts", label: "Podcasts", query: "popular podcast episodes talk show" },
+  { id: "videos", label: "Music Videos", query: "top official music videos trending" },
   { id: "sleep", label: "Sleep", query: "sleep relaxing calm music deep sleep" },
   { id: "relax", label: "Relax", query: "relax chill lofi acoustic" },
   { id: "sad", label: "Sad", query: "sad emotional songs acoustic" },
@@ -172,6 +174,20 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     title: "Long listens",
     matchPatterns: [/long listens/i, /extended/i, /deep focus/i],
     fallbackQuery: "extended mix lofi live dj set long listen",
+    fallbackType: "song",
+  },
+  {
+    id: "music-videos",
+    title: "Music videos",
+    matchPatterns: [/music videos/i, /videos/i, /top music videos/i],
+    fallbackQuery: "top official music videos trending",
+    fallbackType: "song",
+  },
+  {
+    id: "podcasts",
+    title: "Podcasts & Shows",
+    matchPatterns: [/podcasts/i, /podcast/i, /episodes/i, /shows/i],
+    fallbackQuery: "popular podcast episodes full show talk",
     fallbackType: "song",
   },
 ];
