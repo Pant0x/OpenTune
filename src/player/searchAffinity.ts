@@ -1,4 +1,9 @@
 import type { SearchResults } from "../datasource/types";
+import {
+  deduplicateArtists,
+  normTranslit,
+  parseSubscriberCount,
+} from "../datasource/searchNormalize";
 import { playerController } from "./playerStore";
 
 const SEARCH_SELECTIONS_KEY = "amber_search_selections_v1";
@@ -84,9 +89,13 @@ function getFollowedArtists(): Set<string> {
           if (typeof item === "string") {
             set.add(item);
             set.add(simplifyText(item));
+            set.add(normTranslit(item));
           } else if (item?.id) {
             set.add(item.id);
-            if (item.name) set.add(simplifyText(item.name));
+            if (item.name) {
+              set.add(simplifyText(item.name));
+              set.add(normTranslit(item.name));
+            }
           }
         }
       }
@@ -106,12 +115,16 @@ function getRecentlyPlayedArtistCounts(): Map<string, number> {
       if (track.artist) {
         const key = simplifyText(track.artist);
         counts.set(key, (counts.get(key) || 0) + 1);
+        const tKey = normTranslit(track.artist);
+        if (tKey) counts.set(tKey, (counts.get(tKey) || 0) + 1);
       }
       if (Array.isArray(track.artists)) {
         for (const a of track.artists) {
           if (a.name) {
             const aKey = simplifyText(a.name);
             counts.set(aKey, (counts.get(aKey) || 0) + 1);
+            const aTKey = normTranslit(a.name);
+            if (aTKey) counts.set(aTKey, (counts.get(aTKey) || 0) + 1);
           }
         }
       }
@@ -141,22 +154,29 @@ export function calculateArtistAffinity(
 ): number {
   const simplifiedQuery = simplifyText(query);
   const simplifiedName = simplifyText(artistName);
+  const translitQuery = normTranslit(query);
+  const translitName = normTranslit(artistName);
   if (!simplifiedName) return 0;
 
   let score = 0;
 
-  // 1. Text Similarity
+  // 1. Text Similarity & Transliteration
   const rawTokens = artistName.toLowerCase().split(/[\s\-_\/.]+/).filter(Boolean);
   const firstTokenSimp = simplifyText(rawTokens[0] || "");
   const isFirstTokenExact = firstTokenSimp && firstTokenSimp === simplifiedQuery;
 
   if (simplifiedName === simplifiedQuery) {
     score += 100;
+  } else if (translitQuery && translitName && translitQuery === translitName) {
+    // Exact transliteration / phonetic match (e.g. 'sherein' <-> 'Sherine', 'fayrouz' <-> 'Fairouz')
+    score += 98;
   } else if (isFirstTokenExact) {
     // Stem / first-token match (e.g. "Lege" in "Lege-Cy" or "Lil" in "Lil Wayne")
     score += 95;
   } else if (simplifiedName.startsWith(simplifiedQuery) || simplifiedQuery.startsWith(simplifiedName)) {
     score += 65;
+  } else if (translitQuery && (translitName.startsWith(translitQuery) || translitQuery.startsWith(translitName))) {
+    score += 60;
   } else if (simplifiedName.includes(simplifiedQuery) || simplifiedQuery.includes(simplifiedName)) {
     score += 40;
   }
@@ -167,11 +187,16 @@ export function calculateArtistAffinity(
   if (suggestions.length > 0) {
     for (const sugg of suggestions) {
       const simpSugg = simplifyText(sugg);
+      const translitSugg = normTranslit(sugg);
       if (!simpSugg) continue;
-      if (simpSugg === simplifiedName) {
+      if (simpSugg === simplifiedName || (translitSugg && translitSugg === translitName)) {
         score += 150;
         break;
-      } else if (simpSugg.startsWith(simplifiedName) || simplifiedName.startsWith(simpSugg)) {
+      } else if (
+        simpSugg.startsWith(simplifiedName) ||
+        simplifiedName.startsWith(simpSugg) ||
+        (translitSugg && (translitSugg.startsWith(translitName) || translitName.startsWith(translitSugg)))
+      ) {
         score += 110;
         break;
       } else if (firstTokenSimp && simpSugg.startsWith(firstTokenSimp)) {
@@ -185,6 +210,7 @@ export function calculateArtistAffinity(
   // If the search results contain multiple songs by this artist, this artist is undeniably what was searched for.
   const trackCount = options?.artistTrackCounts?.get(simplifiedName)
     || (firstTokenSimp ? options?.artistTrackCounts?.get(firstTokenSimp) : 0)
+    || (translitName ? options?.artistTrackCounts?.get(translitName) : 0)
     || 0;
   if (trackCount > 0) {
     score += Math.min(trackCount * 30, 160);
@@ -194,15 +220,23 @@ export function calculateArtistAffinity(
   const played = options?.playedCounts ?? getRecentlyPlayedArtistCounts();
   const selections = options?.selections ?? loadSearchSelections();
 
-  // 4. User Followed Status (+120)
-  if ((artistId && followed.has(artistId)) || followed.has(simplifiedName)) {
-    score += 120;
+  // 4. User Followed Status (+250) - Dominates random matches
+  if (
+    (artistId && followed.has(artistId)) ||
+    followed.has(simplifiedName) ||
+    (translitName && followed.has(translitName))
+  ) {
+    score += 250;
   }
 
-  // 5. User Listening History (Up to +100)
-  const listenCount = played.get(simplifiedName) || (firstTokenSimp ? played.get(firstTokenSimp) : 0) || 0;
+  // 5. User Listening History (Up to +200)
+  const listenCount =
+    played.get(simplifiedName) ||
+    (firstTokenSimp ? played.get(firstTokenSimp) : 0) ||
+    (translitName ? played.get(translitName) : 0) ||
+    0;
   if (listenCount > 0) {
-    score += Math.min(listenCount * 20, 100);
+    score += Math.min(listenCount * 40, 200);
   }
 
   // 6. Past Search Selection for this Query (+160)
@@ -256,12 +290,16 @@ export function reRankSearchResults(
     if (t.artist) {
       const aSimp = simplifyText(t.artist);
       artistTrackCounts.set(aSimp, (artistTrackCounts.get(aSimp) || 0) + 1);
+      const aTranslit = normTranslit(t.artist);
+      if (aTranslit) artistTrackCounts.set(aTranslit, (artistTrackCounts.get(aTranslit) || 0) + 1);
     }
     if (Array.isArray(t.artists)) {
       for (const a of t.artists) {
         if (a.name) {
           const aSimp = simplifyText(a.name);
           artistTrackCounts.set(aSimp, (artistTrackCounts.get(aSimp) || 0) + 1);
+          const aTranslit = normTranslit(a.name);
+          if (aTranslit) artistTrackCounts.set(aTranslit, (artistTrackCounts.get(aTranslit) || 0) + 1);
         }
       }
     }
@@ -276,29 +314,28 @@ export function reRankSearchResults(
     artistTrackCounts,
   };
 
-  const parseSubscriberScore = (count?: string): number => {
-    if (!count) return 0;
-    const match = count.match(/([\d,.]+)\s*([KMBkmb]?)/);
-    if (!match) return 0;
-    const val = parseFloat(match[1].replace(/,/g, ""));
-    if (isNaN(val)) return 0;
-    const unit = match[2]?.toUpperCase();
-    if (unit === "M") return Math.min(val * 10, 80);
-    if (unit === "K") return Math.min(val * 0.05, 30);
-    if (unit === "B") return 100;
-    return 0;
-  };
+  // Deduplicate artists so no identical avatars or names duplicate in the result set
+  const dedupedArtists = deduplicateArtists(results.artists || []);
 
   // 1. Re-rank Artists
-  const scoredArtists = results.artists.map((artist, originalIndex) => {
+  const scoredArtists = dedupedArtists.map((artist, originalIndex) => {
     const affinity = calculateArtistAffinity(artist.name, artist.id, cleanQuery, ctx);
     let score = affinity * 100 - originalIndex; // Maintain original stability for ties
 
-    // Official music artists take priority over YouTuber/creator channels with the same name
+    // Official music artists take priority over YouTuber/creator channels
     if (!artist.isCreator) {
-      score += 60;
+      score += 2500;
     }
-    score += parseSubscriberScore(artist.subscriberCount);
+
+    // High subscriber / monthly listener count weight: ensures superstars outrank 10-sub channels
+    const subs = parseSubscriberCount(artist.subscriberCount);
+    if (subs >= 10_000_000) score += 9000;
+    else if (subs >= 5_000_000) score += 7500;
+    else if (subs >= 1_000_000) score += 6000;
+    else if (subs >= 500_000) score += 4000;
+    else if (subs >= 100_000) score += 2500;
+    else if (subs >= 10_000) score += 1200;
+    else if (subs >= 1_000) score += 400;
 
     return {
       artist,

@@ -75,6 +75,12 @@ import {
   setLiveCookie,
   tauriFetch,
 } from "./tauriFetch";
+import {
+  deduplicateArtists,
+  normSimp,
+  normTranslit,
+  parseSubscriberCount,
+} from "../searchNormalize";
 
 type ClientLabel = "music" | "web" | "download";
 type NativeAudioPayload = {
@@ -6220,13 +6226,71 @@ export class YouTubeMusicDataSource extends DataSource {
       .map((item) => mapper(item as MusicItem))
       .filter((item): item is T => Boolean(item));
 
+    const cachedLibrary = this.libraryRefreshPromise
+      ? null
+      : await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
     const libraryPlaylistIds = new Set(
-      this.libraryRefreshPromise
-        ? []
-        : (await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY))?.playlists.map(
-          (playlist) => playlist.id.replace(/^VL/, ""),
-        ) ?? [],
+      cachedLibrary?.playlists.map((playlist) => playlist.id.replace(/^VL/, "")) ?? [],
     );
+
+    // Personalization sets: user followed artists, library subscriptions, listening history
+    const followedSet = new Set<string>();
+    if (typeof localStorage !== "undefined") {
+      try {
+        const rawFollows = localStorage.getItem("amber_followed_artists");
+        if (rawFollows) {
+          const parsed = JSON.parse(rawFollows);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (typeof item === "string") {
+                followedSet.add(item.toLowerCase().trim());
+                followedSet.add(normSimp(item));
+                followedSet.add(normTranslit(item));
+              } else if (item?.id) {
+                followedSet.add(item.id);
+                if (item.name) {
+                  followedSet.add(item.name.toLowerCase().trim());
+                  followedSet.add(normSimp(item.name));
+                  followedSet.add(normTranslit(item.name));
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (cachedLibrary?.artists) {
+      for (const a of cachedLibrary.artists) {
+        if (a.id) followedSet.add(a.id);
+        if (a.name) {
+          followedSet.add(a.name.toLowerCase().trim());
+          followedSet.add(normSimp(a.name));
+          followedSet.add(normTranslit(a.name));
+        }
+      }
+    }
+
+    const historyArtistSet = new Set<string>();
+    if (cachedLibrary?.recentlyPlayed) {
+      for (const t of cachedLibrary.recentlyPlayed) {
+        if (t.artist) {
+          historyArtistSet.add(t.artist.toLowerCase().trim());
+          historyArtistSet.add(normSimp(t.artist));
+          historyArtistSet.add(normTranslit(t.artist));
+        }
+      }
+    }
+    if (cachedLibrary?.likedSongs) {
+      for (const t of cachedLibrary.likedSongs) {
+        if (t.artist) {
+          historyArtistSet.add(t.artist.toLowerCase().trim());
+          historyArtistSet.add(normSimp(t.artist));
+          historyArtistSet.add(normTranslit(t.artist));
+        }
+      }
+    }
+
     const fallbackItems = this.collectMusicItems(
       response.page,
       new Set(["artist", "song", "video", "album", "playlist"]),
@@ -6286,34 +6350,6 @@ export class YouTubeMusicDataSource extends DataSource {
     ];
 
     const officialArtistIds = new Set(rawMusicArtists.map((a) => a.id));
-
-    const normSimp = (str: string) => str.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/gi, "").trim();
-    const normTranslit = (str: string) => {
-      return str
-        .toLowerCase()
-        .normalize("NFKD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/y/g, "i")
-        .replace(/ou/g, "u")
-        .replace(/oo/g, "u")
-        .replace(/ee/g, "i")
-        .replace(/ph/g, "f")
-        .replace(/kh/g, "k")
-        .replace(/gh/g, "g")
-        .replace(/sh/g, "s")
-        .replace(/[^a-z0-9\u0600-\u06FF]/g, "")
-        .trim();
-    };
-
-    const parseSubs = (text?: string): number => {
-      if (!text) return 0;
-      const clean = text.toLowerCase().replace(/subscribers?/g, "").trim();
-      if (clean.endsWith("b")) return (parseFloat(clean) || 0) * 1e9;
-      if (clean.endsWith("m")) return (parseFloat(clean) || 0) * 1e6;
-      if (clean.endsWith("k")) return (parseFloat(clean) || 0) * 1e3;
-      const num = parseFloat(clean.replace(/,/g, ""));
-      return isNaN(num) ? 0 : num;
-    };
 
     const querySimp = normSimp(query);
     const queryTranslit = normTranslit(query);
@@ -6383,8 +6419,7 @@ export class YouTubeMusicDataSource extends DataSource {
           const aTranslit = normTranslit(a.name);
           return (
             (spTopSimp && aSimp === spTopSimp) ||
-            (spTopTranslit && aTranslit === spTopTranslit) ||
-            (queryTranslit && aTranslit === queryTranslit)
+            (spTopTranslit && aTranslit === spTopTranslit)
           );
         })
       : undefined;
@@ -6399,62 +6434,84 @@ export class YouTubeMusicDataSource extends DataSource {
       });
     }
 
-    // Deduplicate by ID while preserving the highest-quality metadata
-    const seenArtistIds = new Set<string>();
-    const deduplicatedArtists: Artist[] = [];
-    for (const a of [...spotifyLeadArtists, ...rawArtistPool]) {
-      if (!a.id || seenArtistIds.has(a.id)) continue;
-      seenArtistIds.add(a.id);
+    // Deduplicate by avatar key, transliterated name, and canonical channel ID
+    const mergedArtists = deduplicateArtists([...spotifyLeadArtists, ...rawArtistPool]);
 
-      // If this artist matches Spotify's #1 artist, enrich it with Spotify's avatar and mark official
+    // Ensure Spotify #1 match is official and carries Spotify's high-res avatar
+    const candidateArtists = mergedArtists.map((a) => {
       if (topSpotify && (normSimp(a.name) === spTopSimp || normTranslit(a.name) === spTopTranslit)) {
-        deduplicatedArtists.push({
+        return {
           ...a,
           artworkUrl: topSpotify.artworkUrl || a.artworkUrl,
           isCreator: false,
-        });
-      } else {
-        deduplicatedArtists.push(a);
+        };
       }
-    }
+      return a;
+    });
 
-    // Intelligent artist ranking: ensure the true artist (from Spotify / exact match / top subscriber) is #1
+    // Intelligent artist ranking: user preferences, popularity, official status, query match
     const qWords = query.trim().split(/\s+/).length;
     const scoreArtist = (a: Artist): number => {
       const aSimp = normSimp(a.name);
       const aTranslit = normTranslit(a.name);
+      const aLower = a.name.toLowerCase().trim();
       let score = 0;
 
-      // 1. Match with Spotify's #1 artist
+      // 1. Personalization: User followed / subscribed in library (+10000)
+      if (
+        (a.id && followedSet.has(a.id)) ||
+        followedSet.has(aLower) ||
+        followedSet.has(aSimp) ||
+        followedSet.has(aTranslit)
+      ) {
+        score += 10000;
+      }
+
+      // 2. Personalization: User listening history / liked songs (+6000)
+      if (
+        historyArtistSet.has(aLower) ||
+        historyArtistSet.has(aSimp) ||
+        historyArtistSet.has(aTranslit)
+      ) {
+        score += 6000;
+      }
+
+      // 3. Match with Spotify's #1 artist
       if (spTopSimp && aSimp === spTopSimp) score += 10000;
       else if (spTopTranslit && aTranslit === spTopTranslit) score += 9000;
+      else if (spTopSimp && (aSimp.startsWith(spTopSimp) || spTopSimp.startsWith(aSimp))) score += 4000;
 
-      // 2. Match with search query
+      // 4. Match with search query
       if (querySimp && aSimp === querySimp) score += 6000;
-      else if (queryTranslit && aTranslit === queryTranslit) score += 5000;
-      else if (querySimp && aSimp.startsWith(querySimp)) score += 2500;
-      else if (queryTranslit && aTranslit.startsWith(queryTranslit)) score += 2000;
+      else if (queryTranslit && aTranslit === queryTranslit) score += 5500;
+      else if (querySimp && aSimp.startsWith(querySimp)) score += 3000;
+      else if (queryTranslit && aTranslit.startsWith(queryTranslit)) score += 2500;
+      else if (querySimp && aSimp.includes(querySimp)) score += 1500;
 
-      // 3. Extra words penalty (e.g. "Farid" in "Fairouz Farid" when query is "fayrouz")
+      // 5. Extra words penalty (e.g. "Farid" in "Fairouz Farid" when query is "fayrouz")
       const aWords = a.name.trim().split(/\s+/).length;
       if (aWords > qWords) {
-        score -= (aWords - qWords) * 1500;
+        score -= (aWords - qWords) * 1200;
       }
 
-      // 4. Subscriber count weight (logarithmic: 682K >> 1 subscriber)
-      const subs = parseSubs(a.subscriberCount);
-      if (subs > 0) {
-        score += Math.log10(subs + 1) * 350;
-      }
+      // 6. Subscriber / Monthly listener count weighting
+      const subs = parseSubscriberCount(a.subscriberCount);
+      if (subs >= 10_000_000) score += 9000;
+      else if (subs >= 5_000_000) score += 7500;
+      else if (subs >= 1_000_000) score += 6000;
+      else if (subs >= 500_000) score += 4000;
+      else if (subs >= 100_000) score += 2500;
+      else if (subs >= 10_000) score += 1200;
+      else if (subs >= 1_000) score += 400;
 
-      // 5. Official music artist vs creator channel bonus
-      if (!a.isCreator) score += 800;
+      // 7. Official music artist vs creator channel bonus
+      if (!a.isCreator) score += 2500;
 
       return score;
     };
 
-    deduplicatedArtists.sort((a, b) => scoreArtist(b) - scoreArtist(a));
-    const artists = deduplicatedArtists;
+    candidateArtists.sort((a, b) => scoreArtist(b) - scoreArtist(a));
+    const artists = candidateArtists;
 
     const results = {
       artists,

@@ -18,22 +18,10 @@ import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { getVideoArtworkFallback } from "../../datasource/youtube/artwork";
 import { recordSearchSelection } from "../../player/searchAffinity";
+import { deduplicateArtists, normTranslit } from "../../datasource/searchNormalize";
 
 function normalizeSearchKey(value: string): string {
-  return value
-    .trim()
-    .toLocaleLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/y/g, "i")
-    .replace(/ou/g, "u")
-    .replace(/oo/g, "u")
-    .replace(/ee/g, "i")
-    .replace(/ph/g, "f")
-    .replace(/kh/g, "k")
-    .replace(/gh/g, "g")
-    .replace(/sh/g, "s")
-    .replace(/[^a-z0-9]/g, "");
+  return normTranslit(value);
 }
 
 type SelectableItem =
@@ -129,9 +117,15 @@ export function SearchResultsPage({
   }, [query, scope]);
 
   const scopedResults = useMemo<SearchResults>(() => {
-    if (scope === "all") return results;
+    const raw = scope === "all" ? results : (deepResults ?? results);
+    const dedupedArtists = deduplicateArtists(raw.artists || []);
+    const source: SearchResults = {
+      ...raw,
+      artists: dedupedArtists,
+    };
 
-    const source = deepResults ?? results;
+    if (scope === "all") return source;
+
     const narrowed: SearchResults = {
       artists: scope === "artists" ? source.artists : [],
       tracks: scope === "songs" ? source.tracks : [],
@@ -142,10 +136,10 @@ export function SearchResultsPage({
       + narrowed.albums.length + narrowed.playlists.length;
     return total > 0 || !deepResults ? narrowed : {
       ...EMPTY_RESULTS,
-      artists: scope === "artists" ? results.artists : [],
-      tracks: scope === "songs" ? results.tracks : [],
-      albums: scope === "albums" ? results.albums : [],
-      playlists: scope === "playlists" ? results.playlists : [],
+      artists: scope === "artists" ? source.artists : [],
+      tracks: scope === "songs" ? source.tracks : [],
+      albums: scope === "albums" ? source.albums : [],
+      playlists: scope === "playlists" ? source.playlists : [],
     };
   }, [deepResults, results, scope]);
 

@@ -18,6 +18,7 @@ import { useArtistNavigation, useAlbumNavigation } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
 import { recordSearchSelection, simplifyText } from "../../player/searchAffinity";
+import { normTranslit, parseSubscriberCount } from "../../datasource/searchNormalize";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 6;
@@ -114,6 +115,8 @@ export function SearchBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<number | null>(null);
+  const requestIdRef = useRef(0);
+  const latestQueryRef = useRef("");
 
   const showBackButton = canGoBack || canGoForward;
 
@@ -146,6 +149,9 @@ export function SearchBar({
   // Fetch search suggestions and quick preview entities
   const fetchSuggestionsAndPreview = useCallback((searchQuery: string) => {
     const trimmed = searchQuery.trim();
+    latestQueryRef.current = trimmed;
+    const currentRequestId = ++requestIdRef.current;
+
     if (!trimmed) {
       setSuggestions([]);
       setPreviewResults(null);
@@ -153,24 +159,28 @@ export function SearchBar({
     }
 
     try {
-      // One search per keystroke. The old version ran search twice — standalone and again
-      // once suggestions arrived to re-rank with — and both paid the full re-rank. The
-      // suggestion fetch runs alongside instead; the network call was already deduped,
-      // but the ranking work was not.
       void searchController
         .search(trimmed, (updated: SearchResults) => {
-          setPreviewResults(updated);
+          if (currentRequestId === requestIdRef.current) {
+            setPreviewResults(updated);
+          }
         })
         .then((results: SearchResults) => {
-          if (results) setPreviewResults(results);
+          if (currentRequestId === requestIdRef.current && results) {
+            setPreviewResults(results);
+          }
         });
 
       void searchController
         .getSearchSuggestions(trimmed, (updated: string[]) => {
-          setSuggestions(updated.slice(0, 4));
+          if (currentRequestId === requestIdRef.current) {
+            setSuggestions(updated.slice(0, 4));
+          }
         })
         .then((results: string[]) => {
-          setSuggestions((results || []).slice(0, 4));
+          if (currentRequestId === requestIdRef.current) {
+            setSuggestions((results || []).slice(0, 4));
+          }
         });
     } catch {}
   }, []);
@@ -179,6 +189,13 @@ export function SearchBar({
     setQuery(value);
     setSelectedIndex(-1);
     setIsOpen(true);
+
+    if (!value.trim()) {
+      latestQueryRef.current = "";
+      ++requestIdRef.current;
+      setSuggestions([]);
+      setPreviewResults(null);
+    }
 
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
@@ -289,17 +306,66 @@ export function SearchBar({
       if (panto) return panto;
     }
 
-    // If suggestions are available, check if an artist matches top suggestions
+    const querySimp = simplifyText(query);
+    const queryTranslit = normTranslit(query);
+
+    // 1. If suggestions are available, check if an artist matches top suggestions
     if (suggestions.length > 0) {
       for (const sugg of suggestions) {
         const simpSugg = simplifyText(sugg);
+        const translitSugg = normTranslit(sugg);
         if (!simpSugg) continue;
-        const match = artists.find((a) => {
+
+        // Exact match with suggestion (e.g. sugg is "drake" and artist is "Drake")
+        const exactMatch = artists.find((a) => {
           const aSimp = simplifyText(a.name);
-          return aSimp === simpSugg || (simpSugg.length >= 4 && (simpSugg.startsWith(aSimp) || aSimp.startsWith(simpSugg)));
+          const aTranslit = normTranslit(a.name);
+          return aSimp === simpSugg || (translitSugg && aTranslit === translitSugg);
         });
-        if (match) return match;
+        if (exactMatch) return exactMatch;
+
+        // Suggestion prefix matches, prioritized by official artist status and subscriber count
+        const candidateMatches = artists.filter((a) => {
+          const aSimp = simplifyText(a.name);
+          const aTranslit = normTranslit(a.name);
+          return (
+            (simpSugg.length >= 3 && aSimp.startsWith(simpSugg)) ||
+            (translitSugg && translitSugg.length >= 3 && aTranslit.startsWith(translitSugg))
+          );
+        });
+        if (candidateMatches.length > 0) {
+          candidateMatches.sort((a, b) => {
+            if (!a.isCreator && b.isCreator) return -1;
+            if (a.isCreator && !b.isCreator) return 1;
+            return parseSubscriberCount(b.subscriberCount) - parseSubscriberCount(a.subscriberCount);
+          });
+          return candidateMatches[0];
+        }
       }
+    }
+
+    // 2. Transliteration match with query (e.g. 'sherein' -> 'Sherine', 'fayrouz' -> 'Fairouz')
+    if (queryTranslit) {
+      const translitMatch = artists.find((a) => normTranslit(a.name) === queryTranslit);
+      if (translitMatch) return translitMatch;
+    }
+
+    // 3. Prefix match with query, prioritizing official artists and subscriber count
+    const queryMatches = artists.filter((a) => {
+      const aSimp = simplifyText(a.name);
+      const aTranslit = normTranslit(a.name);
+      return (
+        (querySimp && aSimp.startsWith(querySimp)) ||
+        (queryTranslit && aTranslit.startsWith(queryTranslit))
+      );
+    });
+    if (queryMatches.length > 0) {
+      queryMatches.sort((a, b) => {
+        if (!a.isCreator && b.isCreator) return -1;
+        if (a.isCreator && !b.isCreator) return 1;
+        return parseSubscriberCount(b.subscriberCount) - parseSubscriberCount(a.subscriberCount);
+      });
+      return queryMatches[0];
     }
 
     return artists[0];
