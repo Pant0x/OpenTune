@@ -46,6 +46,7 @@ function queueSliceEqual(
 
 export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewProps) {
   const track = usePlayerSelector((player) => player.currentTrack);
+  const isPlaying = usePlayerSelector((player) => player.status === "playing");
   const navigateArtist = useArtistNavigation();
 
   const { queue, queueIndex } = usePlayerSessionSelector(selectQueueSlice, queueSliceEqual);
@@ -119,20 +120,21 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const handleSwitchMediaMode = useCallback(async (mode: "song" | "video") => {
     if (!track || mode === mediaMode) return;
     if (mode === "video") {
-      void playerController.pause();
+      playerController.silenceAudioEngine();
       setMediaMode("video");
     } else {
       setMediaMode("song");
+      const videoTime = playerController.getCurrentTime();
       if (track.isVideo && songCounterpart) {
         void playerController.playTrackById(songCounterpart.id, [songCounterpart], true);
-      } else {
+      } else if (isPlaying) {
         void playerController.play();
       }
-      if (currentTime > 0) {
-        void playerController.seekTo(currentTime);
+      if (videoTime > 0) {
+        void playerController.seekTo(videoTime);
       }
     }
-  }, [track, mediaMode, songCounterpart, currentTime]);
+  }, [track, mediaMode, songCounterpart, isPlaying]);
 
   // Artist Overview for "About the artist"
   const libraryState = useLibraryState();
@@ -443,6 +445,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               videoId={activeVideoId}
               track={track}
               initialTime={currentTime}
+              initialPlaying={isPlaying}
               onSwitchToSong={() => void handleSwitchMediaMode("song")}
               isPodcast={isPodcast}
             />

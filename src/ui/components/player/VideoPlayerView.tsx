@@ -18,8 +18,46 @@ interface VideoPlayerViewProps {
   videoId: string;
   track: Track;
   initialTime?: number;
+  initialPlaying?: boolean;
   onSwitchToSong?: () => void;
   isPodcast?: boolean;
+}
+
+function ensureYouTubeIframeApi(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if ((window as any).YT?.Player) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const existing = document.getElementById("yt-iframe-api-script");
+    if (!existing) {
+      const script = document.createElement("script");
+      script.id = "yt-iframe-api-script";
+      script.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(script);
+    }
+
+    const previousReady = (window as any).onYouTubeIframeAPIReady;
+    (window as any).onYouTubeIframeAPIReady = () => {
+      if (typeof previousReady === "function") {
+        try {
+          previousReady();
+        } catch {}
+      }
+      resolve();
+    };
+
+    const interval = setInterval(() => {
+      if ((window as any).YT?.Player) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, 50);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      resolve();
+    }, 4000);
+  });
 }
 
 const TOKEN_REGEX =
@@ -29,6 +67,7 @@ export function VideoPlayerView({
   videoId,
   track,
   initialTime = 0,
+  initialPlaying = false,
   onSwitchToSong,
   isPodcast = false,
 }: VideoPlayerViewProps) {
@@ -56,10 +95,14 @@ export function VideoPlayerView({
   const [isCommentInputFocused, setIsCommentInputFocused] = useState(false);
   const [commentSort, setCommentSort] = useState<"top" | "newest">("top");
 
-  // Iframe and dock playback synchronization
+  // Iframe, YT.Player and dock playback synchronization
+  const iframeId = useMemo(() => `amber-yt-${videoId}`, [videoId]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const isPlayerReadyRef = useRef(false);
+  const pendingActionRef = useRef<"play" | "pause" | null>(initialPlaying ? "play" : null);
   const currentTimeRef = useRef(initialTime);
-  const isPlayingRef = useRef(false);
+  const isPlayingRef = useRef(initialPlaying);
 
   const postToIframe = useCallback((func: string, args: unknown[] = []) => {
     if (iframeRef.current?.contentWindow) {
@@ -70,20 +113,118 @@ export function VideoPlayerView({
     }
   }, []);
 
+  // Initialize official YouTube Iframe Player API on the iframe element
+  useEffect(() => {
+    let active = true;
+    isPlayerReadyRef.current = false;
+    pendingActionRef.current = initialPlaying ? "play" : null;
+
+    void ensureYouTubeIframeApi().then(() => {
+      if (!active) return;
+      if (!(window as any).YT?.Player) return;
+
+      try {
+        ytPlayerRef.current = new (window as any).YT.Player(iframeId, {
+          events: {
+            onReady: (event: any) => {
+              if (!active) return;
+              isPlayerReadyRef.current = true;
+              if (pendingActionRef.current === "play") {
+                try {
+                  event.target.playVideo();
+                } catch {}
+              } else if (pendingActionRef.current === "pause") {
+                try {
+                  event.target.pauseVideo();
+                } catch {}
+              }
+            },
+            onStateChange: (event: any) => {
+              if (!active) return;
+              const state = event.data;
+              if (state === 1) {
+                isPlayingRef.current = true;
+                const time = ytPlayerRef.current?.getCurrentTime?.() ?? currentTimeRef.current;
+                currentTimeRef.current = time;
+                playerController.notifyVideoState("playing", time);
+              } else if (state === 2) {
+                isPlayingRef.current = false;
+                const time = ytPlayerRef.current?.getCurrentTime?.() ?? currentTimeRef.current;
+                currentTimeRef.current = time;
+                playerController.notifyVideoState("paused", time);
+              } else if (state === 0) {
+                isPlayingRef.current = false;
+                playerController.notifyVideoState("ended");
+              }
+            },
+          },
+        });
+      } catch (err) {
+        console.warn("Could not instantiate YT.Player:", err);
+      }
+    });
+
+    return () => {
+      active = false;
+      try {
+        ytPlayerRef.current?.destroy?.();
+      } catch {}
+      ytPlayerRef.current = null;
+      isPlayerReadyRef.current = false;
+    };
+  }, [iframeId, videoId, initialPlaying]);
+
   // Register video delegate with playerController so bottom dock controls video directly
   useEffect(() => {
     const delegate = {
       play: () => {
-        postToIframe("playVideo");
+        pendingActionRef.current = "play";
+        if (isPlayerReadyRef.current && ytPlayerRef.current?.playVideo) {
+          try {
+            ytPlayerRef.current.playVideo();
+          } catch {
+            postToIframe("playVideo");
+          }
+        } else {
+          postToIframe("playVideo");
+        }
       },
       pause: () => {
-        postToIframe("pauseVideo");
+        pendingActionRef.current = "pause";
+        if (isPlayerReadyRef.current && ytPlayerRef.current?.pauseVideo) {
+          try {
+            ytPlayerRef.current.pauseVideo();
+          } catch {
+            postToIframe("pauseVideo");
+          }
+        } else {
+          postToIframe("pauseVideo");
+        }
       },
       seekTo: (time: number) => {
         currentTimeRef.current = time;
-        postToIframe("seekTo", [time, true]);
+        if (isPlayerReadyRef.current && ytPlayerRef.current?.seekTo) {
+          try {
+            ytPlayerRef.current.seekTo(time, true);
+          } catch {
+            postToIframe("seekTo", [time, true]);
+          }
+        } else {
+          postToIframe("seekTo", [time, true]);
+        }
       },
-      getCurrentTime: () => currentTimeRef.current,
+      getCurrentTime: () => {
+        if (isPlayerReadyRef.current && ytPlayerRef.current?.getCurrentTime) {
+          try {
+            const t = ytPlayerRef.current.getCurrentTime();
+            if (typeof t === "number" && !isNaN(t)) {
+              currentTimeRef.current = t;
+              return t;
+            }
+          } catch {}
+        }
+        return currentTimeRef.current;
+      },
     };
 
     playerController.setVideoDelegate(delegate);
@@ -93,7 +234,7 @@ export function VideoPlayerView({
     };
   }, [postToIframe]);
 
-  // Listen to YouTube iframe events to synchronize dock status and progress
+  // Fallback listener for YouTube iframe postMessage events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       let data = event.data;
@@ -302,11 +443,8 @@ export function VideoPlayerView({
   };
 
   const startTimeParam = Math.floor(initialTime) > 0 ? `&start=${Math.floor(initialTime)}` : "";
-  const originParam = typeof window !== "undefined" && window.location?.origin
-    ? `&origin=${encodeURIComponent(window.location.origin)}`
-    : "";
-  // autoplay=0 per user request ("w lma a7wl m4 lazm yb2a fy autoplay tmam")
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=0&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${startTimeParam}${originParam}`;
+  const autoPlayVal = initialPlaying ? 1 : 0;
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayVal}&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${startTimeParam}`;
 
   const displayedLikes = details?.likeCount || "Like";
 
@@ -434,6 +572,7 @@ export function VideoPlayerView({
       {/* 1. Video Player Surface */}
       <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
         <iframe
+          id={iframeId}
           ref={iframeRef}
           src={embedUrl}
           title={track.title}

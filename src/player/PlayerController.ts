@@ -259,6 +259,14 @@ export class PlayerController {
     }
   }
 
+  silenceAudioEngine(): void {
+    try {
+      this.audioEngine.pause();
+    } catch (e) {
+      logInternalWarn("silenceAudioEngine failed", { error: getErrorMessage(e) });
+    }
+  }
+
   private state: PlayerState = {
     status: "idle",
     currentTrack: null,
