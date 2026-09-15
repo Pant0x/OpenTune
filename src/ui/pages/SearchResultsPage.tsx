@@ -11,6 +11,7 @@ import type {
   Track,
 } from "../../datasource/types";
 import { libraryController, searchController, type PlayerControllerActions } from "../../player/playerStore";
+import { playerUIStore } from "../stores/playerUIStore";
 import { AlbumCard } from "../components/AlbumCard";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -30,12 +31,13 @@ type SelectableItem =
   | { kind: "album"; album: Album }
   | { kind: "playlist"; playlist: Playlist };
 
-type SearchScope = "all" | "songs" | "videos" | "artists" | "albums" | "playlists";
+type SearchScope = "all" | "songs" | "videos" | "podcasts" | "artists" | "albums" | "playlists";
 
 const SCOPES: Array<{ label: string; value: SearchScope; category?: SearchCategory }> = [
   { label: "All", value: "all" },
   { label: "Songs", value: "songs", category: "song" },
-  { label: "Videos & Remixes", value: "videos", category: "video" },
+  { label: "Videos", value: "videos", category: "video" },
+  { label: "Podcasts", value: "podcasts" },
   { label: "Artists", value: "artists", category: "artist" },
   { label: "Albums", value: "albums", category: "album" },
   { label: "Playlists", value: "playlists", category: "playlist" },
@@ -117,8 +119,27 @@ export function SearchResultsPage({
   const [isDeepLoading, setIsDeepLoading] = useState(false);
 
   useEffect(() => {
+    if (scope === "podcasts") {
+      let active = true;
+      setDeepResults(null);
+      setIsDeepLoading(true);
+      void libraryController.searchCategory(`${query} podcast`, "song")
+        .then((fetched) => {
+          if (active) setDeepResults(fetched);
+        })
+        .catch(() => {
+          if (active) setDeepResults(null);
+        })
+        .finally(() => {
+          if (active) setIsDeepLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
     const category = SCOPES.find((item) => item.value === scope)?.category;
-    if (!category || !query.trim()) {
+    if (!category) {
       setDeepResults(null);
       setIsDeepLoading(false);
       return;
@@ -155,7 +176,7 @@ export function SearchResultsPage({
 
     const narrowed: SearchResults = {
       artists: scope === "artists" ? source.artists : [],
-      tracks: (scope === "songs" || scope === "videos") ? source.tracks : [],
+      tracks: (scope === "songs" || scope === "videos" || scope === "podcasts") ? source.tracks : [],
       albums: scope === "albums" ? source.albums : [],
       playlists: scope === "playlists" ? source.playlists : [],
     };
@@ -164,7 +185,7 @@ export function SearchResultsPage({
     return total > 0 || !deepResults ? narrowed : {
       ...EMPTY_RESULTS,
       artists: scope === "artists" ? source.artists : [],
-      tracks: (scope === "songs" || scope === "videos") ? source.tracks : [],
+      tracks: (scope === "songs" || scope === "videos" || scope === "podcasts") ? source.tracks : [],
       albums: scope === "albums" ? source.albums : [],
       playlists: scope === "playlists" ? source.playlists : [],
     };
@@ -203,6 +224,12 @@ export function SearchResultsPage({
     if (onPlayTrack) void onPlayTrack(track);
     else void playerController.playTrackById(track.id, scopedResults.tracks, true);
   }, [onPlayTrack, playerController, query, scopedResults.tracks]);
+
+  const playVideoTrack = useCallback((track: Track) => {
+    const videoTrack: Track = { ...track, isVideo: true };
+    playTrack(videoTrack);
+    playerUIStore.setNowPlayingFullscreen(true);
+  }, [playTrack]);
 
   const flatItems = useMemo(
     () => buildFlatItems(scopedResults, songsFirst),
@@ -478,7 +505,7 @@ export function SearchResultsPage({
                           )}
                           style={enterStyle(index)}
                           onContextMenu={(event) => openTrackMenu(event, track)}
-                          onClick={() => playTrack(track)}
+                          onClick={() => playVideoTrack(track)}
                           onMouseEnter={() => handleMouseEnter(index)}
                         >
                           <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
@@ -555,6 +582,52 @@ export function SearchResultsPage({
           {scope === "videos" && scopedResults.tracks.length > 0 && (
             <section className="flex flex-col gap-3">
               <h2 className="text-xl font-bold tracking-tight text-foreground">Videos & Remixes</h2>
+              <div className="flex flex-col gap-1">
+                {scopedResults.tracks.map((track, displayIndex) => {
+                  const index = flatItems.findIndex(
+                    (item) => item.kind === "track" && item.track.id === track.id,
+                  );
+                  const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                  return (
+                    <button
+                      key={track.id}
+                      type="button"
+                      data-selectable-index={index}
+                      className={cn(
+                        "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                        selected(index)
+                      )}
+                      style={enterStyle(index)}
+                      onContextMenu={(event) => openTrackMenu(event, track)}
+                      onClick={() => playVideoTrack(track)}
+                      onMouseEnter={() => handleMouseEnter(index)}
+                    >
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                      <TrackArtwork
+                        className="size-11 shrink-0 rounded-lg object-cover"
+                        size={44}
+                        preferProxy
+                        artworkUrl={art}
+                        iconSize={24}
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
+                        <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                        <ArtistLinks artists={track.artists} fallback={track.artist} />
+                      </span>
+                      <span className="text-xs tabular-nums text-muted-foreground pr-2">
+                        {track.duration || ""}
+                      </span>
+                      <PlayActiveIcon size={18} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {scope === "podcasts" && scopedResults.tracks.length > 0 && (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight text-foreground">Podcasts & Shows</h2>
               <div className="flex flex-col gap-1">
                 {scopedResults.tracks.map((track, displayIndex) => {
                   const index = flatItems.findIndex(
