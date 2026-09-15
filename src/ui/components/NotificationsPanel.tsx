@@ -98,17 +98,61 @@ function isStaleLiveNotification(notification: FeedNotification): boolean {
   );
 }
 
+function parseRelativeTimeMs(text?: string): number {
+  if (!text) return 0;
+  let s = text.toLowerCase().trim();
+  s = s.replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d).toString());
+  const now = Date.now();
+
+  if (s.includes("just now") || s.includes("الآن")) return now;
+
+  const numMatch = s.match(/\d+/);
+  const n = numMatch ? parseInt(numMatch[0], 10) : 1;
+
+  if (/(sec|ثان)/i.test(s)) return now - n * 1000;
+  if (/(min|دقيق|دقائق)/i.test(s)) return now - (s.includes("دقيقتين") ? 2 : n) * 60 * 1000;
+  if (/(hour|ساع)/i.test(s)) return now - (s.includes("ساعتين") ? 2 : n) * 3600 * 1000;
+  if (/(day|يوم|أيام|ايام)/i.test(s)) return now - (s.includes("يومين") ? 2 : n) * 86400 * 1000;
+  if (/(week|أسبوع|اسبوع|أسابيع|اسابيع)/i.test(s)) return now - (/(أسبوعين|اسبوعين)/.test(s) ? 2 : n) * 7 * 86400 * 1000;
+  if (/(month|شهر|أشهر|اشهر|شهور)/i.test(s)) return now - (s.includes("شهرين") ? 2 : n) * 30 * 86400 * 1000;
+  if (/(year|سن|أعوام|اعوام)/i.test(s)) return now - (s.includes("سنتين") ? 2 : n) * 365 * 86400 * 1000;
+
+  return 0;
+}
+
+function sortNotificationsNewestFirst(items: FeedNotification[]): FeedNotification[] {
+  return [...items].sort((a, b) => {
+    const timeA = parseRelativeTimeMs(a.sentAtText);
+    const timeB = parseRelativeTimeMs(b.sentAtText);
+    if (timeA && timeB) return timeB - timeA;
+    if (timeA) return -1;
+    if (timeB) return 1;
+    return 0;
+  });
+}
+
+function isClearedBefore(notification: FeedNotification, clearedAt: number): boolean {
+  if (clearedAt <= 0) return false;
+  const time = parseRelativeTimeMs(notification.sentAtText);
+  if (time > 0 && time < clearedAt - 60_000) {
+    return true;
+  }
+  return false;
+}
+
 function computeUnseenCount(
   items: FeedNotification[],
   dismissed: Set<string>,
   seen: Set<string>,
+  clearedAt: number,
 ): number {
   return items.filter(
     (item) =>
       !isNotificationDismissed(item, dismissed) &&
       !isNotificationSeen(item, seen) &&
       !item.read &&
-      !isStaleLiveNotification(item),
+      !isStaleLiveNotification(item) &&
+      !isClearedBefore(item, clearedAt),
   ).length;
 }
 
@@ -215,11 +259,12 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
     const clearedAt = Number(localStorage.getItem("amber_notifications_cleared_at") || 0);
     void libraryController.getNotifications()
       .then((fetched) => {
-        cachedNotifications = fetched;
-        setNotifications((prev) => prev ?? fetched);
+        const sorted = sortNotificationsNewestFirst(fetched);
+        cachedNotifications = sorted;
+        setNotifications(sorted);
         const currentDismissed = getDismissedIds();
         const currentSeen = getSeenIds();
-        const unreadCount = computeUnseenCount(fetched, currentDismissed, currentSeen);
+        const unreadCount = computeUnseenCount(sorted, currentDismissed, currentSeen, clearedAt);
         setUnseen(unreadCount);
       })
       .catch(() => {
@@ -257,14 +302,16 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
     void libraryController.getNotifications()
       .then((fetched) => {
         if (active) {
-          cachedNotifications = fetched;
-          setNotifications(fetched);
+          const sorted = sortNotificationsNewestFirst(fetched);
+          cachedNotifications = sorted;
+          setNotifications(sorted);
           const currentDismissed = getDismissedIds();
           const currentSeen = getSeenIds();
+          const clearedAt = Number(localStorage.getItem("amber_notifications_cleared_at") || 0);
           if (open) {
-            markCurrentAsSeen(fetched);
+            markCurrentAsSeen(sorted);
           } else {
-            setUnseen(computeUnseenCount(fetched, currentDismissed, currentSeen));
+            setUnseen(computeUnseenCount(sorted, currentDismissed, currentSeen, clearedAt));
           }
         }
       })
@@ -289,8 +336,15 @@ export function NotificationsPanel({ signedIn }: { signedIn: boolean }) {
 
   if (!signedIn) return null;
 
-  const visibleNotifications = (notifications ?? []).filter(
-    (item) => !isNotificationDismissed(item, dismissedIds) && !isStaleLiveNotification(item),
+  const clearedAt = Number(localStorage.getItem("amber_notifications_cleared_at") || 0);
+
+  const visibleNotifications = sortNotificationsNewestFirst(
+    (notifications ?? []).filter(
+      (item) =>
+        !isNotificationDismissed(item, dismissedIds) &&
+        !isStaleLiveNotification(item) &&
+        !isClearedBefore(item, clearedAt),
+    ),
   );
 
   const handleDismiss = (notification: FeedNotification) => {
