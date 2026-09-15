@@ -105,7 +105,25 @@ export async function getVideoDetails(videoId: string): Promise<VideoDetails | n
           }
         }
         description = s.attributedDescription?.content || "";
+        if (!description && (s as any).description?.runs) {
+          description = (s as any).description.runs.map((r: any) => r.text).join("");
+        }
       }
+    }
+
+    if (!description && Array.isArray((response as any)?.data?.engagementPanels)) {
+      const panels = (response as any).data.engagementPanels;
+      const descPanel = panels.find(
+        (p: any) =>
+          p.engagementPanelSectionListRenderer?.panelIdentifier ===
+          "engagement-panel-structured-description",
+      );
+      const items =
+        descPanel?.engagementPanelSectionListRenderer?.content
+          ?.structuredDescriptionContentRenderer?.items;
+      const body = items?.find((i: any) => i.expandableVideoDescriptionBodyRenderer);
+      description =
+        body?.expandableVideoDescriptionBodyRenderer?.attributedDescriptionBodyText?.content || "";
     }
 
     return {

@@ -12,6 +12,7 @@ import { isSavedVideo, subscribeToSavedVideos, toggleSaveVideo } from "../../../
 import { libraryController, playerController, useLibraryState } from "../../../player/playerStore";
 import { YouTubeShareModal } from "./YouTubeShareModal";
 import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface VideoPlayerViewProps {
   videoId: string;
@@ -20,6 +21,9 @@ interface VideoPlayerViewProps {
   onSwitchToSong?: () => void;
   isPodcast?: boolean;
 }
+
+const TOKEN_REGEX =
+  /(https?:\/\/[^\s]+|(?:[a-zA-Z0-9_-]+\.)+(?:com|org|net|io|co|me|to|shop|app|ai|dev|link|lnk\.to)[^\s]*|#[a-zA-Z0-9_]+|\b(?:\d{1,2}:)?\d{1,2}:\d{2}\b)/gi;
 
 export function VideoPlayerView({
   videoId,
@@ -306,6 +310,116 @@ export function VideoPlayerView({
 
   const displayedLikes = details?.likeCount || "Like";
 
+  useEffect(() => {
+    setIsDescriptionExpanded(false);
+  }, [videoId]);
+
+  const formattedViews = useMemo(() => {
+    if (!details?.viewCount) return "";
+    const raw = details.viewCount.trim();
+    if (/views?/i.test(raw)) return raw;
+    return `${raw} views`;
+  }, [details?.viewCount]);
+
+  const isDescriptionExpandable = useMemo(() => {
+    if (!details?.description) return false;
+    const trimmed = details.description.trim();
+    return trimmed.includes("\n") || trimmed.length > 80;
+  }, [details?.description]);
+
+  const handleLinkClick = useCallback(async (e: React.MouseEvent, rawUrl: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const target =
+      rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
+        ? rawUrl
+        : `https://${rawUrl}`;
+    try {
+      await openUrl(target);
+    } catch {
+      window.open(target, "_blank");
+    }
+  }, []);
+
+  const handleTimestampClick = useCallback(
+    (e: React.MouseEvent, seconds: number) => {
+      e.stopPropagation();
+      e.preventDefault();
+      currentTimeRef.current = seconds;
+      postToIframe("seekTo", [seconds, true]);
+      playerController.seekTo(seconds);
+    },
+    [postToIframe],
+  );
+
+  const renderFormattedDescription = useCallback(
+    (text: string) => {
+      if (!text) return null;
+      const parts = text.split(TOKEN_REGEX);
+
+      return parts.map((part, idx) => {
+        if (!part) return null;
+
+        // Hashtag (#tag)
+        if (part.startsWith("#")) {
+          return (
+            <span key={idx} className="text-[#3ea6ff] font-medium select-text">
+              {part}
+            </span>
+          );
+        }
+
+        // Timestamp (hh:mm:ss or mm:ss)
+        const timeMatch = part.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (timeMatch) {
+          const p1 = parseInt(timeMatch[1], 10);
+          const p2 = parseInt(timeMatch[2], 10);
+          const p3 = timeMatch[3] ? parseInt(timeMatch[3], 10) : undefined;
+          const seconds = p3 !== undefined ? p1 * 3600 + p2 * 60 + p3 : p1 * 60 + p2;
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={(e) => handleTimestampClick(e, seconds)}
+              className="text-[#3ea6ff] hover:underline font-medium cursor-pointer inline select-text"
+            >
+              {part}
+            </button>
+          );
+        }
+
+        // URL
+        if (
+          /^(https?:\/\/|(?:[a-zA-Z0-9_-]+\.)+(?:com|org|net|io|co|me|to|shop|app|ai|dev|link|lnk\.to))/i.test(
+            part,
+          )
+        ) {
+          const match = part.match(/^([\s\S]*?)([.,;:!?]+)?$/);
+          const urlOnly = match ? match[1] : part;
+          const punctuation = match ? match[2] || "" : "";
+
+          return (
+            <span key={idx}>
+              <a
+                href={urlOnly.startsWith("http") ? urlOnly : `https://${urlOnly}`}
+                onClick={(e) => handleLinkClick(e, urlOnly)}
+                className="text-[#3ea6ff] hover:underline cursor-pointer break-all select-text"
+              >
+                {urlOnly}
+              </a>
+              {punctuation && <span>{punctuation}</span>}
+            </span>
+          );
+        }
+
+        // Regular text
+        return <span key={idx}>{part}</span>;
+      });
+    },
+    [handleLinkClick, handleTimestampClick],
+  );
+
   const sortedComments = [...comments].sort((a, b) => {
     if (commentSort === "newest") {
       if (a.publishedTime === "Just now") return -1;
@@ -525,29 +639,67 @@ export function VideoPlayerView({
         </div>
 
         {/* 4. Description Box (YouTube Style) */}
-        <div className="rounded-xl bg-white/[0.06] hover:bg-white/[0.08] p-4 text-sm text-white/90 transition-colors flex flex-col gap-2">
-          <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-white/80">
-            {details?.viewCount && <span>{details.viewCount} views</span>}
-            {details?.publishDate && (
-              <>
-                <span>•</span>
-                <span>{details.publishDate}</span>
-              </>
+        <div
+          onClick={() => {
+            if (!isDescriptionExpanded && isDescriptionExpandable) {
+              setIsDescriptionExpanded(true);
+            }
+          }}
+          className={cn(
+            "rounded-xl bg-white/[0.06] hover:bg-white/[0.08] p-3.5 sm:p-4 text-sm text-white/90 transition-all flex flex-col gap-2.5",
+            !isDescriptionExpanded && isDescriptionExpandable && "cursor-pointer",
+          )}
+        >
+          {/* Header Stats: Views & Date */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-bold text-xs sm:text-sm text-white/90">
+            {formattedViews && <span>{formattedViews}</span>}
+            {formattedViews && details?.publishDate && (
+              <span className="text-white/40">•</span>
             )}
+            {details?.publishDate && <span>{details.publishDate}</span>}
           </div>
 
-          <p className={cn("text-xs sm:text-sm text-white/70 whitespace-pre-wrap leading-relaxed", !isDescriptionExpanded && "line-clamp-3")}>
-            {details?.description || "No description provided for this video."}
-          </p>
+          {/* Description Body */}
+          {!isDescriptionExpanded ? (
+            <div className="flex flex-col items-start">
+              <div className="text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed line-clamp-3 select-text">
+                {details?.description
+                  ? renderFormattedDescription(details.description)
+                  : "No description provided for this video."}
+              </div>
+              {isDescriptionExpandable && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDescriptionExpanded(true);
+                  }}
+                  className="text-xs sm:text-sm font-bold text-white hover:underline mt-1.5 cursor-pointer"
+                >
+                  ...more
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="text-xs sm:text-sm text-white/90 whitespace-pre-wrap leading-relaxed select-text break-words">
+                {details?.description
+                  ? renderFormattedDescription(details.description)
+                  : "No description provided for this video."}
+              </div>
 
-          {details?.description && details.description.length > 120 && (
-            <button
-              type="button"
-              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-              className="text-xs font-bold text-white hover:underline self-start mt-1 cursor-pointer"
-            >
-              {isDescriptionExpanded ? "Show less" : "...more"}
-            </button>
+              {/* Show less button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDescriptionExpanded(false);
+                }}
+                className="text-xs sm:text-sm font-bold text-white hover:underline self-start cursor-pointer pt-1"
+              >
+                Show less
+              </button>
+            </div>
           )}
         </div>
       </div>
