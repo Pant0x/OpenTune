@@ -684,25 +684,25 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 /*
- * Lyrics: the sung portion of the active line, wiped left to right.
+ * Lyrics: the sung portion of the active line, wiped left to right (Spicy Lyrics & Beautiful Lyrics 1:1).
  *
  * `--sweep` is written straight onto the element by the animation frame that tracks
- * playback — a percentage in React state would re-render the whole column sixty times a
- * second to move one gradient stop. The two stops are offset so the edge is a soft ramp
- * rather than a hard cut, which at display sizes reads as light moving across the words
- * instead of a progress bar clipped to text.
+ * playback. The sung portion is crisp #ffffff with luminous text-shadow glow, and the unsung portion
+ * is softly tinted white with a smooth gradient wash ramp.
  */
 .lyric-sweep {
   background-image: linear-gradient(
     90deg,
-    var(--color-foreground) calc(var(--sweep, 0%) - 4%),
-    color-mix(in oklab, var(--color-foreground) 28%, transparent) calc(var(--sweep, 0%) + 7%)
+    #ffffff 0%,
+    #ffffff calc(var(--sweep, 100%) - 2%),
+    rgba(255, 255, 255, 0.42) calc(var(--sweep, 100%) + 5%)
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  will-change: background-size;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55), 0 0 32px rgba(255, 255, 255, 0.25) !important;
+  will-change: background-size, transform;
 }
 
 /* For RTL Arabic language */
@@ -711,9 +711,15 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 .lyric-sweep:dir(rtl) {
   background-image: linear-gradient(
     270deg,
-    var(--color-foreground) calc(var(--sweep, 0%) - 4%),
-    color-mix(in oklab, var(--color-foreground) 28%, transparent) calc(var(--sweep, 0%) + 7%)
+    #ffffff 0%,
+    #ffffff calc(var(--sweep, 100%) - 2%),
+    rgba(255, 255, 255, 0.42) calc(var(--sweep, 100%) + 5%)
   );
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55), 0 0 32px rgba(255, 255, 255, 0.25) !important;
   will-change: background-size;
 }
 

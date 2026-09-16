@@ -20,7 +20,7 @@ export const SPICETIFY_SNIPPETS: SpicetifySnippet[] = [
     title: "Hamsters Dancing",
     description: "Adds a couple of dancing hamsters on the playback bar",
     category: "player",
-    code: `.player-controls .playback-progressbar { position: relative; } .player-controls .playback-progressbar::before { content: ''; width: 80px; height: 80px; bottom: calc(100% - 20px); left: 0; position: absolute; background-size: 80px 80px; background-image: url('https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExdXk2NW15cTJrdjF0YjZ5eTBjODE0M2l3ejg3bDlvYWh5NmVub2l0eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/s7pdNRdwG1zxdwkazY/giphy.gif'); pointer-events: none; z-index: 0; } .player-controls .playback-progressbar::after { content: ''; width: 80px; height: 80px; bottom: calc(100% - 23px); right: 0; position: absolute; background-size: 80px 80px; background-image: url('https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExamN4OWxiOXY4dHZ5Mm90NjU5ZjhwcjV1dDd3dHdveHFkaGYzbGRmaSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/VxovskkECK4egQCltk/giphy.gif'); pointer-events: none; z-index: 0; }`,
+    code: `.playback-progressbar, .player-controls .playback-progressbar { position: relative !important; overflow: visible !important; } .playback-progressbar::before, .player-controls .playback-progressbar::before { content: ''; width: 72px; height: 72px; bottom: calc(100% - 15px); left: 0; position: absolute; background-size: contain; background-repeat: no-repeat; background-image: url('/snippets/hamster-left.gif'); pointer-events: none; z-index: 30 !important; } .playback-progressbar::after, .player-controls .playback-progressbar::after { content: ''; width: 72px; height: 72px; bottom: calc(100% - 18px); right: 0; position: absolute; background-size: contain; background-repeat: no-repeat; background-image: url('/snippets/hamster-right.gif'); pointer-events: none; z-index: 30 !important; }`,
     preview: "https://raw.githubusercontent.com/spicetify/marketplace/main/resources/assets/snippets/dancing-hamster.png"
   },
   {
@@ -28,7 +28,7 @@ export const SPICETIFY_SNIPPETS: SpicetifySnippet[] = [
     title: "Sonic Dancing",
     description: "You get sonic dancing on your playback bar!",
     category: "player",
-    code: `.player-controls .playback-progressbar::before { content: ''; width: 32px; height: 32px; bottom: calc(100% - 7px); right: 10px; position: absolute; image-rendering: pixelated; background-size: 32px 32px; background-image: url('https://media.tenor.com/pWqGD2PHY3kAAAAj/fortnite-dance-sonic.gif'); }`,
+    code: `.playback-progressbar, .player-controls .playback-progressbar { position: relative !important; overflow: visible !important; } .playback-progressbar::before, .player-controls .playback-progressbar::before { content: ''; width: 44px; height: 44px; bottom: calc(100% - 5px); right: 6px; position: absolute; image-rendering: pixelated; background-size: contain; background-repeat: no-repeat; background-image: url('/snippets/sonic.gif'); pointer-events: none; z-index: 30 !important; }`,
     preview: "https://raw.githubusercontent.com/spicetify/marketplace/main/resources/assets/snippets/sonic-dancing.png"
   },
   {
@@ -36,7 +36,7 @@ export const SPICETIFY_SNIPPETS: SpicetifySnippet[] = [
     title: "Better lyrics style",
     description: "Spotify lyrics are focused and beautified with dynamic blur and active highlights",
     category: "lyrics",
-    code: `.lyrics-lyrics-contentContainer .lyrics-lyricsContent-lyric.lyrics-lyricsContent-highlight { filter: blur(1.5px); padding: 15px; font-size: 110%; } .lyrics-lyrics-contentContainer .lyrics-lyricsContent-lyric.lyrics-lyricsContent-active { filter: none; padding: 20px; font-size: 130%; text-shadow: 0 0 12px rgba(255,255,255,0.7); } .lyrics-lyrics-contentContainer .lyrics-lyricsContent-lyric { filter: blur(1.5px); padding: 15px; font-size: 110%; } .lyrics-lyrics-contentContainer .lyrics-lyricsContent-lyric.lyrics-lyricsContent-unsynced { filter: none; padding: 10px; font-size: 100%; }`,
+    code: `.lyrics-lyricsContent-lyric, .synced-line { filter: blur(1.5px); opacity: 0.35; transition: all 0.35s ease; } .lyrics-lyricsContent-active, .synced-line[aria-current='true'], .synced-line.is-active { filter: none !important; opacity: 1 !important; transform: scale(1.035); text-shadow: 0 0 16px rgba(255,255,255,0.7) !important; }`,
     preview: "https://raw.githubusercontent.com/spicetify/marketplace/main/resources/assets/snippets/better-lyrics-style.png"
   },
   {

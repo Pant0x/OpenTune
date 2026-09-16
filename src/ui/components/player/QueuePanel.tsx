@@ -6,7 +6,6 @@ import {
   ClockIcon,
   CloseIcon,
   DiceIcon,
-  HeartIcon,
   PauseIcon,
   PlayIcon,
   PlaylistAddIcon,
@@ -38,7 +37,6 @@ import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { SquareAltArrowLeftIcon } from "@solar-icons/react/linear";
 
 import { usePlayHistory } from "../../../player/playHistory";
-import { SidebarAudioVisualizer } from "./SidebarAudioVisualizer";
 import { SpotifyCreditsModal } from "./SpotifyCreditsModal";
 import { SpotifyScannableModal } from "./SpotifyScannableModal";
 import { SpotifyService, type SpotifyArtistOverview, type SpotifyTrackCredits } from "../../../services/SpotifyService";
@@ -495,9 +493,14 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, currentTime) : -1;
   const previewLyricsLines = useMemo(() => {
     if (!lyrics?.lines?.length) return [];
-    if (!synced) return lyrics.lines.slice(0, 4);
-    const start = Math.max(0, activeLyricIndex >= 0 ? activeLyricIndex : 0);
-    return lyrics.lines.slice(start, start + 4);
+    if (!synced) return lyrics.lines.slice(0, 4).map((line, idx) => ({ line, isCurrent: idx === 0 }));
+    const activeIdx = activeLyricIndex >= 0 ? activeLyricIndex : 0;
+    const startIndex = Math.max(0, activeIdx - 1);
+    const slice = lyrics.lines.slice(startIndex, startIndex + 4);
+    return slice.map((line, idx) => ({
+      line,
+      isCurrent: startIndex + idx === activeIdx,
+    }));
   }, [lyrics, synced, activeLyricIndex]);
 
   const handleShare = (e: React.MouseEvent) => {
@@ -939,11 +942,11 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
         <div className="flex flex-1 flex-col overflow-y-auto p-4 gap-4">
           {currentTrack ? (
             <>
-              {/* Tall Vertical Visual Card (Spotify Canvas / Video Loop / Release More View) */}
+              {/* Square Visual Card (Clean Spotify 1:1, NO green visualizer bars) */}
               <div
                 className={cn(
                   "relative w-full overflow-hidden rounded-2xl bg-muted/20 shadow-2xl ring-1 ring-border/20 transition-all duration-300 cursor-pointer group select-none",
-                  isVisualExpanded ? "aspect-[9/16] max-h-[68vh]" : "aspect-[9/13]",
+                  isVisualExpanded ? "aspect-[9/16] max-h-[68vh]" : "aspect-square",
                 )}
                 onClick={() => setIsVisualExpanded((prev) => !prev)}
                 title={isVisualExpanded ? "Click to collapse visual" : "Click to expand visual (Release more view)"}
@@ -955,11 +958,13 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     artworkUrl={videoCounterpart?.artworkUrl || currentTrack.artworkUrl}
                     iconSize={56}
                   />
-                  {isPlaying && (
-                    <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex flex-col justify-end">
-                      <SidebarAudioVisualizer isPlaying={isPlaying} color="#1ed760" className="w-full h-10" />
-                    </div>
-                  )}
+                </div>
+
+                {/* Explicit Badge (Spotify Style top-left) */}
+                <div className="absolute top-3 left-3 select-none">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-[9px] font-black tracking-wider text-white/90 uppercase border border-white/10 shadow-md">
+                    Explicit
+                  </span>
                 </div>
 
                 {/* Expand Indicator Badge on Hover */}
@@ -968,9 +973,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 </div>
               </div>
 
-              {/* Title & Artist & Share & Like */}
+              {/* Title & Artist & Spotify Plus/Like Button */}
               <div className="flex items-start justify-between gap-3 pt-1">
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-col gap-0.5">
                   <h2 className="text-xl sm:text-2xl font-black text-foreground leading-tight tracking-tight line-clamp-2">
                     {currentTrack.title}
                   </h2>
@@ -979,7 +984,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                       artists={currentTrack.artists}
                       fallback={currentTrack.artist}
                       trackTitle={currentTrack.title}
-                      className="hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all"
+                      className="hover:text-white hover:underline transition-all"
                     />
                   </div>
                 </div>
@@ -1000,61 +1005,98 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     </button>
                   </Tooltip>
 
-                  {/* Liked button (Spotify signature green circle checkmark) */}
+                  {/* Liked / Add Button (Spotify style: + circle or green check circle) */}
                   <button
                     type="button"
-                    className="p-2 rounded-full transition-transform active:scale-95 cursor-pointer"
+                    className="p-1 rounded-full transition-transform active:scale-95 cursor-pointer"
                     onClick={() => toggleTrackLike(currentTrack)}
-                    title={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
-                    aria-label={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                    title={isLiked ? "Added to Liked Songs" : "Save to Your Library"}
+                    aria-label={isLiked ? "Added to Liked Songs" : "Save to Your Library"}
                   >
                     {isLiked ? (
-                      <span className="flex size-5 items-center justify-center rounded-full bg-[#1ed760] text-black shadow-xs">
-                        <CheckIcon size={12} className="stroke-[3]" />
+                      <span className="flex size-7 items-center justify-center rounded-full bg-[#1ed760] text-black shadow-xs">
+                        <CheckIcon size={14} className="stroke-[3]" />
                       </span>
                     ) : (
-                      <HeartIcon size={20} className="text-muted-foreground hover:text-foreground" />
+                      <span className="flex size-7 items-center justify-center rounded-full border border-muted-foreground/60 text-muted-foreground hover:border-white hover:text-white transition-colors">
+                        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19" />
+                          <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                      </span>
                     )}
                   </button>
                 </div>
               </div>
 
-              {/* Lyrics Preview Card (Spotify Style) */}
+              {/* Lyrics Preview Card (Spotify 1:1 Style with 3 icons & glowing active line) */}
               <div
-                className="relative overflow-hidden rounded-2xl bg-secondary/35 border border-border/40 p-4 transition-all hover:bg-secondary/45 cursor-pointer group flex flex-col gap-3.5 shadow-sm"
+                className="relative overflow-hidden rounded-2xl bg-[#242424]/90 border border-white/5 p-4 transition-all hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
                 onClick={() => playerUIStore.setLyricsOpen(true)}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  <span className="text-base font-bold text-white tracking-tight">
                     Lyrics
                   </span>
-                  <div className="flex items-center gap-2 text-muted-foreground group-hover:text-foreground transition-colors">
-                    <Tooltip content="Open full lyrics">
-                      <span className="flex size-6 items-center justify-center rounded-full bg-white/10 hover:bg-white/20">
-                        <FullScreenIcon size={12} />
-                      </span>
+                  <div className="flex items-center gap-1.5 text-neutral-400">
+                    {/* 1. Miniplayer Mode */}
+                    <Tooltip content="Miniplayer view">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playerUIStore.setWaveMiniPlayerOpen(true);
+                        }}
+                        className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        aria-label="Open miniplayer lyrics"
+                      >
+                        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="3" width="20" height="14" rx="2" />
+                          <rect x="12" y="9" width="8" height="6" rx="1" fill="currentColor" />
+                        </svg>
+                      </button>
                     </Tooltip>
+
+                    {/* 2. Fullscreen Button */}
+                    <Tooltip content="Open full lyrics">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playerUIStore.setLyricsOpen(true);
+                          playerUIStore.setLyricsFullscreen(true);
+                        }}
+                        className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        aria-label="Fullscreen lyrics"
+                      >
+                        <FullScreenIcon size={14} />
+                      </button>
+                    </Tooltip>
+
+                    {/* 3. Collapse/More chevron */}
+                    <span className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors">
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="18 15 12 9 6 15" />
+                      </svg>
+                    </span>
                   </div>
                 </div>
 
                 {previewLyricsLines.length > 0 ? (
-                  <div className="flex flex-col gap-2 min-h-[90px] justify-center">
-                    {previewLyricsLines.map((line, idx) => {
-                      const isCurrent = idx === 0 && activeLyricIndex >= 0;
-                      return (
-                        <p
-                          key={idx}
-                          className={cn(
-                            "text-sm font-bold leading-snug transition-all duration-200 line-clamp-2",
-                            isCurrent
-                              ? "text-white text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.75)]"
-                              : "text-muted-foreground/60 font-medium",
-                          )}
-                        >
-                          {line.text}
-                        </p>
-                      );
-                    })}
+                  <div className="flex flex-col gap-1.5 py-1 min-h-[110px] justify-center select-none">
+                    {previewLyricsLines.map((item, idx) => (
+                      <p
+                        key={idx}
+                        className={cn(
+                          "transition-all duration-300 leading-snug line-clamp-2",
+                          item.isCurrent
+                            ? "text-white font-black text-lg sm:text-xl drop-shadow-[0_0_12px_rgba(255,255,255,0.5)] scale-[1.01] origin-left"
+                            : "text-white/40 font-semibold text-sm hover:text-white/70",
+                        )}
+                      >
+                        {item.line.text}
+                      </p>
+                    ))}
                   </div>
                 ) : (
                   <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
@@ -1063,9 +1105,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 )}
               </div>
 
-              {/* About the artist Card (Spotify-style) */}
+              {/* About the artist Card (Spotify 1:1 Style) */}
               <div
-                className="relative overflow-hidden rounded-2xl bg-secondary/35 border border-border/40 transition-all hover:bg-secondary/45 cursor-pointer group flex flex-col shadow-sm"
+                className="relative overflow-hidden rounded-2xl bg-[#242424]/90 border border-white/5 transition-all hover:bg-[#282828] cursor-pointer group/artist flex flex-col shadow-md"
                 onClick={() => {
                   if (navigateArtist && currentTrack.artist) {
                     navigateArtist(
@@ -1079,30 +1121,46 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 }}
               >
                 {/* Artist Header Photo / Banner */}
-                <div className="relative h-44 w-full overflow-hidden bg-muted/40">
+                <div className="relative h-56 w-full overflow-hidden bg-muted/40">
                   <img
                     src={artistOverview?.headerUrl || artistOverview?.avatarUrl || currentTrack.artworkUrl}
                     alt={currentTrack.artist}
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="size-full object-cover transition-transform duration-500 group-hover/artist:scale-105"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#242424] via-[#242424]/20 to-black/30" />
                   <span className="absolute top-3 left-3 text-xs font-bold uppercase tracking-wider text-white drop-shadow-md">
                     About the artist
                   </span>
-                  <div className="absolute bottom-3 left-3 right-3 flex flex-col gap-0.5 text-white">
-                    <span className="font-extrabold text-base leading-tight truncate group-hover:underline">
-                      {currentTrack.artist}
-                    </span>
-                    {artistOverview?.monthlyListeners ? (
-                      <span className="text-xs text-white/80 font-medium">
-                        {Number(artistOverview.monthlyListeners).toLocaleString()} monthly listeners
-                      </span>
-                    ) : null}
-                  </div>
                 </div>
 
-                <div className="p-4 flex flex-col gap-2">
-                  <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                <div className="p-4 pt-1 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-black text-lg text-white leading-tight truncate group-hover/artist:underline">
+                        {currentTrack.artist}
+                      </span>
+                      {artistOverview?.monthlyListeners ? (
+                        <span className="text-xs text-neutral-400 font-medium">
+                          {Number(artistOverview.monthlyListeners).toLocaleString()} monthly listeners
+                        </span>
+                      ) : (
+                        <span className="text-xs text-neutral-400 font-medium">Verified Artist</span>
+                      )}
+                    </div>
+
+                    {/* Spotify Follow Pill Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      className="px-4 py-1 rounded-full border border-neutral-400 text-xs font-bold text-white hover:border-white hover:scale-105 transition-all shrink-0 cursor-pointer"
+                    >
+                      Follow
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-neutral-300 line-clamp-3 leading-relaxed">
                     {artistOverview?.bio
                       ? artistOverview.bio.replace(/<[^>]*>?/gm, "")
                       : `Click to explore top tracks, discography, and albums from ${currentTrack.artist}.`}

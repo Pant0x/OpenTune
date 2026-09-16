@@ -250,12 +250,13 @@ export function SeekBar() {
       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
         {formatTime(currentTime)}
       </span>
-      <div className="relative flex-1 flex items-center min-w-0">
+      <div className="relative flex-1 flex items-center min-w-0 playback-progressbar overflow-visible">
         {isWave && (
           <WaveformCanvas
             progress={duration > 0 ? currentTime / duration : 0}
             isPlaying={state.status === "playing"}
-            className="pointer-events-none absolute inset-x-0 h-3.5 w-full overflow-hidden opacity-85"
+            color="#ff0033"
+            className="pointer-events-none absolute inset-x-0 h-3.5 w-full overflow-hidden opacity-90"
           />
         )}
         <input

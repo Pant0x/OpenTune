@@ -304,6 +304,9 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       /* Committing every frame would re-render the whole column sixty times a second for a
          value that flips a few times a minute. Only the flip is worth a render. */
       if (next !== current) {
+        if (current >= 0 && lineRefs.current[current]) {
+          lineRefs.current[current]?.style.setProperty("--sweep", "100%");
+        }
         current = next;
         setActiveIndex(next);
       }
@@ -995,18 +998,20 @@ const SyncedLine = memo(function SyncedLine({
       aria-current={isActive ? "true" : undefined}
       onFocus={() => onFocusLine(index)}
       className={cn(
-        "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%]",
+        "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%] synced-line lyrics-lyricsContent-lyric",
         alignment === "right" && "self-end text-end origin-right",
         alignment === "center" && "self-center text-center origin-center",
         (!alignment || alignment === "left") && "self-start text-start origin-left",
-        "transition-[opacity,filter,color] duration-700 ease-[cubic-bezier(0.33,1,0.68,1)] will-change-[opacity,filter]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isActive && !reduce ? "lyric-sweep font-bold" : "text-foreground font-semibold",
-        !isActive && "hover:opacity-100",
+        "transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+        isActive && "is-active lyrics-lyricsContent-active",
+        isActive && !reduce ? "lyric-sweep font-black" : "text-foreground font-semibold",
+        !isActive && "hover:opacity-95 hover:filter-none hover:scale-100",
       )}
       style={{
-        opacity: depth.opacity,
-        filter: depth.blur ? `blur(${depth.blur}px)` : undefined,
+        opacity: isActive ? 1 : depth.opacity,
+        filter: isActive ? "none" : depth.blur ? `blur(${depth.blur}px)` : undefined,
+        transform: isActive ? "scale(1.035) translateZ(0)" : "scale(0.985) translateZ(0)",
       }}
       onClick={() => onSeek(index)}
     >

@@ -193,7 +193,7 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
 
   return (
     <div
-      className="relative flex min-w-0 max-w-full items-center gap-3 py-1"
+      className="relative flex min-w-0 max-w-full items-center gap-3 py-1 main-nowPlayingBar-left"
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
       {dominantColor?.rgb && (
@@ -209,10 +209,10 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
           type="button"
           onClick={() => playerUIStore.openNowPlaying()}
           title="Open Now Playing view"
-          className="group relative z-10 size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group relative z-10 size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cover-art-image"
         >
           <TrackArtwork
-            className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105"
+            className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105 cover-art-image"
             size={48}
             loading="eager"
             preferProxy

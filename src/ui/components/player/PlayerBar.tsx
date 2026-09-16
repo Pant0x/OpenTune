@@ -240,7 +240,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
 
       <div
         style={coverAmbienceStyle}
-        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden cursor-pointer"
+        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] cursor-pointer"
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input, [role='slider'], a")) {
             return;
@@ -255,9 +255,9 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
           </div>
 
           {/* Center: Playback Transport + Spotify Centered Seekbar */}
-          <div className="flex flex-col items-center gap-1 w-full max-w-xl justify-self-center">
+          <div className="flex flex-col items-center gap-1 w-full max-w-xl justify-self-center player-controls overflow-visible">
             <PlaybackControls extraControlsAlwaysVisible={extraControlsAlwaysVisible} />
-            <div className="w-full max-w-[540px]">
+            <div className="w-full max-w-[540px] overflow-visible">
               <SeekBar />
             </div>
           </div>
