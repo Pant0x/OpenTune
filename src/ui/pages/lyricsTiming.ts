@@ -71,3 +71,143 @@ export function isRtlText(text: string): boolean {
   return /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/.test(text);
 }
 
+export interface LyricToken {
+  type: "main" | "adlib";
+  text: string;
+}
+
+/**
+ * Tokenizes a line into main lyrics and parenthetical ad-libs (e.g. `(yeah)`, `(ooh)`).
+ */
+export function parseLyricTokens(text: string): LyricToken[] {
+  if (!text) return [];
+  const tokens: LyricToken[] = [];
+  const regex = /\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    const before = text.slice(lastIndex, match.index);
+    if (before) {
+      tokens.push({ type: "main", text: before });
+    }
+    tokens.push({ type: "adlib", text: `(${match[1]})` });
+    lastIndex = regex.lastIndex;
+  }
+
+  const after = text.slice(lastIndex);
+  if (after) {
+    tokens.push({ type: "main", text: after });
+  }
+
+  return tokens.length > 0 ? tokens : [{ type: "main", text }];
+}
+
+export type DuetAlignment = "left" | "right" | "center";
+
+export interface ProcessedDuetLine {
+  displayText: string;
+  alignment: DuetAlignment;
+  singer?: string;
+}
+
+/**
+ * Parses vocalist indicators (`[Singer]`, `Singer:`, `[Chorus]`, `[Both]`) and multi-artist tracks.
+ * Maps Singer 1 / Lead to "left", Singer 2 / Feat to "right", and Chorus / Both to "center".
+ */
+export function processDuetLyrics(
+  lines: LyricLine[],
+  artists?: Array<{ name: string } | string>,
+): ProcessedDuetLine[] {
+  const detectedSingers: string[] = [];
+  let currentSinger: string | undefined;
+
+  const singerTagRegex = /^(?:\[|\()(?:Verse\s*\d*:\s*|Chorus:\s*)?([A-Za-z0-9_ -]+)(?:\]|\))/i;
+  const colonTagRegex = /^([A-Za-z0-9_ -]+):\s*/i;
+
+  const result: ProcessedDuetLine[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]?.text ?? "";
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+      result.push({ displayText: "", alignment: "left" });
+      continue;
+    }
+
+    let displayText = trimmed;
+    let lineSinger: string | undefined;
+    let isChorusOrBoth = false;
+
+    const bracketMatch = singerTagRegex.exec(trimmed);
+    if (bracketMatch) {
+      const tagContent = bracketMatch[1].trim();
+      const lower = tagContent.toLowerCase();
+      if (lower === "both" || lower === "all" || lower === "together" || lower === "chorus") {
+        isChorusOrBoth = true;
+      } else {
+        lineSinger = tagContent;
+        if (!detectedSingers.includes(lineSinger)) {
+          detectedSingers.push(lineSinger);
+        }
+        currentSinger = lineSinger;
+      }
+      displayText = trimmed.slice(bracketMatch[0].length).trim();
+    } else {
+      const colonMatch = colonTagRegex.exec(trimmed);
+      if (colonMatch) {
+        const tagContent = colonMatch[1].trim();
+        const lower = tagContent.toLowerCase();
+        if (lower === "both" || lower === "all" || lower === "together" || lower === "chorus") {
+          isChorusOrBoth = true;
+        } else {
+          lineSinger = tagContent;
+          if (!detectedSingers.includes(lineSinger)) {
+            detectedSingers.push(lineSinger);
+          }
+          currentSinger = lineSinger;
+        }
+        displayText = trimmed.slice(colonMatch[0].length).trim();
+      }
+    }
+
+    const activeSinger = lineSinger || currentSinger;
+
+    let alignment: DuetAlignment = "left";
+    if (isChorusOrBoth) {
+      alignment = "center";
+    } else if (activeSinger && detectedSingers.length > 1) {
+      const singerIdx = detectedSingers.indexOf(activeSinger);
+      alignment = singerIdx % 2 === 0 ? "left" : "right";
+    }
+
+    if (!displayText && bracketMatch) {
+      displayText = raw;
+    }
+
+    result.push({
+      displayText: displayText || raw,
+      alignment,
+      singer: activeSinger,
+    });
+  }
+
+  const hasMultipleArtists = Boolean(artists && artists.length > 1);
+  if (detectedSingers.length <= 1 && hasMultipleArtists) {
+    let currentVocalistIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const prev = lines[i - 1];
+      if (prev && line?.startTimeSec && prev.startTimeSec && (line.startTimeSec - (prev.endTimeSec ?? prev.startTimeSec) >= 3.5)) {
+        currentVocalistIndex = (currentVocalistIndex + 1) % 2;
+      }
+      if (result[i]) {
+        result[i].alignment = currentVocalistIndex === 0 ? "left" : "right";
+      }
+    }
+  }
+
+  return result;
+}
+

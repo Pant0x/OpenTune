@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { FullScreenIcon, NowPlayingViewIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { usePlayerSelector } from "../../../player/playerStore";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
@@ -14,6 +14,7 @@ import { SeekBar } from "./SeekBar";
 import { DownloadButton } from "./DownloadButton";
 import { VolumeControl } from "./VolumeControl";
 import { LyricsButton } from "./LyricsButton";
+import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import {
   useExtraPlayerControlsAlwaysVisible,
 } from "../../settings/playerControls";
@@ -37,8 +38,38 @@ const CONNECTION_CHECK_URLS = [
   "https://cp.cloudflare.com/generate_204",
 ];
 
-export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnectionRestored,handlePlayerBarClick }: PlayerBarProps) {
+export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQueueOpen: _isQueueOpen, onConnectionRestored, handlePlayerBarClick }: PlayerBarProps) {
   const currentTrack = usePlayerSelector((player) => player.currentTrack);
+  const playerUIState = usePlayerUIState();
+  const isFullscreen = playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen;
+  const isNowPlayingOpen = playerUIState.isQueueOpen && playerUIState.rightPanelTab === "nowplaying";
+  const isQueueActive = playerUIState.isQueueOpen && playerUIState.rightPanelTab === "queue";
+
+  const handleToggleNowPlaying = () => {
+    if (isNowPlayingOpen) {
+      playerUIStore.setQueueOpen(false);
+    } else {
+      playerUIStore.setRightPanelTab("nowplaying");
+    }
+  };
+
+  const handleToggleQueueTab = () => {
+    if (isQueueActive) {
+      playerUIStore.setQueueOpen(false);
+    } else {
+      playerUIStore.setRightPanelTab("queue");
+    }
+  };
+
+  const handleToggleFullscreen = () => {
+    if (isFullscreen) {
+      playerUIStore.setLyricsFullscreen(false);
+    } else {
+      playerUIStore.setLyricsOpen(true);
+      playerUIStore.setLyricsFullscreen(true);
+    }
+  };
+
   const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
 
   useEffect(() => {
@@ -232,21 +263,55 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue, isQueueOpen, onConnec
                   "opacity-0 focus-within:opacity-100 group-hover/playerbar:opacity-100",
               )}
             >
-              <LyricsButton onToggle={onToggleLyrics} />
-
+              {/* Now Playing View Button (Spotify style right sidebar) */}
               <button
                 type="button"
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isQueueOpen
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  isNowPlayingOpen
                     ? "bg-card text-primary"
                     : "text-muted-foreground hover:text-foreground",
                 )}
-                onClick={onToggleQueue}
-                aria-label={isQueueOpen ? "Close queue" : "Open queue"}
-                title={isQueueOpen ? "Close queue" : "Open queue"}
+                onClick={handleToggleNowPlaying}
+                aria-label={isNowPlayingOpen ? "Close now playing view" : "Now playing view"}
+                title={isNowPlayingOpen ? "Close now playing view" : "Now playing view"}
+              >
+                <NowPlayingViewIcon size={17} />
+              </button>
+
+              {/* Lyrics Button */}
+              <LyricsButton onToggle={onToggleLyrics} />
+
+              {/* Queue Button */}
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  isQueueActive
+                    ? "bg-card text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={handleToggleQueueTab}
+                aria-label={isQueueActive ? "Close queue" : "Open queue"}
+                title={isQueueActive ? "Close queue" : "Open queue"}
               >
                 <QueuePanelIcon size={18} />
+              </button>
+
+              {/* Fullscreen Button (Apple Music / Spicetify Split Fullscreen) */}
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  isFullscreen
+                    ? "bg-card text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={handleToggleFullscreen}
+                aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
+                title={isFullscreen ? "Exit full screen" : "Full screen"}
+              >
+                <FullScreenIcon size={17} />
               </button>
             </div>
 

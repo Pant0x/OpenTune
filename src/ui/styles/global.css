@@ -195,6 +195,102 @@ html[data-theme="dark"] {
 }
 
 /*
+ * Lucid Glass: Frosted acrylic glassmorphism, transparent acrylic card backgrounds, glowing accents.
+ */
+html[data-theme="lucid"] {
+  --color-background: #0d0e12;
+  --color-foreground: #f8fafc;
+
+  --color-card: rgba(255, 255, 255, 0.05);
+  --color-card-foreground: #f8fafc;
+  --color-popover: rgba(18, 20, 26, 0.9);
+  --color-popover-foreground: #f8fafc;
+
+  --color-muted: rgba(255, 255, 255, 0.08);
+  --color-muted-foreground: rgba(255, 255, 255, 0.65);
+
+  --color-primary: #38bdf8;
+  --color-primary-foreground: #0f172a;
+
+  --color-secondary: rgba(255, 255, 255, 0.07);
+  --color-secondary-foreground: #f8fafc;
+
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-input: rgba(255, 255, 255, 0.15);
+  --color-ring: #38bdf8;
+
+  --ambient-bloom: 1.2;
+  --window-edge: rgba(255, 255, 255, 0.18);
+  --window-edge-highlight: rgba(56, 189, 248, 0.4);
+
+  color-scheme: dark;
+}
+
+/*
+ * Catppuccin Mocha: Soothing pastel palette on dark slate base.
+ */
+html[data-theme="catppuccin"] {
+  --color-background: #1e1e2e;
+  --color-foreground: #cdd6f4;
+
+  --color-card: #313244;
+  --color-card-foreground: #cdd6f4;
+  --color-popover: #181825;
+  --color-popover-foreground: #cdd6f4;
+
+  --color-muted: #45475a;
+  --color-muted-foreground: #a6adc8;
+
+  --color-primary: #cba6f7;
+  --color-primary-foreground: #11111b;
+
+  --color-secondary: #313244;
+  --color-secondary-foreground: #cdd6f4;
+
+  --color-border: rgba(205, 214, 244, 0.12);
+  --color-input: rgba(205, 214, 244, 0.16);
+  --color-ring: #cba6f7;
+
+  --ambient-bloom: 0.9;
+  --window-edge: rgba(203, 166, 247, 0.2);
+  --window-edge-highlight: rgba(203, 166, 247, 0.35);
+
+  color-scheme: dark;
+}
+
+/*
+ * Galaxy: Deep space cosmic dark gradient with violet & fuchsia nebula glow.
+ */
+html[data-theme="galaxy"] {
+  --color-background: #090614;
+  --color-foreground: #f5f3ff;
+
+  --color-card: #181133;
+  --color-card-foreground: #f5f3ff;
+  --color-popover: #130d29;
+  --color-popover-foreground: #f5f3ff;
+
+  --color-muted: #271d4d;
+  --color-muted-foreground: #b8b0e8;
+
+  --color-primary: #d946ef;
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: #211645;
+  --color-secondary-foreground: #f5f3ff;
+
+  --color-border: rgba(217, 70, 239, 0.16);
+  --color-input: rgba(217, 70, 239, 0.2);
+  --color-ring: #d946ef;
+
+  --ambient-bloom: 1.4;
+  --window-edge: rgba(217, 70, 239, 0.25);
+  --window-edge-highlight: rgba(217, 70, 239, 0.45);
+
+  color-scheme: dark;
+}
+
+/*
  * Layout constants read from TSX (`h-[var(--titlebar-height)]`) rather than colours —
  * every colour now comes from the @theme block above.
  */
@@ -637,6 +733,75 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 
 .lyrics-drift {
   animation: lyrics-drift 44s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/*
+ * Dynamic Moving Ambient Background ("Cover Ambience")
+ * 4 drifting, morphing, and rotating organic mesh gradient color blobs.
+ */
+@keyframes ambience-drift-1 {
+  0% {
+    transform: translate3d(0%, 0%, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(18%, -14%, 0) scale(1.35) rotate(180deg);
+  }
+  100% {
+    transform: translate3d(-12%, 14%, 0) scale(1.1) rotate(360deg);
+  }
+}
+
+@keyframes ambience-drift-2 {
+  0% {
+    transform: translate3d(0%, 0%, 0) scale(1.2) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-22%, 18%, 0) scale(0.9) rotate(-180deg);
+  }
+  100% {
+    transform: translate3d(16%, -12%, 0) scale(1.28) rotate(-360deg);
+  }
+}
+
+@keyframes ambience-drift-3 {
+  0% {
+    transform: translate3d(0%, 0%, 0) scale(0.95) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-18%, -18%, 0) scale(1.38) rotate(140deg);
+  }
+  100% {
+    transform: translate3d(24%, 12%, 0) scale(1.05) rotate(280deg);
+  }
+}
+
+@keyframes ambience-drift-4 {
+  0% {
+    transform: translate3d(0%, 0%, 0) scale(1.1) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(18%, 24%, 0) scale(0.85) rotate(-160deg);
+  }
+  100% {
+    transform: translate3d(-16%, -14%, 0) scale(1.22) rotate(-320deg);
+  }
+}
+
+.ambience-blob-1 {
+  animation: ambience-drift-1 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.ambience-blob-2 {
+  animation: ambience-drift-2 30s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.ambience-blob-3 {
+  animation: ambience-drift-3 36s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.ambience-blob-4 {
+  animation: ambience-drift-4 28s ease-in-out infinite alternate;
   will-change: transform;
 }
 

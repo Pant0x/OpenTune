@@ -3,6 +3,7 @@ import { RangeSlider } from "@/components/motion/range-slider";
 import { VolumeLoudIcon, VolumeMutedIcon, VolumeSmallIcon } from "@/ui/icons";
 import { playerController, shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { FloatingPanel } from "../FloatingPanel";
+import { useVolumeBadge } from "../../settings/playerAddons";
 
 /** Scroll step over the icon, matching the old inline slider's wheel behaviour. */
 const WHEEL_STEP_PERCENT = 5;
@@ -56,6 +57,8 @@ export function VolumeControl() {
       ? VolumeSmallIcon
       : VolumeLoudIcon;
 
+  const showVolumeBadge = useVolumeBadge();
+
   return (
     <FloatingPanel
       open={isOpen}
@@ -67,20 +70,27 @@ export function VolumeControl() {
       triggerClassName="shrink-0"
       className="w-52"
       trigger={
-        <button
-          type="button"
-          onClick={toggleMute}
-          onWheel={(event) => {
-            const delta = event.deltaY || event.deltaX;
-            if (delta === 0) return;
-            applyVolume(percent + (delta < 0 ? 1 : -1) * WHEEL_STEP_PERCENT);
-          }}
-          aria-label={isMuted ? `Unmute (volume ${percent}%)` : `Mute (volume ${percent}%)`}
-          title={isMuted ? `Unmute (${percent}%)` : `Mute (${percent}%)`}
-          className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-        >
-          <VolumeGlyph size={18} aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={toggleMute}
+            onWheel={(event) => {
+              const delta = event.deltaY || event.deltaX;
+              if (delta === 0) return;
+              applyVolume(percent + (delta < 0 ? 1 : -1) * WHEEL_STEP_PERCENT);
+            }}
+            aria-label={isMuted ? `Unmute (volume ${percent}%)` : `Mute (volume ${percent}%)`}
+            title={isMuted ? `Unmute (${percent}%)` : `Mute (${percent}%)`}
+            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+          >
+            <VolumeGlyph size={18} aria-hidden="true" />
+          </button>
+          {showVolumeBadge && (
+            <span className="text-[11px] tabular-nums font-semibold text-muted-foreground/80 min-w-[26px]">
+              {percent}%
+            </span>
+          )}
+        </div>
       }
     >
       <div className="flex flex-col gap-2">

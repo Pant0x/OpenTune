@@ -27,12 +27,22 @@ import { playerController, shallowEqual, usePlayerSelector } from "../../player/
 import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
+import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
 import { OFFSET_STEP_SEC, setLyricsOffset, useLyricsOffset } from "../settings/lyricsOffset";
 import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
+import { useLyricsDuetMode, useLyricsAdlibsMode } from "../settings/lyricsEnhancements";
 import { translateLines } from "../../datasource/translate";
-import { findActiveLineIndex, getLineProgress, isRtlText, isSyncedLyrics } from "./lyricsTiming";
+import {
+  findActiveLineIndex,
+  getLineProgress,
+  isRtlText,
+  isSyncedLyrics,
+  parseLyricTokens,
+  processDuetLyrics,
+  type DuetAlignment,
+} from "./lyricsTiming";
 
 /** How long a manual scroll keeps the auto-follow parked. */
 const AUTO_SCROLL_RESUME_MS = 4500;
@@ -88,6 +98,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const isPlaying = playerState.status === "playing";
   const reduce = useReduceMotion();
   const isFullscreen = usePlayerUIState().isLyricsFullscreen;
+  const isDuetMode = useLyricsDuetMode();
+  const isAdlibsMode = useLyricsAdlibsMode();
   const offset = useLyricsOffset(track?.id);
   const fontScale = useLyricsFontScale();
   const translationLang = useLyricsTranslationLang();
@@ -144,6 +156,13 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const lines = lyrics?.lines ?? [];
   const isSynced = isSyncedLyrics(lyrics);
   const hasLines = lines.length > 0;
+
+  const duetProcessedLines = useMemo(() => {
+    if (!isDuetMode) {
+      return lines.map((l) => ({ displayText: l.text, alignment: "left" as DuetAlignment }));
+    }
+    return processDuetLyrics(lines, track?.artists);
+  }, [lines, isDuetMode, track?.artists]);
 
   /* Read inside the sampling loop below, which must not restart when these change — a new
      array identity every render would tear it down sixty times a second. */
@@ -468,25 +487,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         same reason. Toggle Settings > Potato PC > Manage > "Blur and colour filters" to see
         the whole class of effect on and off.
       */}
-      {/* Dynamic blurred ambient background (artwork or artist photo) */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        {activeBackgroundUrl && (
-          <div
-            key={activeBackgroundUrl}
-            className={cn(
-              "absolute -inset-[20%] opacity-70 blur-[70px] saturate-[2.2] scale-125 transition-all duration-700",
-              !reduce && "lyrics-drift",
-            )}
-          >
-            <img
-              src={activeBackgroundUrl}
-              alt=""
-              className="size-full object-cover"
-            />
-          </div>
-        )}
-        <div className="absolute inset-0 bg-black/45" />
-      </div>
+      {/* Dynamic moving ambient background ("Cover Ambience") */}
+      <CoverAmbienceCanvas artworkUrl={activeBackgroundUrl} />
 
       {/*
         The buttons below are navigable but never announced as they light up, so a listener
@@ -571,6 +573,9 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
                     <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
                       <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold tracking-wider text-white/80 uppercase backdrop-blur-sm border border-white/10">
+                        Dolby Atmos
+                      </span>
                       <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
                     </div>
 
@@ -701,12 +706,18 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         </div>
                       )}
 
-                      {lines.map((line, index) =>
-                        isSynced ? (
+                      {lines.map((line, index) => {
+                        const duetInfo = duetProcessedLines[index];
+                        const displayText = duetInfo?.displayText ?? line.text;
+                        const alignment = duetInfo?.alignment ?? "left";
+
+                        return isSynced ? (
                           <SyncedLine
                             key={`${index}:${line.text}`}
                             index={index}
-                            text={line.text}
+                            text={displayText}
+                            alignment={alignment}
+                            enableAdlibs={isAdlibsMode}
                             distance={
                               activeIndex < 0
                                 ? 1
@@ -724,21 +735,35 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                           <p
                             key={`${index}:${line.text}`}
                             ref={(element) => registerLine(index, element)}
-                            dir={isRtlText(line.text) ? "rtl" : "ltr"}
+                            dir={isRtlText(displayText) ? "rtl" : "ltr"}
                             className={cn(
-                              "text-pretty py-1 leading-relaxed text-foreground/85",
-                              isRtlText(line.text) && "text-start font-sans font-medium",
+                              "text-pretty py-1 leading-relaxed text-foreground/85 max-w-[88%]",
+                              alignment === "right" && "self-end text-right",
+                              alignment === "center" && "self-center text-center",
+                              (!alignment || alignment === "left") && "self-start text-start",
+                              isRtlText(displayText) && "text-start font-sans font-medium",
                             )}
                           >
-                            {line.text}
+                            {(isAdlibsMode ? parseLyricTokens(displayText) : [{ type: "main" as const, text: displayText }]).map((tok, i) =>
+                              tok.type === "adlib" ? (
+                                <span
+                                  key={i}
+                                  className="text-[0.78em] italic font-normal opacity-70 mx-1.5 inline-block text-white/75"
+                                >
+                                  {tok.text}
+                                </span>
+                              ) : (
+                                <span key={i}>{tok.text}</span>
+                              ),
+                            )}
                             {translations?.[index] && (
                               <span className="mt-0.5 block text-[0.72em] text-muted-foreground">
                                 {translations[index]}
                               </span>
                             )}
                           </p>
-                        ),
-                      )}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -950,6 +975,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 interface SyncedLineProps {
   index: number;
   text: string;
+  alignment?: DuetAlignment;
+  enableAdlibs?: boolean;
   distance: number;
   isActive: boolean;
   isTabbable: boolean;
@@ -963,20 +990,12 @@ interface SyncedLineProps {
 
 /**
  * One lyric line, memoised.
- *
- * Windowing was the obvious answer to long sheets and the wrong one: this column's whole
- * design is centring maths against real `offsetTop` values, and a virtualiser that guesses
- * heights for unmounted lines breaks exactly that. The actual cost was never the DOM — it
- * was re-rendering all three hundred lines each time the active one advanced. With the
- * distance clamped to the depth ramp only the dozen lines whose appearance genuinely
- * changed re-render, so line count stops mattering and the scrolling stays honest.
- *
- * Every callback prop is stable by construction; one inline arrow here would defeat the memo
- * and quietly restore the original cost.
  */
 const SyncedLine = memo(function SyncedLine({
   index,
   text,
+  alignment = "left",
+  enableAdlibs = true,
   distance,
   isActive,
   isTabbable,
@@ -992,17 +1011,26 @@ const SyncedLine = memo(function SyncedLine({
     [index, register],
   );
 
+  const tokens = useMemo(() => {
+    if (!enableAdlibs) return [{ type: "main" as const, text }];
+    return parseLyricTokens(text);
+  }, [text, enableAdlibs]);
+
   // Check if there's RTL characters (Arabic, Hebrew, etc.)
   const isArabic = isRtlText(text);
 
-  // An empty LRC line is a real instrumental beat, not junk. It keeps its slot so the timing
-  // stays honest, and announces itself when it comes up.
+  // An empty LRC line is a real instrumental beat, not junk.
   if (!text.trim()) {
     return (
       <div
         ref={attach}
         aria-hidden="true"
-        className="flex items-center gap-1.5 py-1"
+        className={cn(
+          "flex items-center gap-1.5 py-1",
+          alignment === "right" && "self-end justify-end",
+          alignment === "center" && "self-center justify-center",
+          alignment === "left" && "self-start justify-start",
+        )}
         style={{ opacity: depth.opacity }}
       >
         {[0, 1, 2].map((dot) => (
@@ -1028,18 +1056,14 @@ const SyncedLine = memo(function SyncedLine({
       tabIndex={isTabbable ? 0 : -1}
       aria-current={isActive ? "true" : undefined}
       onFocus={() => onFocusLine(index)}
-      // Using (text-start) instead of (text-left)
       className={cn(
-        "group relative origin-left text-pretty text-start font-bold leading-[1.16] tracking-[-0.035em]",
+        "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%]",
+        alignment === "right" && "self-end text-end origin-right",
+        alignment === "center" && "self-center text-center origin-center",
+        (!alignment || alignment === "left") && "self-start text-start origin-left",
         "transition-[opacity,filter,color] duration-700 ease-[cubic-bezier(0.33,1,0.68,1)] will-change-[opacity,filter]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        /*
-         * The sweep paints its own colour through background-clip, so the active line must
-         * not also carry a text colour — and it is only safe while the sampling loop is
-         * running. Under reduced motion nothing writes `--sweep`, so the line would stick at
-         * the gradient's 0% end and render dimmer than its neighbours.
-         */
-        isActive && !reduce ? "lyric-sweep" : "text-foreground",
+        isActive && !reduce ? "lyric-sweep font-bold" : "text-foreground font-semibold",
         !isActive && "hover:opacity-100",
       )}
       style={{
@@ -1048,7 +1072,18 @@ const SyncedLine = memo(function SyncedLine({
       }}
       onClick={() => onSeek(index)}
     >
-      {text}
+      {tokens.map((token, i) =>
+        token.type === "adlib" ? (
+          <span
+            key={i}
+            className="text-[0.76em] italic font-normal tracking-normal opacity-70 mx-1.5 inline-block text-white/80"
+          >
+            {token.text}
+          </span>
+        ) : (
+          <span key={i}>{token.text}</span>
+        ),
+      )}
       {/* Sized in `em` so it tracks the line it belongs to, and deliberately quieter: it is
           a gloss on the lyric, not a second lyric competing with it. */}
       {translation && (

@@ -62,6 +62,26 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "../settings/theme";
+import {
+  setCoverAmbienceEnabled,
+  useCoverAmbienceEnabled,
+} from "../settings/coverAmbience";
+import {
+  setLyricsAdlibsMode,
+  setLyricsDuetMode,
+  useLyricsAdlibsMode,
+  useLyricsDuetMode,
+} from "../settings/lyricsEnhancements";
+import {
+  setDjTrackInfo,
+  setOnekoEnabled,
+  setVolumeBadge,
+  setWaveSeekbar,
+  useDjTrackInfo,
+  useOnekoEnabled,
+  useVolumeBadge,
+  useWaveSeekbar,
+} from "../settings/playerAddons";
 import { setDownloadLocation, useDownloadLocation } from "../settings/downloadLocation";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -531,6 +551,24 @@ const THEME_OPTIONS: Array<{
     hint: "Match the OS",
     swatch: "bg-linear-to-br from-white to-neutral-900",
   },
+  {
+    value: "lucid",
+    label: "Lucid Glass",
+    hint: "Frosted glassmorphism",
+    swatch: "bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 border border-white/20",
+  },
+  {
+    value: "catppuccin",
+    label: "Catppuccin Mocha",
+    hint: "Soothing pastel dark",
+    swatch: "bg-[#1e1e2e] border border-[#cba6f7]/40",
+  },
+  {
+    value: "galaxy",
+    label: "Galaxy",
+    hint: "Deep cosmic nebula",
+    swatch: "bg-gradient-to-tr from-[#050510] via-[#1b0a2a] to-[#0d1b2a] border border-cyan-500/30",
+  },
 ];
 
 interface SettingsPageProps {
@@ -626,6 +664,13 @@ export function SettingsPage({
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("about");
   const themePreference = useThemePreference();
+  const coverAmbienceEnabled = useCoverAmbienceEnabled();
+  const lyricsDuetMode = useLyricsDuetMode();
+  const lyricsAdlibsMode = useLyricsAdlibsMode();
+  const volumeBadge = useVolumeBadge();
+  const waveSeekbar = useWaveSeekbar();
+  const djTrackInfo = useDjTrackInfo();
+  const onekoEnabled = useOnekoEnabled();
   const [listeningShortcut, setListeningShortcut] = useState<KeyboardShortcutAction | null>(null);
   const keyboardShortcuts = useKeyboardShortcuts();
   const sidebarMode = useSidebarMode();
@@ -1723,6 +1768,19 @@ export function SettingsPage({
               )}
             </SettingRow>
 
+            <SettingToggle
+              title="Duet vocal separation"
+              description="Aligns lead vocals to the left and featured artists to the right in multi-singer duets."
+              checked={lyricsDuetMode}
+              onCheckedChange={setLyricsDuetMode}
+            />
+
+            <SettingToggle
+              title="Separate parenthetical ad-libs"
+              description="Renders backing vocals, echoes, and ad-libs in stylized secondary italic script."
+              checked={lyricsAdlibsMode}
+              onCheckedChange={setLyricsAdlibsMode}
+            />
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="library-system-title">
@@ -1980,6 +2038,27 @@ export function SettingsPage({
               checked={extraPlayerControlsAlwaysVisible}
               onCheckedChange={setExtraPlayerControlsAlwaysVisible}
             />
+
+            <SettingToggle
+              title="Volume percentage badge"
+              description="Show a numeric volume percentage badge (e.g. 85%) next to the volume slider."
+              checked={volumeBadge}
+              onCheckedChange={setVolumeBadge}
+            />
+
+            <SettingToggle
+              title="Waveform progress bar"
+              description="Render an animated reactive audio waveform along the playback seekbar."
+              checked={waveSeekbar}
+              onCheckedChange={setWaveSeekbar}
+            />
+
+            <SettingToggle
+              title="DJ Track Info (BPM & Musical Key)"
+              description="Display detected tempo (BPM) and Camelot harmonic key next to song titles on the player bar."
+              checked={djTrackInfo}
+              onCheckedChange={setDjTrackInfo}
+            />
           </section>
         </div>
       )}
@@ -2101,7 +2180,7 @@ export function SettingsPage({
             />
 
             <div
-              className="grid grid-cols-3 gap-2"
+              className="grid grid-cols-2 sm:grid-cols-3 gap-2"
               role="radiogroup"
               aria-labelledby="theme-settings-title"
             >
@@ -2143,6 +2222,31 @@ export function SettingsPage({
                 );
               })}
             </div>
+          </section>
+
+          <section className={SETTINGS_CARD} aria-labelledby="ambience-settings-title">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-foreground" id="ambience-settings-title">
+                Cover Ambience &amp; Add-ons
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                GPU-accelerated visual enhancements inspired by Spicetify extensions.
+              </p>
+            </div>
+
+            <SettingToggle
+              title="Dynamic cover ambience"
+              description="GPU-accelerated moving mesh glow derived from album artwork in Split Fullscreen, Lyrics, and behind the Video player."
+              checked={coverAmbienceEnabled}
+              onCheckedChange={setCoverAmbienceEnabled}
+            />
+
+            <SettingToggle
+              title="Oneko cat companion"
+              description="A nostalgic pixel kitten that playfully chases your mouse cursor around the screen and sleeps when idle."
+              checked={onekoEnabled}
+              onCheckedChange={setOnekoEnabled}
+            />
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="toolbar-settings-title">

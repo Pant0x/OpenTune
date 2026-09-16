@@ -37,6 +37,8 @@ import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { SquareAltArrowLeftIcon } from "@solar-icons/react/linear";
 
 import { usePlayHistory } from "../../../player/playHistory";
+import { SidebarAudioVisualizer } from "./SidebarAudioVisualizer";
+import { SpotifyCreditsModal } from "./SpotifyCreditsModal";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -399,6 +401,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const [saveDraft, setSaveDraft] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [visibleAutomaticCount, setVisibleAutomaticCount] = useState(AUTOMATIC_PAGE_SIZE);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
 
   /*
    * One flat pass over the upcoming tracks, tagged with everything a row needs. The old panel
@@ -788,7 +791,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
         <div className="flex flex-1 flex-col overflow-y-auto p-4 gap-4">
           {currentTrack ? (
             <>
-              {/* Large Cover Art */}
+              {/* Large Cover Art with Live Reactive Audio Visualizer Overlay */}
               <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-muted/20 shadow-2xl ring-1 ring-border/20">
                 <TrackArtwork
                   className="size-full object-cover rounded-2xl"
@@ -796,6 +799,11 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   artworkUrl={currentTrack.artworkUrl}
                   iconSize={56}
                 />
+                {isPlaying && (
+                  <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex flex-col justify-end">
+                    <SidebarAudioVisualizer isPlaying={isPlaying} color="#1ed760" className="w-full h-8" />
+                  </div>
+                )}
               </div>
 
               {/* Title & Artist & Like */}
@@ -899,6 +907,70 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   </div>
                 </div>
               )}
+
+              {/* Next in Queue Preview Card */}
+              {(manual.length > 0 || automatic.length > 0) && (
+                <div className="rounded-2xl bg-secondary/30 border border-border/40 p-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="size-11 rounded-lg overflow-hidden bg-muted/40 shrink-0">
+                      <TrackArtwork
+                        className="size-full object-cover"
+                        size={44}
+                        artworkUrl={(manual[0]?.track || automatic[0]?.track)?.artworkUrl}
+                        iconSize={18}
+                      />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Next in queue
+                      </span>
+                      <span className="font-semibold text-sm text-foreground truncate">
+                        {(manual[0]?.track || automatic[0]?.track)?.title}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {(manual[0]?.track || automatic[0]?.track)?.artist}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void playerController.skipToNext()}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                    title="Play next track"
+                    aria-label="Play next track"
+                  >
+                    <PlayIcon size={14} fill="currentColor" />
+                  </button>
+                </div>
+              )}
+
+              {/* Credits Card (Spotify style with full modal) */}
+              <div className="rounded-2xl bg-secondary/30 border border-border/40 p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Credits
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreditsModal(true)}
+                    className="text-xs font-semibold text-foreground/80 hover:text-white underline cursor-pointer"
+                  >
+                    Show all
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1.5 text-xs">
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-semibold text-foreground truncate">{currentTrack.artist}</span>
+                    <span className="text-muted-foreground shrink-0">Main Artist</span>
+                  </div>
+                  {currentTrack.album && (
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-foreground/80 truncate">{currentTrack.album}</span>
+                      <span className="text-muted-foreground shrink-0">Release</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground p-8">
@@ -1121,6 +1193,15 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
             </div>
           )}
         </div>
+      )}
+      {showCreditsModal && currentTrack && (
+        <SpotifyCreditsModal
+          isOpen={showCreditsModal}
+          track={currentTrack}
+          isFollowingArtist={false}
+          onToggleFollowArtist={() => {}}
+          onClose={() => setShowCreditsModal(false)}
+        />
       )}
     </aside>
   );

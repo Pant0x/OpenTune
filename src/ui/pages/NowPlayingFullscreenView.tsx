@@ -21,6 +21,7 @@ import { useArtistNavigation } from "../components/ArtistLinks";
 import { findActiveLineIndex, isRtlText, isSyncedLyrics } from "./lyricsTiming";
 import { VideoPlayerView } from "../components/player/VideoPlayerView";
 import { getMediaCounterpart } from "../../datasource/youtube/videoService";
+import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
 
 interface NowPlayingFullscreenViewProps {
   onClose: () => void;
@@ -363,20 +364,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       isIdle && "cursor-none",
     )}
   >
-    {/* Dynamic blurred ambient background from track artwork */}
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      {track?.artworkUrl && (
-        <div
-          className="absolute -inset-[30%] opacity-50 blur-[90px] saturate-[2.5] scale-125 transition-all duration-1000"
-          style={{
-            backgroundImage: `url(${track.artworkUrl})`,
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-          }}
-        />
-      )}
-      <div className="absolute inset-0 bg-black/60" />
-    </div>
+    {/* Dynamic moving ambient background ("Cover Ambience") */}
+    <CoverAmbienceCanvas artworkUrl={track?.artworkUrl} />
 
     {/* Top Header Bar */}
     <header

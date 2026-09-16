@@ -251,6 +251,9 @@ export const ListIcon: Icon = createSpotifyIcon(() => (
 ));
 export const QueuePanelIcon: Icon = ListIcon;
 export const SidebarToggleIcon: Icon = ListIcon;
+export const NowPlayingViewIcon: Icon = createSpotifyIcon(() => (
+  <path d="M3 3h18v18H3V3zm2 2v14h9V5H5zm11 0v14h3V5h-3z" />
+));
 
 export const MenuDotsIcon: Icon = createSpotifyIcon(() => (
   <>

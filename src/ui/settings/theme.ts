@@ -5,15 +5,22 @@ import { getAppSetting, setAppSetting } from "../../internal/appSettings";
  * Colour theme. `system` follows the OS and keeps following it — it is not resolved
  * once at startup, so a user flipping their OS theme sees the app change with it.
  */
-export type ThemePreference = "system" | "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
+export type ThemePreference = "system" | "light" | "dark" | "lucid" | "catppuccin" | "galaxy";
+export type ResolvedTheme = "light" | "dark" | "lucid" | "catppuccin" | "galaxy";
 
 const STORAGE_KEY = "theme";
 const CHANGE_EVENT = "theme-change";
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 
 function isThemePreference(value: unknown): value is ThemePreference {
-  return value === "system" || value === "light" || value === "dark";
+  return (
+    value === "system" ||
+    value === "light" ||
+    value === "dark" ||
+    value === "lucid" ||
+    value === "catppuccin" ||
+    value === "galaxy"
+  );
 }
 
 export function readThemePreference(): ThemePreference {

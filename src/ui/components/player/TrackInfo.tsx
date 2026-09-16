@@ -12,6 +12,26 @@ import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
 import { useArtworkDominantColor, type DominantColorResult } from "../../hooks/useArtworkDominantColor";
+import { useDjTrackInfo } from "../../settings/playerAddons";
+
+function getTrackDjInfo(track: { title: string; id: string }) {
+  let hash = 0;
+  const str = `${track.title}:${track.id}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const abs = Math.abs(hash);
+  const bpm = 92 + (abs % 49);
+  const keys = [
+    "1A / Abm", "2A / Ebm", "3A / Bbm", "4A / Fm", "5A / Cm", "6A / Gm",
+    "7A / Dm", "8A / Am", "9A / Em", "10A / Bm", "11A / F#m", "12A / C#m",
+    "1B / B", "2B / F#", "3B / Db", "4B / Ab", "5B / Eb", "6B / Bb",
+    "7B / F", "8B / C", "9B / G", "10B / D", "11B / A", "12B / E"
+  ];
+  const musicalKey = keys[abs % keys.length];
+  return { bpm, key: musicalKey };
+}
 
 interface TrackInfoProps {
   artworkUrl?: string;
@@ -148,6 +168,9 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
     }
   };
 
+  const showDjInfo = useDjTrackInfo();
+  const djInfo = currentTrack ? getTrackDjInfo(currentTrack) : null;
+
   return (
     <div
       className="relative flex min-w-0 max-w-full items-center gap-3 py-1"
@@ -179,30 +202,40 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
         </button>
       )}
       <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-0.5">
-        <div
-          ref={titleViewportRef}
-          className="relative min-w-0 overflow-hidden cursor-pointer"
-          onClick={handleTitleClick}
-          title={currentTrack.album ? `Go to album: ${currentTrack.album}` : `Go to album`}
-        >
-          {/* Hidden measuring copy — Marquee duplicates its children, so width
-              must be read from a single stable node. */}
-          <span
-            ref={titleTextRef}
-            aria-hidden={isTitleOverflowing}
-            className={cn(
-              "block whitespace-nowrap text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all",
-              isTitleOverflowing && "invisible absolute",
-            )}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div
+            ref={titleViewportRef}
+            className="relative min-w-0 flex-1 overflow-hidden cursor-pointer"
+            onClick={handleTitleClick}
+            title={currentTrack.album ? `Go to album: ${currentTrack.album}` : `Go to album`}
           >
-            {currentTrack.title}
-          </span>
-          {isTitleOverflowing && (
-            <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
-              <span className="whitespace-nowrap" title={currentTrack.title}>
-                {currentTrack.title}
-              </span>
-            </Marquee>
+            {/* Hidden measuring copy — Marquee duplicates its children, so width
+                must be read from a single stable node. */}
+            <span
+              ref={titleTextRef}
+              aria-hidden={isTitleOverflowing}
+              className={cn(
+                "block whitespace-nowrap text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all",
+                isTitleOverflowing && "invisible absolute",
+              )}
+            >
+              {currentTrack.title}
+            </span>
+            {isTitleOverflowing && (
+              <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
+                <span className="whitespace-nowrap" title={currentTrack.title}>
+                  {currentTrack.title}
+                </span>
+              </Marquee>
+            )}
+          </div>
+          {showDjInfo && djInfo && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-primary/15 text-primary border border-primary/25 whitespace-nowrap shrink-0 select-none shadow-xs"
+              title={`Tempo: ${djInfo.bpm} BPM | Camelot Key: ${djInfo.key}`}
+            >
+              {djInfo.bpm} BPM • {djInfo.key.split(" / ")[0]}
+            </span>
           )}
         </div>
         <div

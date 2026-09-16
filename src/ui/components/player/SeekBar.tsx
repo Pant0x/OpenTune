@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { playerController } from "../../../player/playerStore";
 import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
-import { formatMinutesSeconds } from "@/lib/utils";
+import { cn, formatMinutesSeconds } from "@/lib/utils";
+import { useWaveSeekbar } from "../../settings/playerAddons";
 
 /*
  * Deliberately NOT beUI's RangeSlider: that component snaps to discrete steps, while
@@ -43,6 +44,7 @@ export function SeekBar() {
     shallowEqual,
   );
   const uiState = usePlayerUIState();
+  const isWave = useWaveSeekbar();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekTargetRef = useRef(0);
@@ -247,25 +249,47 @@ export function SeekBar() {
       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
         {formatTime(currentTime)}
       </span>
-      <input
-        type="range"
-        min="0"
-        max={duration || 100}
-        step="any"
-        value={currentTime}
-        onChange={handleSeekChange}
-        onKeyUp={commitKeyboardSeek}
-        onPointerDown={handleSeekStart}
-        onPointerMove={handleSeekMove}
-        onPointerUp={(event) => void handleSeekEnd(event)}
-        onPointerCancel={handleSeekCancel}
-        disabled={isDisabled}
-        className={SEEK_SLIDER}
-        style={{
-          "--slider-progress": `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-        } as React.CSSProperties}
-        aria-label="Seek"
-      />
+      <div className="relative flex-1 flex items-center min-w-0">
+        {isWave && (
+          <div className="pointer-events-none absolute inset-x-0 h-3.5 flex items-center gap-[2px] overflow-hidden opacity-75">
+            {Array.from({ length: 48 }).map((_, i) => {
+              const progress = duration > 0 ? currentTime / duration : 0;
+              const barPos = i / 48;
+              const isPassed = barPos <= progress;
+              const waveHeight = Math.sin(i * 0.35 + (state.status === "playing" ? currentTime * 2 : 0)) * 4 + 6;
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "flex-1 rounded-full transition-colors duration-150",
+                    isPassed ? "bg-primary" : "bg-muted-foreground/30",
+                  )}
+                  style={{ height: `${waveHeight}px` }}
+                />
+              );
+            })}
+          </div>
+        )}
+        <input
+          type="range"
+          min="0"
+          max={duration || 100}
+          step="any"
+          value={currentTime}
+          onChange={handleSeekChange}
+          onKeyUp={commitKeyboardSeek}
+          onPointerDown={handleSeekStart}
+          onPointerMove={handleSeekMove}
+          onPointerUp={(event) => void handleSeekEnd(event)}
+          onPointerCancel={handleSeekCancel}
+          disabled={isDisabled}
+          className={cn(SEEK_SLIDER, isWave && "opacity-0 hover:opacity-100 focus-visible:opacity-100 transition-opacity")}
+          style={{
+            "--slider-progress": `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+          } as React.CSSProperties}
+          aria-label="Seek"
+        />
+      </div>
       <span className="w-10 shrink-0 text-xs tabular-nums text-muted-foreground">
         {formatTime(duration)}
       </span>

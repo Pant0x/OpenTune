@@ -7,6 +7,7 @@ import { useDisableContextMenu } from "./hooks/useDisableContextMenu";
 import { useZoom } from "./hooks/useZoom";
 import { ZoomHudOverlay } from "./components/ZoomMeter";
 import { HomePage } from "./pages/HomePage";
+import { Oneko } from "./components/Oneko";
 
 /*
  * Every page used to be statically imported, so the whole app — settings, lyrics, all four
@@ -1526,6 +1527,7 @@ export default function App() {
 
 
       <ZoomHudOverlay />
+      <Oneko />
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}
