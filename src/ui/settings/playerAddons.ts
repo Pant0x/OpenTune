@@ -36,7 +36,7 @@ function subscribe(callback: () => void) {
 }
 
 export function useVolumeBadge(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.volumeBadge, true), () => true);
+  return useSyncExternalStore(subscribe, () => readBool(KEYS.volumeBadge, false), () => false);
 }
 export function setVolumeBadge(enabled: boolean): void {
   writeBool(KEYS.volumeBadge, enabled);
@@ -50,7 +50,7 @@ export function setWaveSeekbar(enabled: boolean): void {
 }
 
 export function useDjTrackInfo(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.djTrackInfo, true), () => true);
+  return useSyncExternalStore(subscribe, () => readBool(KEYS.djTrackInfo, false), () => false);
 }
 export function setDjTrackInfo(enabled: boolean): void {
   writeBool(KEYS.djTrackInfo, enabled);

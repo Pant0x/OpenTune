@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/motion/select";
 import {
+  ArrowLeftIcon,
   ArrowUpRightIcon,
   BugIcon,
   CheckIcon,
@@ -49,7 +50,6 @@ import {
   QueuePanelIcon,
   RefreshIcon,
   SettingsIcon,
-  StarIcon,
   TrashIcon,
   UserIcon,
 } from "@/ui/icons";
@@ -107,9 +107,7 @@ import {
   setAutostartEnabled,
 } from "../settings/autostart";
 import {
-  setCompactPlayerBar,
   setExtraPlayerControlsAlwaysVisible,
-  useCompactPlayerBar,
   useExtraPlayerControlsAlwaysVisible,
 } from "../settings/playerControls";
 import {
@@ -119,7 +117,6 @@ import {
   useEffectDisabled,
   usePotatoPcMode,
 } from "../settings/renderEffects";
-import { setMadeForYouVisible, useMadeForYouVisible } from "../settings/homeSections";
 import { AuthModal } from "../components/AuthModal";
 import { ExternalLinkButton } from "../components/ExternalLinkButton";
 import {
@@ -577,6 +574,7 @@ interface SettingsPageProps {
   onRestartOnboarding: () => void;
   onSignIn: () => Promise<void>;
   onDeleteAllAppData: () => Promise<void>;
+  onNavigateBack?: () => void;
 }
 
 export function SettingsPage({
@@ -585,6 +583,7 @@ export function SettingsPage({
   onRestartOnboarding: _onRestartOnboarding,
   onSignIn,
   onDeleteAllAppData,
+  onNavigateBack,
 }: SettingsPageProps) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -679,14 +678,12 @@ export function SettingsPage({
   const preferredLyricsSource = usePreferredLyricsSourceId();
   const lyricsFontScale = useLyricsFontScale();
   const lyricsTranslationLang = useLyricsTranslationLang();
-  const madeForYouVisible = useMadeForYouVisible();
   const crossfadeSec = useCrossfadeSec();
   const gaplessEnabled = useGaplessEnabled();
   const downloadLocation = useDownloadLocation();
   const [browsingDownloadLocation, setBrowsingDownloadLocation] = useState(false);
   const sessionRestoreEnabled = useSessionRestoreEnabled();
   const extraPlayerControlsAlwaysVisible = useExtraPlayerControlsAlwaysVisible();
-  const compactPlayerBar = useCompactPlayerBar();
   const windowsStyleWindowControls = useWindowsStyleWindowControls();
   const nativeWindowControls = useNativeWindowControls();
   const forceWindowControls = useForceWindowControls();
@@ -956,23 +953,26 @@ export function SettingsPage({
     <main className="flex min-h-0 flex-1 flex-col gap-7">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="flex flex-col gap-1.5">
-          <h1>Settings</h1>
+          <div className="flex items-center gap-3">
+            {onNavigateBack && (
+              <button
+                type="button"
+                onClick={onNavigateBack}
+                className="flex size-9 items-center justify-center rounded-full bg-card hover:bg-card/80 border border-border/50 text-foreground transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
+                title="Go back"
+                aria-label="Go back"
+              >
+                <ArrowLeftIcon size={18} />
+              </button>
+            )}
+            <h1>Settings</h1>
+          </div>
           <p className="text-sm text-muted-foreground">
             Manage your account, library, appearance, and window behaviour.
           </p>
         </div>
 
-        {/*
-          Card pills rather than the bare text links these were: at text weight they read as
-          part of the description above and were routinely missed. They stay unfilled so they
-          still sit below the category nav in the hierarchy.
-        */}
         <div className="flex flex-wrap items-center gap-2">
-          <ExternalLinkButton
-            icon={<StarIcon size={16} aria-hidden="true" />}
-            label="Star on GitHub"
-            url={GITHUB_REPOSITORY_URL}
-          />
           <ExternalLinkButton
             icon={<BugIcon size={16} aria-hidden="true" />}
             label="Report an issue"
@@ -2026,13 +2026,6 @@ export function SettingsPage({
             </div>
 
             <SettingToggle
-              title="Compact player bar"
-              description="Tuck the seek bar under the transport controls instead of spanning the full width."
-              checked={compactPlayerBar}
-              onCheckedChange={setCompactPlayerBar}
-            />
-
-            <SettingToggle
               title="Always show extra controls"
               description="Keep lyrics and queue visible instead of showing them only on hover."
               checked={extraPlayerControlsAlwaysVisible}
@@ -2257,25 +2250,9 @@ export function SettingsPage({
               </p>
             </div>
 
-            {TOOLBAR_ITEMS.map((item) => (
+            {TOOLBAR_ITEMS.filter((item) => item.id !== "ytmusic" && item.id !== "github").map((item) => (
               <ToolbarItemToggle key={item.id} item={item} />
             ))}
-          </section>
-
-          <section className={SETTINGS_CARD} aria-labelledby="home-settings-title">
-            <div className="min-w-0">
-              <h2 className="text-lg" id="home-settings-title">Home</h2>
-              <p className="text-sm text-muted-foreground">
-                Which sections the home page shows.
-              </p>
-            </div>
-
-            <SettingToggle
-              title="Made for you"
-              description="The recommendation carousel at the top. Hiding it leaves the surprise button and More recommendations working."
-              checked={madeForYouVisible}
-              onCheckedChange={setMadeForYouVisible}
-            />
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="motion-settings-title">

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { CloseIcon } from "@/ui/icons";
 import { SpinnerSteps } from "@/components/motion/loader";
@@ -91,7 +91,7 @@ export function SpotifyCreditsModal({
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/60">
               <SpinnerSteps size={24} color="currentColor" />
-              <span className="text-sm font-medium">Loading credits from Spotify...</span>
+              <span className="text-sm font-medium">Loading credits...</span>
             </div>
           ) : (
             <>

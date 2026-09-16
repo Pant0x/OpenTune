@@ -1287,7 +1287,7 @@ export default function App() {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen && currentView.view !== "settings" ? (
+          {playerUIState.isLyricsOpen ? (
             <NowPlayingFullscreenView onClose={() => playerUIStore.setLyricsOpen(false)} />
           ) : (
           <div key={activeViewKey} className="min-h-0 flex-1">
@@ -1430,6 +1430,7 @@ export default function App() {
                 onRestartOnboarding={restartOnboarding}
                 onSignIn={handleSignIn}
                 onDeleteAllAppData={handleDeleteAllAppData}
+                onNavigateBack={canNavigateBack ? handleNavigateBack : handleNavigateHome}
               />
             )}
           </div>
