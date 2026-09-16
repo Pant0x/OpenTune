@@ -28,6 +28,7 @@ export function VolumeControl() {
   const [isOpen, setIsOpen] = useState(false);
   const [volume, setVolume] = useState(() => playerController.getVolume());
   const [isMuted, setIsMuted] = useState(() => playerController.isMuted());
+  const showVolumeBadge = useVolumeBadge();
 
   // The engine is the source of truth: the mini player and OS media keys change it too.
   useEffect(() => {
@@ -56,8 +57,6 @@ export function VolumeControl() {
     : displayedVolume < 0.5
       ? VolumeSmallIcon
       : VolumeLoudIcon;
-
-  const showVolumeBadge = useVolumeBadge();
 
   return (
     <FloatingPanel

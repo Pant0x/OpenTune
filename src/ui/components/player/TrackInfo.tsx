@@ -114,10 +114,13 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
 
   const fallbackDominantColor = useArtworkDominantColor(effectiveArtworkUrl);
   const dominantColor = propDominantColor ?? fallbackDominantColor;
+  const showDjInfo = useDjTrackInfo();
 
   if (!currentTrack) {
     return null;
   }
+
+  const djInfo = getTrackDjInfo(currentTrack);
 
   const isLikeStatusLoading =
     (libraryState.status === "restoring" || libraryState.status === "loading")
@@ -167,9 +170,6 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
       }
     }
   };
-
-  const showDjInfo = useDjTrackInfo();
-  const djInfo = currentTrack ? getTrackDjInfo(currentTrack) : null;
 
   return (
     <div

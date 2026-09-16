@@ -73,14 +73,22 @@ import {
   useLyricsDuetMode,
 } from "../settings/lyricsEnhancements";
 import {
+  ONEKO_VARIANTS,
   setDjTrackInfo,
   setOnekoEnabled,
+  setOnekoKuroneko,
+  setOnekoVariant,
+  setRewindButton,
   setVolumeBadge,
   setWaveSeekbar,
   useDjTrackInfo,
   useOnekoEnabled,
+  useOnekoKuroneko,
+  useOnekoVariant,
+  useRewindButton,
   useVolumeBadge,
   useWaveSeekbar,
+  type OnekoVariant,
 } from "../settings/playerAddons";
 import { setDownloadLocation, useDownloadLocation } from "../settings/downloadLocation";
 import { invoke } from "@tauri-apps/api/core";
@@ -670,6 +678,9 @@ export function SettingsPage({
   const waveSeekbar = useWaveSeekbar();
   const djTrackInfo = useDjTrackInfo();
   const onekoEnabled = useOnekoEnabled();
+  const onekoVariant = useOnekoVariant();
+  const onekoKuroneko = useOnekoKuroneko();
+  const rewindButton = useRewindButton();
   const [listeningShortcut, setListeningShortcut] = useState<KeyboardShortcutAction | null>(null);
   const keyboardShortcuts = useKeyboardShortcuts();
   const sidebarMode = useSidebarMode();
@@ -2052,6 +2063,13 @@ export function SettingsPage({
               checked={djTrackInfo}
               onCheckedChange={setDjTrackInfo}
             />
+
+            <SettingToggle
+              title="Boiler Room Vinyl Rewind (Spicetify Rewind)"
+              description="Add a spinning vinyl rewind button next to the Previous button. Clicking triggers a reverse scratch sound and seeks to 0:00."
+              checked={rewindButton}
+              onCheckedChange={setRewindButton}
+            />
           </section>
         </div>
       )}
@@ -2235,11 +2253,46 @@ export function SettingsPage({
             />
 
             <SettingToggle
-              title="Oneko cat companion"
-              description="A nostalgic pixel kitten that playfully chases your mouse cursor around the screen and sleeps when idle."
+              title="Oneko cat companion (Spicetify Oneko)"
+              description="The iconic 1:1 pixel companion that chases your mouse cursor, can be dragged, curls up asleep on the seekbar on double-click, and inverts on right-click."
               checked={onekoEnabled}
               onCheckedChange={setOnekoEnabled}
             />
+
+            {onekoEnabled && (
+              <>
+                <SettingRow
+                  title="Oneko character skin"
+                  description="Choose between the original retro spritesheet variants from Spicetify."
+                >
+                  {(labelId) => (
+                    <Select
+                      className="w-48"
+                      value={onekoVariant}
+                      onValueChange={(val) => setOnekoVariant(val as OnekoVariant)}
+                    >
+                      <SelectTrigger aria-labelledby={labelId}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ONEKO_VARIANTS.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </SettingRow>
+
+                <SettingToggle
+                  title="Kuroneko (Black Cat)"
+                  description="Invert sprites into a black cat companion (or right-click the cat on screen to toggle anytime)."
+                  checked={onekoKuroneko}
+                  onCheckedChange={setOnekoKuroneko}
+                />
+              </>
+            )}
           </section>
 
           <section className={SETTINGS_CARD} aria-labelledby="toolbar-settings-title">
