@@ -55,6 +55,7 @@ import {
 } from "@/ui/icons";
 import { useAuthProfile } from "../../lib/authProfile";
 import { signInWithOAuthPopup } from "../../lib/oauthService";
+import { SnippetsSection } from "../components/settings/SnippetsSection";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -519,7 +520,7 @@ function SettingsCardHeader({
 }
 
 /** Quiet outbound links in the page header. */
-type SettingsTab = "about" | "appearance" | "playback" | "system" | "shortcuts" | "window";
+type SettingsTab = "about" | "appearance" | "snippets" | "playback" | "system" | "shortcuts" | "window";
 
 type WindowControlStyle = "macos" | "windows" | "native";
 
@@ -531,6 +532,12 @@ const SETTINGS_TABS: Array<{
 }> = [
   { id: "about", label: "Account", description: "Sign-in, integrations, updates", icon: UserIcon },
   { id: "appearance", label: "Appearance", description: "Theme and motion", icon: PaletteIcon },
+  {
+    id: "snippets",
+    label: "Snippets",
+    description: "Spicetify marketplace CSS",
+    icon: PaletteIcon,
+  },
   {
     id: "playback",
     label: "Playback",
@@ -2318,6 +2325,12 @@ export function SettingsPage({
 
             <PotatoPcSettings />
           </section>
+        </div>
+      )}
+
+      {activeTab === "snippets" && (
+        <div className="flex flex-col gap-5" role="tabpanel" aria-label="Marketplace snippets">
+          <SnippetsSection />
         </div>
       )}
 

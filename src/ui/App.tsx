@@ -51,10 +51,10 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PlaylistContextMenuProvider } from "./components/PlaylistContextMenu";
 import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
 import { AlbumNavigationProvider, ArtistNavigationProvider, SongNavigationProvider } from "./components/ArtistLinks";
-import { cn } from "@/lib/utils";
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
 import { QueuePanel } from "./components/player/QueuePanel";
+import { WaveMiniPlayer } from "./components/player/WaveMiniPlayer";
 import { useQueuePanelCollapsed } from "./settings/queuePanel";
 import { useNativeWindowControls } from "./settings/windowControls";
 
@@ -1449,30 +1449,8 @@ export default function App() {
         different name than PlayerBar's own `group/playerbar` (used internally for its icon
         fade-in), so nesting them here doesn't make PlayerBar's hover styling fire early.
       */}
-      <div
-        className={cn(
-          "group/immersive-playerbar",
-          playerUIState.isLyricsFullscreen && "absolute inset-x-0 bottom-0 z-40",
-        )}
-      >
-        {playerUIState.isLyricsFullscreen && (
-          /*
-           * Translating the bar away moves its hitbox with it, so there is nothing left under
-           * the pointer to hover — this stand-in strip is what the reveal actually triggers
-           * on. Kept to the literal screen edge (8px) rather than a comfortable target size:
-           * this sits above the lyrics footer's own buttons (offset controls, source panel),
-           * so anything taller would eat clicks meant for them before the bar is revealed. A
-           * mouse run to the physical bottom of the window hits it regardless of how thin it
-           * is — that's the same trick fullscreen video controls rely on.
-           */
-          <div className="absolute inset-x-0 bottom-0 h-2" aria-hidden="true" />
-        )}
-        <div
-          className={cn(
-            playerUIState.isLyricsFullscreen &&
-              "translate-y-full transition-transform duration-300 ease-out group-hover/immersive-playerbar:translate-y-0 group-focus-within/immersive-playerbar:translate-y-0",
-          )}
-        >
+      {!(playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen) && (
+        <div className="group/immersive-playerbar">
           {/* Its own boundary: the player bar is the one region whose loss ends the session —
               audio keeps playing but nothing can pause or skip it. */}
           <ErrorBoundary label="Playback controls">
@@ -1485,7 +1463,7 @@ export default function App() {
             />
           </ErrorBoundary>
         </div>
-      </div>
+      )}
 {/* <SearchOverlay
         isOpen={isSearchOpen}
         activeTabId={activeTabId}
@@ -1529,6 +1507,10 @@ export default function App() {
 
       <ZoomHudOverlay />
       <Oneko />
+      <WaveMiniPlayer
+        isOpen={playerUIState.isWaveMiniPlayerOpen}
+        onClose={() => playerUIStore.setWaveMiniPlayerOpen(false)}
+      />
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}

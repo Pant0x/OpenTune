@@ -486,6 +486,32 @@ class SpotifyServiceManager {
   }
 
   /**
+   * Search for a track by title and artist, returns Spotify track URI (e.g. spotify:track:...) if matched.
+   */
+  async searchTrackUri(title: string, artist: string): Promise<string | null> {
+    try {
+      const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
+        searchTerm: `${title} ${artist}`,
+        offset: 0,
+        limit: 5,
+        numberOfTopResults: 5,
+        includeAudiobooks: false,
+      });
+      const tracks = result?.data?.searchV2?.tracksV2?.items ?? result?.data?.searchV2?.tracks?.items;
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        const match = tracks[0];
+        const uri = match?.item?.data?.uri || match?.data?.uri || match?.uri;
+        if (uri && uri.startsWith("spotify:track:")) {
+          return uri;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
    * Search for an artist by name, returns open.spotify.com artist URL if matched.
    */
   async searchArtistUrl(name: string): Promise<string | null> {

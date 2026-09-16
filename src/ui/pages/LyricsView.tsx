@@ -131,6 +131,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     });
   };
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
+  const [showRemainingTime, setShowRemainingTime] = useState(true);
 
   const handleClose = () => {
     playerUIStore.setLyricsFullscreen(false);
@@ -573,10 +574,17 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
                     <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
                       <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold tracking-wider text-white/80 uppercase backdrop-blur-sm border border-white/10">
-                        Dolby Atmos
-                      </span>
-                      <span>-{formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowRemainingTime((prev) => !prev)}
+                        className="hover:text-white transition-colors cursor-pointer select-none font-medium tabular-nums focus-visible:outline-none"
+                        title={showRemainingTime ? "Click to show total length" : "Click to show remaining time"}
+                        aria-label={showRemainingTime ? "Click to show total length" : "Click to show remaining time"}
+                      >
+                        {showRemainingTime
+                          ? `-${formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}`
+                          : formatMinutesSeconds(track.durationSec || 0)}
+                      </button>
                     </div>
 
                     <input
@@ -621,36 +629,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       >
                         <SkipNextIcon size={22} />
                       </button>
-                    </div>
-
-                    {/* Song & Lyrics Details Underneath Artwork */}
-                    <div className="w-full mt-4 rounded-xl bg-white/[0.05] border border-white/[0.08] p-3.5 flex flex-col gap-2 text-xs text-white/75 backdrop-blur-sm shadow-sm">
-                      {track.album && (
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-white/50 shrink-0">Album</span>
-                          <span className="font-semibold text-white/90 truncate text-right">{track.album}</span>
-                        </div>
-                      )}
-                      {track.durationSec ? (
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-white/50 shrink-0">Duration</span>
-                          <span className="font-semibold text-white/90 tabular-nums">{formatMinutesSeconds(track.durationSec)}</span>
-                        </div>
-                      ) : null}
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-white/50 shrink-0">Lyrics</span>
-                        <span className="font-semibold text-white/90 truncate text-right">
-                          {lyrics?.sourceLabel ? `Provided by ${lyrics.sourceLabel}` : isSynced ? "Synchronized lyrics" : "Standard lyrics"}
-                        </span>
-                      </div>
-                      {(track.viewCount || track.viewCountText) && (
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-white/50 shrink-0">Plays</span>
-                          <span className="font-semibold text-white/90 tabular-nums">
-                            {track.viewCount ? Number(track.viewCount).toLocaleString() : track.viewCountText}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -764,46 +742,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                           </p>
                         );
                       })}
-                    </div>
-                  )}
-
-                  {/* Inline Details Section — scroll down past lyrics to see */}
-                  {track && !isLoading && (
-                    <div className="max-w-xl mt-16 mb-12 flex flex-col gap-3 text-sm text-white/80">
-                      <div className="h-px w-full bg-white/10 mb-2" />
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-1">Track Details</h3>
-                      {track.album && (
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-white/50">Album</span>
-                          <span className="font-semibold text-white/90 truncate text-right">{track.album}</span>
-                        </div>
-                      )}
-                      {track.durationSec ? (
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-white/50">Duration</span>
-                          <span className="font-semibold text-white/90 tabular-nums">{formatMinutesSeconds(track.durationSec)}</span>
-                        </div>
-                      ) : null}
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-white/50">Lyrics</span>
-                        <span className="font-semibold text-white/90 truncate text-right">
-                          {lyrics?.sourceLabel ? `Provided by ${lyrics.sourceLabel}` : isSynced ? "Synchronized lyrics" : "Standard lyrics"}
-                        </span>
-                      </div>
-                      {(track.viewCount || track.viewCountText) && (
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-white/50">Plays</span>
-                          <span className="font-semibold text-white/90 tabular-nums">
-                            {track.viewCount ? Number(track.viewCount).toLocaleString() : track.viewCountText}
-                          </span>
-                        </div>
-                      )}
-                      {track.artist && (
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-white/50">Artist</span>
-                          <span className="font-semibold text-white/90 truncate text-right">{track.artist}</span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

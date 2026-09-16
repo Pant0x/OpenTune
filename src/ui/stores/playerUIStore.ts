@@ -12,6 +12,7 @@ export interface PlayerUIState {
   isQueueOpen: boolean;
   rightPanelTab: RightPanelTab;
   returnToLyricsOnFullscreenClose: boolean;
+  isWaveMiniPlayerOpen: boolean;
 }
 
 type Listener = () => void;
@@ -27,6 +28,7 @@ class PlayerUIStore {
     isQueueOpen: false,
     rightPanelTab: "nowplaying",
     returnToLyricsOnFullscreenClose: false,
+    isWaveMiniPlayerOpen: false,
   };
   private listeners = new Set<Listener>();
 
@@ -121,6 +123,14 @@ class PlayerUIStore {
 
   openNowPlaying() {
     this.setState({ rightPanelTab: "nowplaying", isQueueOpen: true });
+  }
+
+  setWaveMiniPlayerOpen(isWaveMiniPlayerOpen: boolean) {
+    this.setState({ isWaveMiniPlayerOpen });
+  }
+
+  toggleWaveMiniPlayer() {
+    this.setState({ isWaveMiniPlayerOpen: !this.state.isWaveMiniPlayerOpen });
   }
 }
 

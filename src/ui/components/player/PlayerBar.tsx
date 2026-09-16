@@ -18,6 +18,7 @@ import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import {
   useExtraPlayerControlsAlwaysVisible,
 } from "../../settings/playerControls";
+import { useCoverAmbienceEnabled } from "../../settings/coverAmbience";
 
 interface PlayerBarProps {
   onToggleLyrics: () => void;
@@ -199,6 +200,12 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
   };
 
   const extraControlsAlwaysVisible = useExtraPlayerControlsAlwaysVisible();
+  const isCoverAmbience = useCoverAmbienceEnabled();
+  const coverAmbienceStyle = isCoverAmbience && dominantColor?.rgb
+    ? {
+        backgroundImage: `linear-gradient(to right, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.22) 0%, rgba(12, 12, 14, 0.95) 340px, rgba(12, 12, 14, 0.98) 100%)`,
+      }
+    : undefined;
 
   return (
     <>
@@ -232,6 +239,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
       </AnimatePresence>
 
       <div
+        style={coverAmbienceStyle}
         className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-background/95 backdrop-blur-md px-4 py-2 min-h-[72px] overflow-hidden cursor-pointer"
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input, [role='slider'], a")) {
@@ -312,6 +320,25 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
                 title={isFullscreen ? "Exit full screen" : "Full screen"}
               >
                 <FullScreenIcon size={17} />
+              </button>
+
+              {/* Wave Player Miniplayer (03x1/Wave-Player) */}
+              <button
+                type="button"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  playerUIState.isWaveMiniPlayerOpen
+                    ? "bg-card text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => playerUIStore.toggleWaveMiniPlayer()}
+                aria-label={playerUIState.isWaveMiniPlayerOpen ? "Close mini player" : "Open mini player"}
+                title="Wave Player Miniplayer"
+              >
+                <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <rect x="12" y="9" width="8" height="6" rx="1" fill="currentColor" fillOpacity="0.2" />
+                </svg>
               </button>
             </div>
 

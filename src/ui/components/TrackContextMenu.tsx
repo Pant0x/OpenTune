@@ -30,6 +30,7 @@ import {
   usePlayerSelector,
 } from "../../player/playerStore";
 import { TrackArtwork } from "./TrackArtwork";
+import { SpotifyScannableModal } from "./player/SpotifyScannableModal";
 import { cn } from "@/lib/utils";
 import { Loader } from "@/components/motion/loader";
 
@@ -107,6 +108,7 @@ export function TrackContextMenuProvider({
   const [isCreatingNewPlaylist, setIsCreatingNewPlaylist] = useState(false);
   const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [isSubmittingNewPlaylist, setIsSubmittingNewPlaylist] = useState(false);
+  const [scannableTrack, setScannableTrack] = useState<Track | null>(null);
 
   const localPlaylists = useSyncExternalStore(
     subscribeToLocalPlaylists,
@@ -732,6 +734,25 @@ export function TrackContextMenuProvider({
               <span className="flex-1">Copy link</span>
             </button>
           )}
+          {track && (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
+              onClick={() => {
+                const selected = track;
+                setMenuPosition(null);
+                setScannableTrack(selected);
+              }}
+            >
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </svg>
+              <span className="flex-1">Share / Spotify Code</span>
+            </button>
+          )}
           {canRemoveSelectedTrackFromPlaylist && (
             <button
               type="button"
@@ -929,6 +950,14 @@ export function TrackContextMenuProvider({
           )}
           <span>{toast}</span>
         </div>
+      )}
+
+      {scannableTrack && (
+        <SpotifyScannableModal
+          isOpen={Boolean(scannableTrack)}
+          track={scannableTrack}
+          onClose={() => setScannableTrack(null)}
+        />
       )}
     </TrackContextMenuContext.Provider>
   );

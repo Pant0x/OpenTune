@@ -24,13 +24,33 @@ function getTrackDjInfo(track: { title: string; id: string }) {
   const abs = Math.abs(hash);
   const bpm = 92 + (abs % 49);
   const keys = [
-    "1A / Abm", "2A / Ebm", "3A / Bbm", "4A / Fm", "5A / Cm", "6A / Gm",
-    "7A / Dm", "8A / Am", "9A / Em", "10A / Bm", "11A / F#m", "12A / C#m",
-    "1B / B", "2B / F#", "3B / Db", "4B / Ab", "5B / Eb", "6B / Bb",
-    "7B / F", "8B / C", "9B / G", "10B / D", "11B / A", "12B / E"
+    { camelot: "1A", standard: "Ab Minor" },
+    { camelot: "2A", standard: "Eb Minor" },
+    { camelot: "3A", standard: "Bb Minor" },
+    { camelot: "4A", standard: "F Minor" },
+    { camelot: "5A", standard: "C Minor" },
+    { camelot: "6A", standard: "G Minor" },
+    { camelot: "7A", standard: "D Minor" },
+    { camelot: "8A", standard: "A Minor" },
+    { camelot: "9A", standard: "E Minor" },
+    { camelot: "10A", standard: "B Minor" },
+    { camelot: "11A", standard: "F# Minor" },
+    { camelot: "12A", standard: "C# Minor" },
+    { camelot: "1B", standard: "B Major" },
+    { camelot: "2B", standard: "F# Major" },
+    { camelot: "3B", standard: "Db Major" },
+    { camelot: "4B", standard: "Ab Major" },
+    { camelot: "5B", standard: "Eb Major" },
+    { camelot: "6B", standard: "Bb Major" },
+    { camelot: "7B", standard: "F Major" },
+    { camelot: "8B", standard: "C Major" },
+    { camelot: "9B", standard: "G Major" },
+    { camelot: "10B", standard: "D Major" },
+    { camelot: "11B", standard: "A Major" },
+    { camelot: "12B", standard: "E Major" },
   ];
-  const musicalKey = keys[abs % keys.length];
-  return { bpm, key: musicalKey };
+  const chosen = keys[abs % keys.length];
+  return { bpm, key: chosen.standard, camelot: chosen.camelot };
 }
 
 interface TrackInfoProps {
@@ -232,9 +252,9 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
           {showDjInfo && djInfo && (
             <span
               className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-primary/15 text-primary border border-primary/25 whitespace-nowrap shrink-0 select-none shadow-xs"
-              title={`Tempo: ${djInfo.bpm} BPM | Camelot Key: ${djInfo.key}`}
+              title={`Tempo: ${djInfo.bpm} BPM | Key: ${djInfo.key} (${djInfo.camelot})`}
             >
-              {djInfo.bpm} BPM • {djInfo.key.split(" / ")[0]}
+              {djInfo.bpm} BPM • {djInfo.key}
             </span>
           )}
         </div>
