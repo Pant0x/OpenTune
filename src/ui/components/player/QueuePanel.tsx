@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
@@ -45,7 +45,13 @@ import { SpotifyCreditsModal } from "./SpotifyCreditsModal";
 import { SpotifyScannableModal } from "./SpotifyScannableModal";
 import { SpotifyService, type SpotifyArtistOverview, type SpotifyTrackCredits } from "../../../services/SpotifyService";
 import { getMediaCounterpart } from "../../../datasource/youtube/videoService";
-import { findActiveLineIndex, isSyncedLyrics } from "../../pages/lyricsTiming";
+import {
+  findActiveLineIndex,
+  getLineProgress,
+  isAdlibLine,
+  isSyncedLyrics,
+  parseLyricTokens,
+} from "../../pages/lyricsTiming";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -493,9 +499,10 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   useEffect(() => {
     const updateTime = () => setCurrentTime(playerController.getCurrentTime());
     updateTime();
+    if (activeTab !== "nowplaying") return;
     const interval = window.setInterval(updateTime, 250);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (!currentTrack) {
@@ -515,15 +522,53 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, currentTime) : -1;
   const previewLyricsLines = useMemo(() => {
     if (!lyrics?.lines?.length) return [];
-    if (!synced) return lyrics.lines.slice(0, 4).map((line, idx) => ({ line, isCurrent: idx === 0 }));
+    const buildRow = (line: (typeof lyrics.lines)[number], globalIndex: number, isCurrent: boolean) => ({
+      line,
+      globalIndex,
+      isCurrent,
+      tokens: parseLyricTokens(line.text),
+      isAdlib: isAdlibLine(line.text),
+      // Unsynced lines have no timings: a 0% sweep would paint the row dim, so they stay full.
+      sweep: isCurrent && synced
+        ? getLineProgress(lyrics.lines, globalIndex, currentTime, currentTrack?.durationSec)
+        : 1,
+    });
+    if (!synced) {
+      return lyrics.lines.slice(0, 4).map((line, idx) => buildRow(line, idx, idx === 0));
+    }
     const activeIdx = activeLyricIndex >= 0 ? activeLyricIndex : 0;
     const startIndex = Math.max(0, activeIdx - 1);
-    const slice = lyrics.lines.slice(startIndex, startIndex + 4);
-    return slice.map((line, idx) => ({
-      line,
-      isCurrent: startIndex + idx === activeIdx,
-    }));
-  }, [lyrics, synced, activeLyricIndex]);
+    return lyrics.lines
+      .slice(startIndex, startIndex + 4)
+      .map((line, idx) => buildRow(line, startIndex + idx, startIndex + idx === activeIdx));
+  }, [lyrics, synced, activeLyricIndex, currentTime, currentTrack?.durationSec]);
+
+  /*
+   * Buttery karaoke fill on the active preview row (Spicy Lyrics style). The panel already
+   * re-renders on a 250ms tick, but the fill would step visibly at that cadence, so the
+   * percentage is written straight to the row's `--sweep` var on every frame instead — no
+   * re-render involved. Parked unless the Now Playing tab is up and something is playing.
+   */
+  const activePreviewRowRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    if (activeTab !== "nowplaying" || !isPlaying) return;
+    let raf = 0;
+    const tickSweep = () => {
+      const row = activePreviewRowRef.current;
+      if (row && synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
+        const progress = getLineProgress(
+          lyrics.lines,
+          activeLyricIndex,
+          playerController.getCurrentTime(),
+          currentTrack?.durationSec,
+        );
+        row.style.setProperty("--sweep", `${Math.round(progress * 100)}%`);
+      }
+      raf = requestAnimationFrame(tickSweep);
+    };
+    raf = requestAnimationFrame(tickSweep);
+    return () => cancelAnimationFrame(raf);
+  }, [activeTab, isPlaying, synced, lyrics, activeLyricIndex, currentTrack?.durationSec]);
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1106,17 +1151,43 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
                 {previewLyricsLines.length > 0 ? (
                   <div className="flex flex-col gap-1.5 py-1 min-h-[110px] justify-center select-none">
-                    {previewLyricsLines.map((item, idx) => (
+                    {previewLyricsLines.map((item) => (
                       <p
-                        key={idx}
+                        key={item.globalIndex}
+                        ref={item.isCurrent ? activePreviewRowRef : undefined}
+                        style={
+                          item.isCurrent && !item.isAdlib
+                            ? ({ "--sweep": `${Math.round(item.sweep * 100)}%` } as CSSProperties)
+                            : undefined
+                        }
                         className={cn(
-                          "transition-all duration-300 leading-snug line-clamp-2",
-                          item.isCurrent
-                            ? "text-white font-black text-lg sm:text-xl drop-shadow-[0_0_12px_rgba(255,255,255,0.5)] scale-[1.01] origin-left"
-                            : "text-white/40 font-semibold text-sm hover:text-white/70",
+                          "lyric-preview-in transition-all duration-300 leading-snug line-clamp-2",
+                          item.isCurrent && !item.isAdlib
+                            && "lyric-sweep font-black text-lg sm:text-xl drop-shadow-[0_0_12px_rgba(255,255,255,0.5)] scale-[1.01] origin-left",
+                          item.isCurrent && item.isAdlib
+                            && "text-white text-base italic font-bold scale-[1.01] origin-left",
+                          !item.isCurrent && !item.isAdlib
+                            && "text-white/40 font-semibold text-sm hover:text-white/70",
+                          !item.isCurrent && item.isAdlib
+                            && "text-white/35 text-[13px] italic font-medium",
                         )}
                       >
-                        {item.line.text}
+                        {item.tokens.length > 0 ? (
+                          item.tokens.map((tok, i) =>
+                            tok.type === "adlib" ? (
+                              <span
+                                key={i}
+                                className="text-[0.82em] italic font-medium opacity-60"
+                              >
+                                {tok.text}
+                              </span>
+                            ) : (
+                              <span key={i}>{tok.text}</span>
+                            ),
+                          )
+                        ) : (
+                          <span aria-hidden="true">♪</span>
+                        )}
                       </p>
                     ))}
                   </div>

@@ -54,7 +54,7 @@ import { AlbumNavigationProvider, ArtistNavigationProvider, SongNavigationProvid
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
 import { QueuePanel } from "./components/player/QueuePanel";
-import { WaveMiniPlayer } from "./components/player/WaveMiniPlayer";
+import { MiniWindowSync } from "./components/player/MiniWindowSync";
 import { useQueuePanelCollapsed } from "./settings/queuePanel";
 import { useNativeWindowControls } from "./settings/windowControls";
 
@@ -1507,10 +1507,7 @@ export default function App() {
 
       <ZoomHudOverlay />
       <Oneko />
-      <WaveMiniPlayer
-        isOpen={playerUIState.isWaveMiniPlayerOpen}
-        onClose={() => playerUIStore.setWaveMiniPlayerOpen(false)}
-      />
+      <MiniWindowSync isOpen={playerUIState.isWaveMiniPlayerOpen} />
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}

@@ -103,6 +103,79 @@ export function parseLyricTokens(text: string): LyricToken[] {
   return tokens.length > 0 ? tokens : [{ type: "main", text }];
 }
 
+/**
+ * Bare vocalizations that carry no lyrical content on their own ("Woo", "Yeah", "Uh", …).
+ * Spotify renders these dimmer and smaller than real lines — the same ad-lib treatment as
+ * parenthetical asides get. Matching is deliberately conservative: only lines made *entirely*
+ * of these tokens qualify, so a real line that merely contains one ("Yeah, I'm rich") is
+ * untouched.
+ */
+const ADLIB_INTERJECTIONS = new Set([
+  "woo",
+  "yeah",
+  "yea",
+  "yee",
+  "uh",
+  "uhh",
+  "ah",
+  "ahh",
+  "oh",
+  "ohh",
+  "ooh",
+  "oohh",
+  "ooh-ooh",
+  "hmm",
+  "mmm",
+  "mm",
+  "hm",
+  "la",
+  "na",
+  "da",
+  "ba",
+  "hey",
+  "heyy",
+  "yay",
+  "whoa",
+  "woah",
+  "ay",
+  "aye",
+  "ayy",
+  "yo",
+  "ha",
+  "haha",
+  "woohoo",
+  "uh-huh",
+  "uh-uh",
+  "grr",
+  "brr",
+  "skrr",
+  "skrt",
+  "ye",
+  "fah",
+  "rah",
+  "bah",
+]);
+
+/**
+ * Whether a whole line is an ad-lib rather than a lyric: fully parenthesized (`(Woo, ah)`),
+ * symbol-only (♪), or made entirely of bare vocalizations (`Woo`, `Yeah yeah`).
+ */
+export function isAdlibLine(text: string): boolean {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return false;
+  if (/^\(.*\)$/.test(trimmed)) return true;
+
+  const bare = trimmed
+    .replace(/[()♪♫♬♩,“”"'.!?…,:;—–\-/+*_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!bare) return true;
+
+  const words = bare.split(" ");
+  return words.length > 0 && words.every((word) => ADLIB_INTERJECTIONS.has(word));
+}
+
 export type DuetAlignment = "left" | "right" | "center";
 
 export interface ProcessedDuetLine {

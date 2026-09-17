@@ -35,6 +35,7 @@ import { hydratePlaybackSettings } from "./player/playbackSettings";
 import { hydratePlayHistory } from "./player/playHistory";
 import { hydrateSavedVideos } from "./player/savedVideos";
 import { hydrateFollowedArtists } from "./player/followedArtists";
+import { startMiniBridge } from "./player/miniBridge";
 import { hydrateSessionRestoreSetting } from "./ui/settings/sessionRestore";
 import { hydrateToolbarItemSettings } from "./ui/settings/toolbarItems";
 import { hydrateHomeSectionSettings } from "./ui/settings/homeSections";
@@ -146,5 +147,7 @@ if (isOAuthPopup()) {
 
   syncLocalAudioWatcher();
   void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
+  // Feeds the external mini player window (snapshots out, transport commands in).
+  startMiniBridge();
 }
 

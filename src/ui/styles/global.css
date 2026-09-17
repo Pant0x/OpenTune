@@ -758,6 +758,27 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 /*
+ * Side-panel lyric rows easing in as the sung line advances (Spicy Lyrics style): each new
+ * row slides up and fades in while the rows it pushes keep their place. Rows are keyed by
+ * their absolute line index so only the entering row replays the animation.
+ */
+@keyframes lyric-preview-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lyric-preview-in {
+  animation: lyric-preview-in 320ms cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: transform, opacity;
+}
+
+/*
  * Dynamic Moving Ambient Background ("Cover Ambience")
  * 4 drifting, morphing, and rotating organic mesh gradient color blobs. Timings are staggered
  * (14-24s) so the field never moves in lockstep — the colors chase each other around the

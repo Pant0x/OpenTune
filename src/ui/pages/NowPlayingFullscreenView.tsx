@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
   PlayActiveIcon,
@@ -18,7 +18,14 @@ import { SpotifyService, type SpotifyArtistOverview } from "../../services/Spoti
 import { SpotifyCreditsModal } from "../components/player/SpotifyCreditsModal";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useArtistNavigation } from "../components/ArtistLinks";
-import { findActiveLineIndex, isRtlText, isSyncedLyrics } from "./lyricsTiming";
+import {
+  findActiveLineIndex,
+  getLineProgress,
+  isAdlibLine,
+  isRtlText,
+  isSyncedLyrics,
+  parseLyricTokens,
+} from "./lyricsTiming";
 import { VideoPlayerView } from "../components/player/VideoPlayerView";
 import { getMediaCounterpart } from "../../datasource/youtube/videoService";
 import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
@@ -466,6 +473,11 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                       {lyrics.lines.map((line, idx) => {
                         const isActive = idx === activeLyricIndex;
                         const isRtl = isRtlText(line.text);
+                        const adlibLine = isAdlibLine(line.text);
+                        const tokens = parseLyricTokens(line.text);
+                        const sweep = isActive && !adlibLine
+                          ? getLineProgress(lyrics.lines, idx, currentTime, track?.durationSec)
+                          : 1;
                         return (
                           <button
                             key={`${idx}:${line.text}`}
@@ -479,15 +491,40 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                                 void playerController.seekTo(line.startTimeSec);
                               }
                             }}
+                            style={
+                              isActive && !adlibLine
+                                ? ({ "--sweep": `${Math.round(sweep * 100)}%` } as CSSProperties)
+                                : undefined
+                            }
                             className={cn(
                               "cursor-pointer font-bold leading-tight tracking-tight transition-all duration-300 select-text",
                               isRtl && "font-sans font-medium leading-relaxed",
-                              isActive
-                                ? "text-white text-2xl sm:text-3xl lg:text-4xl scale-105"
-                                : "text-white/40 text-lg sm:text-xl lg:text-2xl hover:text-white/80",
+                              isActive && !adlibLine
+                                && "lyric-sweep text-2xl sm:text-3xl lg:text-4xl scale-105",
+                              isActive && adlibLine
+                                && "text-white text-xl sm:text-2xl italic scale-105",
+                              !isActive && !adlibLine
+                                && "text-white/40 text-lg sm:text-xl lg:text-2xl hover:text-white/80",
+                              !isActive && adlibLine
+                                && "text-white/35 text-base sm:text-lg italic font-medium hover:text-white/60",
                             )}
                           >
-                            {line.text}
+                            {tokens.length > 0 ? (
+                              tokens.map((tok, i) =>
+                                tok.type === "adlib" ? (
+                                  <span
+                                    key={i}
+                                    className="text-[0.8em] italic font-medium opacity-60"
+                                  >
+                                    {tok.text}
+                                  </span>
+                                ) : (
+                                  <span key={i}>{tok.text}</span>
+                                ),
+                              )
+                            ) : (
+                              <span aria-hidden="true">♪</span>
+                            )}
                           </button>
                         );
                       })}
