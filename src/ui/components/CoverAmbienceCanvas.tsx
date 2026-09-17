@@ -48,7 +48,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
         <div
           key={artworkUrl}
           className={cn(
-            "absolute -inset-[20%] opacity-65 blur-[65px] saturate-[2] scale-125 transition-all duration-1000",
+            "absolute -inset-[20%] opacity-75 blur-[65px] saturate-[2] scale-125 transition-all duration-1000",
             shouldAnimate && "lyrics-drift",
           )}
         >
@@ -64,7 +64,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
 
       {/* Dynamic Ambient Mesh Blobs (Cover Ambience) */}
       {isEnabled && (
-        <div className="absolute inset-0 filter blur-[90px] saturate-[2.4] opacity-90">
+        <div className="absolute inset-0 filter blur-[90px] saturate-[2.4] opacity-100">
           {/* Top-Left Orb */}
           <div
             className={cn(

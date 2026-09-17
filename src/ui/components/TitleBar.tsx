@@ -147,7 +147,7 @@ export function TitleBar({
   };
 
   return (
-    <div className="relative z-30 flex h-[var(--titlebar-height)] shrink-0 items-stretch bg-background">
+    <div className="relative z-30 flex h-[var(--titlebar-height)] shrink-0 items-stretch bg-shell">
       <button
         type="button"
         className={cn(

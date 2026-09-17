@@ -33,6 +33,12 @@ import type {
 import type { LibraryController } from "../../player/LibraryController";
 import { searchController, useLibraryState, type PlayerControllerActions } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
+import {
+  isArtistFollowedLocally,
+  isFollowedOverrideFresh,
+  setArtistFollowedLocally,
+  subscribeToFollowedArtists,
+} from "../../player/followedArtists";
 import { AlbumCard } from "../components/AlbumCard";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -95,25 +101,6 @@ interface PopularSongItem {
 const artistPageMemory = new Map<string, ArtistPage>();
 const artistOverviewMemory = new Map<string, SpotifyArtistOverview>();
 const artistDiscographyMemory = new Map<string, SpotifyRelease[]>();
-
-const FOLLOWED_ARTISTS_STORAGE_KEY = "amber_followed_artists";
-
-function getFollowedArtistIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(FOLLOWED_ARTISTS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return new Set(parsed);
-    }
-  } catch {}
-  return new Set();
-}
-
-function saveFollowedArtistIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(FOLLOWED_ARTISTS_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {}
-}
 
 export function ArtistView({
   artist,
@@ -692,11 +679,27 @@ export function ArtistView({
   const displayedPopularItems = showAllSongs ? popularItems : popularItems.slice(0, 10);
 
   useEffect(() => {
-    const followedSet = getFollowedArtistIds();
-    const isFollowedLocally = (artist?.id && followedSet.has(artist.id)) ||
-      (displayedArtist?.id && followedSet.has(displayedArtist.id)) ||
-      (displayedArtist?.name && followedSet.has(displayedArtist.name.toLowerCase()));
-    setIsSubscribed(page?.subscribed || Boolean(isFollowedLocally));
+    const resolveFollowed = () => {
+      const isFollowedLocally = isArtistFollowedLocally(
+        artist?.id,
+        displayedArtist?.id,
+        displayedArtist?.name?.toLowerCase(),
+      );
+      /*
+       * A toggle newer than this page load is authoritative: the remote `page.subscribed` lags
+       * behind the local toggle (YouTube only reflects a subscribe on the next page load), and
+       * a stale page reporting the old state used to flip the button back on/off on every
+       * progressive load.
+       */
+      if (isFollowedOverrideFresh()) {
+        setIsSubscribed(isFollowedLocally);
+      } else {
+        setIsSubscribed(Boolean(page?.subscribed) || isFollowedLocally);
+      }
+    };
+
+    resolveFollowed();
+    return subscribeToFollowedArtists(resolveFollowed);
   }, [page?.subscribed, artist?.id, displayedArtist?.id, displayedArtist?.name]);
 
   useEffect(() => () => {
@@ -758,17 +761,8 @@ export function ArtistView({
     setIsSubscribing(true);
     setIsSubscribed(nextSubscribed);
 
-    // Persist locally
-    const followedSet = getFollowedArtistIds();
-    const artistKey = displayedArtist.id || artist.id;
-    if (nextSubscribed) {
-      if (artistKey) followedSet.add(artistKey);
-      if (displayedArtist.name) followedSet.add(displayedArtist.name.toLowerCase());
-    } else {
-      if (artistKey) followedSet.delete(artistKey);
-      if (displayedArtist.name) followedSet.delete(displayedArtist.name.toLowerCase());
-    }
-    saveFollowedArtistIds(followedSet);
+    // Persist locally (localStorage + durable store, timestamped for the override grace window)
+    setArtistFollowedLocally(displayedArtist.id || artist.id, displayedArtist.name, nextSubscribed);
 
     try {
       await libraryController.setArtistSubscribed(displayedArtist, nextSubscribed);

@@ -22,6 +22,11 @@ import { findActiveLineIndex, isRtlText, isSyncedLyrics } from "./lyricsTiming";
 import { VideoPlayerView } from "../components/player/VideoPlayerView";
 import { getMediaCounterpart } from "../../datasource/youtube/videoService";
 import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
+import {
+  isArtistFollowedLocally,
+  setArtistFollowedLocally,
+  subscribeToFollowedArtists,
+} from "../../player/followedArtists";
 
 interface NowPlayingFullscreenViewProps {
   onClose: () => void;
@@ -76,6 +81,11 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     setVideoCounterpart(null);
     setSongCounterpart(null);
     setMediaMode(track.isVideo ? "video" : "song");
+    /*
+     * A fresh track starts at zero. In video mode the time-sync interval is parked, so without
+     * this reset the next video would seek to the stale position of the track before it.
+     */
+    setCurrentTime(0);
 
     let active = true;
     if (track.isVideo) {
@@ -208,15 +218,19 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     };
   }, [resetIdleTimer]);
 
-  // Sync playback time
+  // Sync playback time. In video mode the interval is parked: nothing here consumes the time
+  // (lyrics only render in song mode, and the video reports its own time to the dock), and a
+  // 250ms re-render of the whole view while a video plays is pure churn.
+  const isVideoMode = mediaMode === "video";
   useEffect(() => {
     const updateTime = () => {
       setCurrentTime(playerController.getCurrentTime());
     };
     updateTime();
+    if (isVideoMode) return;
     const interval = window.setInterval(updateTime, 250);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [isVideoMode]);
 
   // Fetch Artist Overview
   useEffect(() => {
@@ -237,26 +251,22 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   // Follow state unified across About-the-artist, Credits, and Library
   useEffect(() => {
-    if (!track?.artist) {
-      setIsFollowingArtist(false);
-      return;
-    }
-    const artistNameLower = track.artist.toLowerCase();
-    const artistId = track.artists?.[0]?.id;
-    const followedInLibrary = (libraryState.library?.artists ?? []).some(
-      (a) => a.name.toLowerCase() === artistNameLower || (artistId && a.id === artistId),
-    );
-    try {
-      const raw = localStorage.getItem("amber_followed_artists");
-      const parsed = raw ? JSON.parse(raw) : [];
-      const followedInStorage = Array.isArray(parsed) && (
-        parsed.includes(artistNameLower) ||
-        (artistId && parsed.includes(artistId))
+    const resolveFollowing = () => {
+      if (!track?.artist) {
+        setIsFollowingArtist(false);
+        return;
+      }
+      const artistNameLower = track.artist.toLowerCase();
+      const artistId = track.artists?.[0]?.id;
+      const followedInLibrary = (libraryState.library?.artists ?? []).some(
+        (a) => a.name.toLowerCase() === artistNameLower || (artistId && a.id === artistId),
       );
-      setIsFollowingArtist(Boolean(followedInLibrary || followedInStorage));
-    } catch {
-      setIsFollowingArtist(Boolean(followedInLibrary));
-    }
+      const followedInStorage = isArtistFollowedLocally(artistNameLower, artistId ?? null);
+      setIsFollowingArtist(followedInLibrary || followedInStorage);
+    };
+
+    resolveFollowing();
+    return subscribeToFollowedArtists(resolveFollowing);
   }, [track?.artist, track?.artists, libraryState.library?.artists]);
 
   const toggleFollowingArtist = async () => {
@@ -265,21 +275,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     const nextState = !isFollowingArtist;
     setIsFollowingArtist(nextState);
 
-    const key = name.toLowerCase();
     const artistId = track.artists?.[0]?.id;
-    try {
-      const raw = localStorage.getItem("amber_followed_artists");
-      const parsed = raw ? JSON.parse(raw) : [];
-      const next = new Set(Array.isArray(parsed) ? parsed : []);
-      if (nextState) {
-        next.add(key);
-        if (artistId) next.add(artistId);
-      } else {
-        next.delete(key);
-        if (artistId) next.delete(artistId);
-      }
-      localStorage.setItem("amber_followed_artists", JSON.stringify([...next]));
-    } catch {}
+    setArtistFollowedLocally(artistId, name, nextState);
 
     try {
       await libraryController.setArtistSubscribed(
@@ -435,8 +432,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               track={track}
               initialTime={currentTime}
               initialPlaying={isPlaying}
-              onSwitchToSong={() => void handleSwitchMediaMode("song")}
-              isPodcast={isPodcast}
             />
           )}
         </div>

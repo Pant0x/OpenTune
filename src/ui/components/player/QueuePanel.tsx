@@ -18,6 +18,10 @@ import {
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
 import { libraryController, useLibraryState } from "../../../player/playerStore";
 import { logInternalError } from "../../../internal/logging";
+import {
+  setArtistFollowedLocally,
+  useFollowedArtistLocally,
+} from "../../../player/followedArtists";
 import type { Lyrics, Track } from "../../../datasource/types";
 import {
   playerController,
@@ -414,6 +418,24 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoCounterpart, setVideoCounterpart] = useState<Track | null>(null);
+  const isFollowingArtist = useFollowedArtistLocally(
+    currentTrack?.artist ?? null,
+    currentTrack?.artists?.[0]?.id ?? null,
+  );
+
+  const toggleFollowingArtist = async () => {
+    if (!currentTrack?.artist) return;
+    const nextState = !isFollowingArtist;
+    setArtistFollowedLocally(currentTrack.artists?.[0]?.id, currentTrack.artist, nextState);
+    try {
+      await libraryController.setArtistSubscribed(
+        { id: currentTrack.artists?.[0]?.id || "", name: currentTrack.artist },
+        nextState,
+      );
+    } catch (err) {
+      console.warn("Could not sync artist subscription:", err);
+    }
+  };
 
   useEffect(() => {
     if (!currentTrack?.artist) {
@@ -1153,10 +1175,16 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        void toggleFollowingArtist();
                       }}
-                      className="px-4 py-1 rounded-full border border-neutral-400 text-xs font-bold text-white hover:border-white hover:scale-105 transition-all shrink-0 cursor-pointer"
+                      className={cn(
+                        "px-4 py-1 rounded-full border text-xs font-bold transition-all shrink-0 cursor-pointer",
+                        isFollowingArtist
+                          ? "border-white bg-white text-black hover:scale-105"
+                          : "border-neutral-400 text-white hover:border-white hover:scale-105",
+                      )}
                     >
-                      Follow
+                      {isFollowingArtist ? "Following" : "Follow"}
                     </button>
                   </div>
 
@@ -1168,8 +1196,8 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 </div>
               </div>
 
-              {/* Credits Card (Spotify style, placed UNDER About the artist) */}
-              <div className="rounded-2xl bg-secondary/35 border border-border/40 p-4 flex flex-col gap-3.5 shadow-sm">
+              {/* Credits Card (Spotify style, same surface as the About/Lyrics cards) */}
+              <div className="relative overflow-hidden rounded-2xl bg-[#242424]/90 border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                     Credits

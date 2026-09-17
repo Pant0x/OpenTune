@@ -275,7 +275,7 @@ export default function App() {
    * Still state rather than a constant because TitleBar aligns its home button to this width.
    */
   const [sidebarWidth, setSidebarWidth] = useState(62);
-  const [queuePanelWidth, setQueuePanelWidth] = useState(340);
+  const [queuePanelWidth, setQueuePanelWidth] = useState(380);
   const isQueuePanelCollapsed = useQueuePanelCollapsed();
   const nativeWindowControls = useNativeWindowControls();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(() =>
@@ -602,7 +602,7 @@ export default function App() {
     setNavigationHistory([]);
     setForwardHistory([]);
     setSidebarWidth(240);
-    setQueuePanelWidth(340);
+    setQueuePanelWidth(380);
     clearAppSession();
 
     const results = await Promise.allSettled([

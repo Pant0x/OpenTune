@@ -9,6 +9,11 @@ import {
 } from "../../../datasource/youtube/videoService";
 import type { Track } from "../../../datasource/types";
 import { isSavedVideo, subscribeToSavedVideos, toggleSaveVideo } from "../../../player/savedVideos";
+import {
+  isArtistFollowedLocally,
+  setArtistFollowedLocally,
+  subscribeToFollowedArtists,
+} from "../../../player/followedArtists";
 import { libraryController, playerController, useLibraryState } from "../../../player/playerStore";
 import { YouTubeShareModal } from "./YouTubeShareModal";
 import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
@@ -19,8 +24,6 @@ interface VideoPlayerViewProps {
   track: Track;
   initialTime?: number;
   initialPlaying?: boolean;
-  onSwitchToSong?: () => void;
-  isPodcast?: boolean;
 }
 
 function ensureYouTubeIframeApi(): Promise<void> {
@@ -68,8 +71,6 @@ export function VideoPlayerView({
   track,
   initialTime = 0,
   initialPlaying = false,
-  onSwitchToSong,
-  isPodcast = false,
 }: VideoPlayerViewProps) {
   const libraryState = useLibraryState();
   const account = libraryState.library?.account;
@@ -103,6 +104,8 @@ export function VideoPlayerView({
   const pendingActionRef = useRef<"play" | "pause" | null>(initialPlaying ? "play" : null);
   const currentTimeRef = useRef(initialTime);
   const isPlayingRef = useRef(initialPlaying);
+  const initialPlayingRef = useRef(initialPlaying);
+  const initialTimeRef = useRef(initialTime);
 
   const postToIframe = useCallback((func: string, args: unknown[] = []) => {
     if (iframeRef.current?.contentWindow) {
@@ -113,11 +116,27 @@ export function VideoPlayerView({
     }
   }, []);
 
+  /*
+   * Mirror the latest desired start state into refs. These effects are declared before the
+   * player init effect below, so on any commit they run first and the init effect reads fresh
+   * values. `initialPlaying` and `initialTime` must never be dependencies of the init effect:
+   * they flip on every play/pause and every position tick, and re-running that effect destroys
+   * and recreates the YT.Player, which reloads the video from the top (the "video keeps
+   * restarting" bug).
+   */
+  useEffect(() => {
+    initialPlayingRef.current = initialPlaying;
+  }, [initialPlaying]);
+
+  useEffect(() => {
+    initialTimeRef.current = initialTime;
+  }, [initialTime]);
+
   // Initialize official YouTube Iframe Player API on the iframe element
   useEffect(() => {
     let active = true;
     isPlayerReadyRef.current = false;
-    pendingActionRef.current = initialPlaying ? "play" : null;
+    pendingActionRef.current = initialPlayingRef.current ? "play" : null;
 
     void ensureYouTubeIframeApi().then(() => {
       if (!active) return;
@@ -129,6 +148,12 @@ export function VideoPlayerView({
             onReady: (event: any) => {
               if (!active) return;
               isPlayerReadyRef.current = true;
+              const startAt = initialTimeRef.current;
+              if (startAt > 0) {
+                try {
+                  event.target.seekTo(startAt, true);
+                } catch {}
+              }
               if (pendingActionRef.current === "play") {
                 try {
                   event.target.playVideo();
@@ -172,7 +197,7 @@ export function VideoPlayerView({
       ytPlayerRef.current = null;
       isPlayerReadyRef.current = false;
     };
-  }, [iframeId, videoId, initialPlaying]);
+  }, [iframeId, videoId]);
 
   // Register video delegate with playerController so bottom dock controls video directly
   useEffect(() => {
@@ -360,23 +385,17 @@ export function VideoPlayerView({
   const channelName = details?.channelTitle || track.artist || "";
 
   useEffect(() => {
-    const artists = libraryState.library?.artists ?? [];
-    const channelLower = channelName.toLowerCase();
-    let followedLocally = false;
-    try {
-      const raw = localStorage.getItem("amber_followed_artists");
-      const parsed = raw ? JSON.parse(raw) : [];
-      followedLocally = Array.isArray(parsed) && Boolean(
-        (channelId && parsed.includes(channelId)) ||
-        (channelLower && parsed.includes(channelLower)),
+    const resolveSubscribed = () => {
+      const channelLower = channelName.toLowerCase();
+      const followedLocally = isArtistFollowedLocally(channelId || null, channelLower || null);
+      const followedInRemote = (libraryState.library?.artists ?? []).some(
+        (a) => (channelId && a.id === channelId) || (channelLower && a.name.toLowerCase() === channelLower),
       );
-    } catch {}
+      setIsSubscribed(followedLocally || followedInRemote);
+    };
 
-    const followedInRemote = artists.some(
-      (a) => (channelId && a.id === channelId) || (channelLower && a.name.toLowerCase() === channelLower),
-    );
-
-    setIsSubscribed(Boolean(followedLocally || followedInRemote));
+    resolveSubscribed();
+    return subscribeToFollowedArtists(resolveSubscribed);
   }, [libraryState.library?.artists, channelId, channelName]);
 
   const handleToggleSubscribe = async () => {
@@ -384,19 +403,7 @@ export function VideoPlayerView({
     setIsSubscribed(nextSub);
     setShowBellMenu(false);
 
-    try {
-      const raw = localStorage.getItem("amber_followed_artists");
-      const parsed = raw ? JSON.parse(raw) : [];
-      const set = new Set(Array.isArray(parsed) ? parsed : []);
-      if (nextSub) {
-        if (channelId) set.add(channelId);
-        if (channelName) set.add(channelName.toLowerCase());
-      } else {
-        if (channelId) set.delete(channelId);
-        if (channelName) set.delete(channelName.toLowerCase());
-      }
-      localStorage.setItem("amber_followed_artists", JSON.stringify([...set]));
-    } catch {}
+    setArtistFollowedLocally(channelId || null, channelName || null, nextSub);
 
     try {
       await libraryController.setArtistSubscribed(
@@ -442,9 +449,18 @@ export function VideoPlayerView({
     setIsCommentInputFocused(false);
   };
 
-  const startTimeParam = Math.floor(initialTime) > 0 ? `&start=${Math.floor(initialTime)}` : "";
-  const autoPlayVal = initialPlaying ? 1 : 0;
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=${autoPlayVal}&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${startTimeParam}`;
+  /*
+   * The embed URL is built strictly from `videoId`. No `autoplay` and no `start` parameter:
+   * both are driven after load through the YT.Player API (seek in onReady, play/pause via the
+   * delegate), because baking them into `src` made the URL change on every play/pause flip and
+   * every position tick — and a changed `src` attribute reloads the whole iframe, which
+   * restarted the video while it was running.
+   */
+  const embedUrl = useMemo(
+    () =>
+      `https://www.youtube.com/embed/${videoId}?enablejsapi=1&playsinline=1&rel=0&modestbranding=1`,
+    [videoId],
+  );
 
   const displayedLikes = details?.likeCount || "Like";
 
@@ -697,17 +713,6 @@ export function VideoPlayerView({
                 </div>
               )}
             </div>
-
-            {/* Switch to Song button */}
-            {onSwitchToSong && (
-              <button
-                type="button"
-                onClick={onSwitchToSong}
-                className="ml-2 rounded-full bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white/90 transition-all cursor-pointer border border-white/10"
-              >
-                {isPodcast ? "Switch to Audio" : "Switch to Song"}
-              </button>
-            )}
           </div>
 
           {/* Right: Actions Row (Segmented Like/Dislike, Share, Save) */}
