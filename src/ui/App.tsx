@@ -1226,7 +1226,7 @@ export default function App() {
     <PlaylistContextMenuProvider libraryController={libraryController}>
     <VolumeSyncBridge />
     <div
-      className={`relative flex h-full w-full flex-col overflow-hidden bg-black ${
+      className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
         nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
@@ -1450,7 +1450,7 @@ export default function App() {
         fade-in), so nesting them here doesn't make PlayerBar's hover styling fire early.
       */}
       {!(playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen) && (
-        <div className="group/immersive-playerbar">
+        <div className="group/immersive-playerbar px-2 pb-2 pt-2">
           {/* Its own boundary: the player bar is the one region whose loss ends the session —
               audio keeps playing but nothing can pause or skip it. */}
           <ErrorBoundary label="Playback controls">

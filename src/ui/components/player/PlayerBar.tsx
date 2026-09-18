@@ -240,7 +240,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
 
       <div
         style={coverAmbienceStyle}
-        className="group/playerbar flex shrink-0 items-center border-t border-border/40 bg-shell px-4 py-2 min-h-[72px] cursor-pointer"
+        className="group/playerbar flex shrink-0 items-center rounded-lg bg-background px-4 py-2 min-h-[72px] cursor-pointer"
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input, [role='slider'], a")) {
             return;

@@ -850,7 +850,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     return (
       <aside
         ref={panelRef}
-        className="flex h-full flex-col items-center overflow-y-auto overscroll-contain bg-card py-2 select-none"
+        className="flex h-full flex-col items-center overflow-y-auto overscroll-contain py-2 select-none"
         aria-label="Queue"
       >
         <Tooltip side="left" content="Expand panel">
@@ -896,16 +896,16 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   }
 
   return (
-    <aside
-      ref={panelRef}
-      className={cn(
-        "flex h-full flex-col overflow-y-auto overscroll-contain bg-card border-l border-border/40",
-        draggedIndex !== null && "select-none",
-      )}
-      aria-label="Now Playing and Queue"
-    >
-      {/* Top Header */}
-      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/40 bg-card/95 backdrop-blur-md px-3 py-2">
+      <aside
+        ref={panelRef}
+        className={cn(
+          "flex h-full flex-col overflow-y-auto overscroll-contain",
+          draggedIndex !== null && "select-none",
+        )}
+        aria-label="Now Playing and Queue"
+      >
+        {/* Top Header */}
+        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/40 bg-background/95 backdrop-blur-md px-3 py-2">
         {activeTab === "nowplaying" && currentTrack?.album ? (
           <button
             type="button"
