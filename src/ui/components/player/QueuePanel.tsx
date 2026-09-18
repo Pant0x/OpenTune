@@ -22,7 +22,7 @@ import {
   setArtistFollowedLocally,
   useFollowedArtistLocally,
 } from "../../../player/followedArtists";
-import type { Lyrics, Track } from "../../../datasource/types";
+import type { Track } from "../../../datasource/types";
 import {
   playerController,
   shallowEqual,
@@ -52,6 +52,7 @@ import {
   isSyncedLyrics,
 } from "../../pages/lyricsTiming";
 import { LyricLineView } from "../lyrics/LyricLineView";
+import { useTrackLyrics } from "../../hooks/useTrackLyrics";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -421,7 +422,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const [isVisualExpanded, setIsVisualExpanded] = useState(false);
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
   const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
-  const [lyrics, setLyrics] = useState<Lyrics | null>(null);
+  // Shared per-track fetch (same data as the Now Playing screen): loading/error included,
+  // so a failed fetch reads as a state instead of a blank card.
+  const { status: lyricsStatus, lyrics, reload: reloadLyrics } = useTrackLyrics(currentTrack ?? null);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoCounterpart, setVideoCounterpart] = useState<Track | null>(null);
   const isFollowingArtist = useFollowedArtistLocally(
@@ -483,20 +486,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   }, [currentTrack?.title, currentTrack?.artist]);
 
   useEffect(() => {
-    if (!currentTrack) {
-      setLyrics(null);
-      return;
-    }
-    let active = true;
-    void playerController.getLyrics(currentTrack).then((res) => {
-      if (active) setLyrics(res);
-    });
-    return () => {
-      active = false;
-    };
-  }, [currentTrack?.id]);
-
-  useEffect(() => {
     const updateTime = () => setCurrentTime(playerController.getCurrentTime());
     updateTime();
     if (activeTab !== "nowplaying") return;
@@ -550,8 +539,15 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   useEffect(() => {
     const node = activePreviewNodeRef.current;
     const scroller = lyricsPreviewScrollRef.current;
-    if (!node || !scroller || activeLyricIndex < 0) return;
-    const top = node.offsetTop - scroller.clientHeight / 2 + node.clientHeight / 2;
+    // Not connected (track switched before mount, detached node): never scroll blind.
+    if (!node || !scroller || !scroller.isConnected || activeLyricIndex < 0) return;
+    const rowTop = node.offsetTop;
+    const rowBottom = rowTop + node.clientHeight;
+    const viewTop = scroller.scrollTop;
+    const viewBottom = viewTop + scroller.clientHeight;
+    // Already fully on screen: touching scrollTop would only yank a settled view.
+    if (rowTop >= viewTop && rowBottom <= viewBottom) return;
+    const top = Math.max(0, rowTop - scroller.clientHeight / 2 + node.clientHeight / 2);
     scroller.scrollTo({ top, behavior: "smooth" });
   }, [activeLyricIndex, lyrics]);
 
@@ -1154,10 +1150,34 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   </div>
                 </div>
 
-                {previewLyricsRows.length > 0 ? (
+                {lyricsStatus === "loading" || lyricsStatus === "idle" ? (
+                  <div className="flex flex-col gap-2.5 py-2 min-h-[180px] justify-center" aria-label="Loading lyrics">
+                    {[92, 78, 86, 64, 84].map((width, i) => (
+                      <div
+                        key={i}
+                        className="h-4 rounded-full bg-white/10 animate-pulse"
+                        style={{ width: `${width}%`, animationDelay: `${i * 120}ms` }}
+                      />
+                    ))}
+                  </div>
+                ) : lyricsStatus === "error" ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-6 min-h-[120px] text-center">
+                    <span className="text-xs text-muted-foreground">Couldn&apos;t load lyrics.</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reloadLyrics();
+                      }}
+                      className="rounded-full border border-white/15 bg-white/10 px-3.5 py-1 text-xs font-bold text-white hover:bg-white/20 transition-colors cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : previewLyricsRows.length > 0 ? (
                   <div
                     ref={lyricsPreviewScrollRef}
-                    className="relative flex flex-col gap-1.5 py-1 max-h-[300px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="relative flex flex-col gap-1.5 py-1 min-h-[120px] max-h-[300px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {previewLyricsRows.map((item) => (
                       <LyricLineView
@@ -1175,7 +1195,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     ))}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+                  <div className="flex items-center justify-center py-6 min-h-[120px] text-xs text-muted-foreground">
                     <span>Lyrics available in full screen. Click to open.</span>
                   </div>
                 )}

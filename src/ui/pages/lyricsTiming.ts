@@ -80,14 +80,15 @@ export interface LyricToken {
  * Tokenizes a line into main lyrics and parenthetical ad-libs (e.g. `(yeah)`, `(ooh)`).
  */
 export function parseLyricTokens(text: string): LyricToken[] {
-  if (!text) return [];
+  const source = typeof text === "string" ? text : String(text ?? "");
+  if (!source) return [];
   const tokens: LyricToken[] = [];
   const regex = /\(([^)]+)\)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(text)) !== null) {
-    const before = text.slice(lastIndex, match.index);
+  while ((match = regex.exec(source)) !== null) {
+    const before = source.slice(lastIndex, match.index);
     if (before) {
       tokens.push({ type: "main", text: before });
     }
@@ -95,12 +96,12 @@ export function parseLyricTokens(text: string): LyricToken[] {
     lastIndex = regex.lastIndex;
   }
 
-  const after = text.slice(lastIndex);
+  const after = source.slice(lastIndex);
   if (after) {
     tokens.push({ type: "main", text: after });
   }
 
-  return tokens.length > 0 ? tokens : [{ type: "main", text }];
+  return tokens.length > 0 ? tokens : [{ type: "main", text: source }];
 }
 
 /**
@@ -161,7 +162,7 @@ const ADLIB_INTERJECTIONS = new Set([
  * symbol-only (♪), or made entirely of bare vocalizations (`Woo`, `Yeah yeah`).
  */
 export function isAdlibLine(text: string): boolean {
-  const trimmed = (text ?? "").trim();
+  const trimmed = (typeof text === "string" ? text : String(text ?? "")).trim();
   if (!trimmed) return false;
   if (/^\(.*\)$/.test(trimmed)) return true;
 

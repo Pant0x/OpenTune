@@ -62,8 +62,23 @@ export function getSidebarMode(): SidebarMode {
   return readSidebarMode();
 }
 
+/**
+ * One-time migration to the Spotify-style library panel. Anyone whose stored mode predates
+ * it (collapsed icon rail) is moved to expanded once; the choice stays theirs afterwards —
+ * collapsing again writes a fresh value over the migrated one.
+ */
+const MIGRATION_KEY = "sidebar-mode-spotify-panel-seen";
+
 export async function hydrateSidebarSettings() {
   await hydrateLocalJsonSetting(STORAGE_KEY, isSidebarMode);
+  try {
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+      writeLocalJsonSetting(STORAGE_KEY, DEFAULT_MODE);
+      localStorage.setItem(MIGRATION_KEY, "1");
+    }
+  } catch {
+    // A failed migration must never block the rest of boot.
+  }
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 

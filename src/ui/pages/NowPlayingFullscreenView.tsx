@@ -12,7 +12,7 @@ import {
   usePlayerSessionSelector,
 } from "../../player/playerStore";
 import type { PlayerSession } from "../../player/PlayerController";
-import type { Lyrics, Track } from "../../datasource/types";
+import type { Track } from "../../datasource/types";
 import { playerUIStore } from "../stores/playerUIStore";
 import { SpotifyService, type SpotifyArtistOverview } from "../../services/SpotifyService";
 import { SpotifyCreditsModal } from "../components/player/SpotifyCreditsModal";
@@ -33,6 +33,7 @@ import {
   setArtistFollowedLocally,
   subscribeToFollowedArtists,
 } from "../../player/followedArtists";
+import { useTrackLyrics } from "../hooks/useTrackLyrics";
 
 interface NowPlayingFullscreenViewProps {
   onClose: () => void;
@@ -159,9 +160,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
   const [isFollowingArtist, setIsFollowingArtist] = useState(false);
 
-  // Lyrics
-  const [lyrics, setLyrics] = useState<Lyrics | null>(null);
-  const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
+  // Lyrics (shared per-track fetch: same data as the side card, keyed by track id)
+  const { status: lyricsStatus, lyrics, reload: reloadLyrics } = useTrackLyrics(track ?? null);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
   const [isLyricsSyncLocked, setIsLyricsSyncLocked] = useState(true);
   const lyricsScrollerRef = useRef<HTMLDivElement>(null);
@@ -180,6 +180,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   useEffect(() => {
     setIsLyricsSyncLocked(true);
+    setActiveLyricIndex(-1);
   }, [track?.id]);
 
 
@@ -293,29 +294,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       console.warn("Could not sync artist subscription:", err);
     }
   };
-
-  // Fetch Lyrics
-  useEffect(() => {
-    if (!track) return;
-    let cancelled = false;
-    setIsLoadingLyrics(true);
-    setLyrics(null);
-    setActiveLyricIndex(-1);
-
-    void playerController
-      .getLyrics(track)
-      .then((res) => {
-        if (!cancelled) setLyrics(res);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setIsLoadingLyrics(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [track]);
 
   // Update active lyrics line
   useEffect(() => {
@@ -452,9 +430,20 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                   ref={lyricsScrollerRef}
                   onWheel={handleLyricsWheel}
                 >
-                  {isLoadingLyrics ? (
+                  {lyricsStatus === "loading" || lyricsStatus === "idle" ? (
                     <div className="flex h-full items-center justify-center text-white/50 text-base">
                       Loading lyrics...
+                    </div>
+                  ) : lyricsStatus === "error" ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-white/50 text-base">
+                      <span>Couldn&apos;t load lyrics.</span>
+                      <button
+                        type="button"
+                        onClick={() => reloadLyrics()}
+                        className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/20 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Retry
+                      </button>
                     </div>
                   ) : !lyrics?.lines?.length ? (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-white/50 text-base">

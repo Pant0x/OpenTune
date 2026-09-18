@@ -495,18 +495,21 @@ const LIBRARY_VIEWS: Array<{
   { value: "artists", label: "Artists", hint: "Subscribed artists", icon: UserIcon },
 ];
 
-const ARTWORK_TILE = "size-10 shrink-0 rounded-xl object-cover";
-const ARTWORK_TILE_PX = 40;
+const ARTWORK_TILE_SM = "size-10 shrink-0 rounded-xl object-cover";
+const ARTWORK_TILE_LG = "size-12 shrink-0 rounded-xl object-cover";
+const ARTWORK_TILE_SM_PX = 40;
+const ARTWORK_TILE_LG_PX = 48;
 
-function SidebarAlbumArtwork({ album }: { album: Album }) {
+function SidebarAlbumArtwork({ album, large }: { album: Album; large?: boolean }) {
+  const tileClass = large ? ARTWORK_TILE_LG : ARTWORK_TILE_SM;
   if (isLikedSongsId(album.id)) {
-    return <img className={ARTWORK_TILE} src={likedSongsCover} alt="" />;
+    return <img className={tileClass} src={likedSongsCover} alt="" />;
   }
 
   return (
     <TrackArtwork
-      className={ARTWORK_TILE}
-      size={ARTWORK_TILE_PX}
+      className={tileClass}
+      size={large ? ARTWORK_TILE_LG_PX : ARTWORK_TILE_SM_PX}
       artworkUrl={album.artworkUrl}
       iconSize={24}
       variant="album"
@@ -515,15 +518,16 @@ function SidebarAlbumArtwork({ album }: { album: Album }) {
 }
 
 
-function SidebarPlaylistArtwork({ playlist }: { playlist: Playlist }) {
+function SidebarPlaylistArtwork({ playlist, large }: { playlist: Playlist; large?: boolean }) {
+  const tileClass = large ? ARTWORK_TILE_LG : ARTWORK_TILE_SM;
   if (isLikedSongsId(playlist.id, playlist.kind)) {
-    return <img className={ARTWORK_TILE} src={likedSongsCover} alt="" />;
+    return <img className={tileClass} src={likedSongsCover} alt="" />;
   }
 
   return (
     <TrackArtwork
-      className={ARTWORK_TILE}
-      size={ARTWORK_TILE_PX}
+      className={tileClass}
+      size={large ? ARTWORK_TILE_LG_PX : ARTWORK_TILE_SM_PX}
       artworkUrl={playlist.artworkUrl}
       iconSize={24}
       retryOnError
@@ -553,8 +557,10 @@ function SidebarArtistRow({
       onClick={onClick}
     >
       <TrackArtwork
-        className="size-10 shrink-0 rounded-full object-cover"
-        size={40}
+        className={shouldHideText
+          ? "size-10 shrink-0 rounded-full object-cover"
+          : "size-12 shrink-0 rounded-full object-cover"}
+        size={shouldHideText ? 40 : 48}
         artworkUrl={avatarUrl}
         iconSize={20}
         variant="artist"
@@ -1530,7 +1536,7 @@ export function Sidebar({
                   onClick={() => handleSidebarItemClick(() => onNavigateAlbum(album))}
                   onContextMenu={(event) => openAlbumMenu(event, album)}
                 >
-                  <SidebarAlbumArtwork album={album} />
+                  <SidebarAlbumArtwork album={album} large={!shouldHideText} />
                   {!shouldHideText && (
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-sm text-foreground">{album.title}</span>
@@ -1587,7 +1593,7 @@ export function Sidebar({
                     onClick={() => handleSidebarItemClick(() => onNavigatePlaylist(playlist))}
                     onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                   >
-                    <SidebarPlaylistArtwork playlist={playlist} />
+                    <SidebarPlaylistArtwork playlist={playlist} large={!shouldHideText} />
                     {!shouldHideText && (
                       <div className="flex min-w-0 flex-col">
                         <span className="truncate text-sm text-foreground">{playlist.title}</span>
