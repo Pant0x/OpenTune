@@ -265,7 +265,7 @@ export function Layout({
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
             composited layer and a blur pass to render something nothing can see through. */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-lg bg-background px-4 pt-2">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-2xl bg-background px-4 pt-2">
           {/*
             Ambient wash for the page beneath. Rendered here rather than inside the page so
             it can start at the very top of the column — behind the search bar — instead of
@@ -423,7 +423,7 @@ export function Layout({
                     width: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
                     opacity: { duration: 0.16, ease: "easeOut" },
                   }}
-                  className="relative min-h-0 shrink-0 overflow-hidden rounded-lg bg-background"
+                  className="relative min-h-0 shrink-0 overflow-hidden rounded-2xl bg-background"
                 >
                   {/*
                     Pinned to the target width, not 100%: this box's *wrapper* is what's

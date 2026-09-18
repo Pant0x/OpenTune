@@ -23,11 +23,8 @@ import {
 } from "@/ui/icons";
 import { TrackArtwork } from "../ui/components/TrackArtwork";
 import { WaveformCanvas } from "../ui/components/player/WaveformCanvas";
-import {
-  findActiveLineIndex,
-  isAdlibLine,
-  parseLyricTokens,
-} from "../ui/pages/lyricsTiming";
+import { findActiveLineIndex, isAdlibLine } from "../ui/pages/lyricsTiming";
+import { LyricLineView } from "../ui/components/lyrics/LyricLineView";
 import type { LyricLine } from "../datasource/types";
 import {
   sendMiniCommand,
@@ -416,44 +413,24 @@ function LyricsBody({
 
       <div ref={scrollerRef} className="flex flex-1 flex-col gap-3 overflow-y-auto py-4 pr-1 text-center">
         {lyrics?.length ? (
-          lyrics.map((line, idx) => {
-            const isActive = idx === activeLineIndex;
-            const adlibLine = isAdlibLine(line.text);
-            const tokens = parseLyricTokens(line.text);
-            return (
-              <p
-                key={`${line.startTimeSec ?? idx}-${idx}`}
-                data-line-index={idx}
-                onClick={() => {
-                  if (typeof line.startTimeSec === "number") {
-                    sendMiniCommand({ type: "seek", positionSec: line.startTimeSec });
-                  }
-                }}
-                className={cn(
-                  "cursor-pointer rounded-lg px-2 py-1 text-sm font-semibold transition-all duration-300",
-                  isActive && !adlibLine
-                    && "scale-105 font-bold text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.7)]",
-                  isActive && adlibLine && "scale-105 font-bold italic text-white",
-                  !isActive && !adlibLine && "text-muted-foreground/45 hover:text-white/80",
-                  !isActive && adlibLine && "text-[13px] font-medium italic text-white/35",
-                )}
-              >
-                {tokens.length > 0 ? (
-                  tokens.map((tok, i) =>
-                    tok.type === "adlib" ? (
-                      <span key={i} className="text-[0.82em] font-medium italic opacity-60">
-                        {tok.text}
-                      </span>
-                    ) : (
-                      <span key={i}>{tok.text}</span>
-                    ),
-                  )
-                ) : (
-                  <span aria-hidden="true">♪</span>
-                )}
-              </p>
-            );
-          })
+          lyrics.map((line, idx) => (
+            <LyricLineView
+              key={`${line.startTimeSec ?? idx}-${idx}`}
+              index={idx}
+              text={line.text}
+              isActive={idx === activeLineIndex}
+              size="mini"
+              sweepEnabled={false}
+              forceAdlibLine={isAdlibLine(line.text)}
+              emptyStyle="note"
+              onSeek={(i) => {
+                const start = lyrics[i]?.startTimeSec;
+                if (typeof start === "number") {
+                  sendMiniCommand({ type: "seek", positionSec: start });
+                }
+              }}
+            />
+          ))
         ) : (
           <p className="my-auto text-xs text-muted-foreground/60">
             No synchronized lyrics available for this song.

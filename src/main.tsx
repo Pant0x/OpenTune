@@ -33,7 +33,6 @@ import { hydrateArtworkCache } from "./internal/artworkCache";
 import { DiscordRpcService } from "./player/DiscordRPC";
 import { hydratePlaybackSettings } from "./player/playbackSettings";
 import { hydratePlayHistory } from "./player/playHistory";
-import { hydrateSavedVideos } from "./player/savedVideos";
 import { hydrateFollowedArtists } from "./player/followedArtists";
 import { startMiniBridge } from "./player/miniBridge";
 import { hydrateSessionRestoreSetting } from "./ui/settings/sessionRestore";
@@ -90,7 +89,6 @@ void Promise.all([
   // local storage was cleared — it takes effect from the next launch.
   hydrateSessionRestoreSetting(),
   // Same convention: durable wins, localStorage is backfilled, so saves survive a restart.
-  hydrateSavedVideos(),
   hydrateFollowedArtists(),
 ]).catch((error) => {
   logInternalError("settings hydration failed", error);

@@ -28,12 +28,9 @@ import {
   SidebarToggleIcon,
   SortIcon,
   UserIcon,
-  VideoIcon,
 } from "@/ui/icons";
 import type { Album, Artist, Playlist } from "../../datasource/types";
-import { libraryController, playerController, useLibraryState } from "../../player/playerStore";
-import { playerUIStore } from "../stores/playerUIStore";
-import { getSavedVideos, subscribeToSavedVideos } from "../../player/savedVideos";
+import { libraryController, useLibraryState } from "../../player/playerStore";
 import {
   getRecentPlaylistTimestamp,
   subscribeToRecentPlaylists,
@@ -185,7 +182,7 @@ function SidebarItemTooltip({
 const COLLAPSED_WIDTH = 100;
 const TEXT_HIDE_THRESHOLD = 120;
 
-type LibraryView = "playlists" | "albums" | "artists" | "videos";
+type LibraryView = "playlists" | "albums" | "artists";
 const EMPTY_STATE =
   "flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground";
 const RETRY_BUTTON =
@@ -486,7 +483,7 @@ function CreatePlaylistButton({
   );
 }
 
-/** The list filter's options. One place to add a third without touching the markup. */
+/** The list filter's options. Videos were removed: saving a video saves the song. */
 const LIBRARY_VIEWS: Array<{
   value: LibraryView;
   label: string;
@@ -496,10 +493,9 @@ const LIBRARY_VIEWS: Array<{
   { value: "playlists", label: "Playlists", hint: "Your playlists", icon: PlaylistIcon },
   { value: "albums", label: "Albums", hint: "Saved albums", icon: AlbumIcon },
   { value: "artists", label: "Artists", hint: "Subscribed artists", icon: UserIcon },
-  { value: "videos", label: "Videos", hint: "Saved videos", icon: VideoIcon },
 ];
 
-const ARTWORK_TILE = "size-10 shrink-0 rounded object-cover";
+const ARTWORK_TILE = "size-10 shrink-0 rounded-xl object-cover";
 const ARTWORK_TILE_PX = 40;
 
 function SidebarAlbumArtwork({ album }: { album: Album }) {
@@ -939,26 +935,6 @@ export function Sidebar({
     [albums, libraryFilter, librarySort],
   );
 
-  const savedVideos = useSyncExternalStore(
-    subscribeToSavedVideos,
-    getSavedVideos,
-    getSavedVideos,
-  );
-
-  const visibleVideos = useMemo(
-    () =>
-      filterLibraryEntries(
-        savedVideos.map((video) => ({
-          ...video,
-          id: video.id,
-          title: video.title,
-          subtitle: video.artist || "Video",
-        })),
-        libraryFilter,
-      ),
-    [savedVideos, libraryFilter],
-  );
-
   useEffect(() => {
     try {
       localStorage.setItem(LIBRARY_SORT_KEY, librarySort);
@@ -1160,9 +1136,7 @@ export function Sidebar({
       ? artists.length
       : libraryView === "albums"
         ? albums.length
-        : libraryView === "videos"
-          ? savedVideos.length
-          : playlists.length;
+        : playlists.length;
   const activeSortLabel =
     LIBRARY_SORTS.find((option) => option.value === librarySort)?.label ?? "Custom";
   const canReorder = canReorderLibrary(librarySort, libraryFilter);
@@ -1210,8 +1184,8 @@ export function Sidebar({
 
   const listClasses = cn(
     "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-3",
-    // Narrow sidebar tightens spacing before it drops labels entirely.
-    isCollapsed ? "gap-0 px-1" : "gap-0.5 px-2",
+    // Narrow rail breathes instead of stacking edge-to-edge.
+    isCollapsed ? "gap-1 px-1.5" : "gap-0.5 px-2",
     isDragActive && "select-none",
   );
 
@@ -1220,7 +1194,7 @@ export function Sidebar({
     id: string,
     type: LibraryView,
   ) => cn(
-    "group relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
+    "group relative flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors",
     "hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     shouldHideText && "justify-center px-0",
     draggedItem?.id === id && draggedItem.type === type && "opacity-40",
@@ -1233,7 +1207,7 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRef}
-      className="relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-lg bg-background transition-[width] duration-200 ease-out"
+      className="relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl bg-background transition-[width] duration-200 ease-out"
       style={{ width: `${effectiveWidth}px` }}
       onPointerEnter={(event) => {
         // Pointer only. A drag passing over the rail is not a request to expand it, and a
@@ -1348,7 +1322,7 @@ export function Sidebar({
               type="button"
               onClick={() => toggleSidebarMode()}
               aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-8 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <SidebarToggleIcon size={18} aria-hidden="true" />
             </button>
@@ -1395,18 +1369,14 @@ export function Sidebar({
                     ? "Filter artists"
                     : libraryView === "albums"
                       ? "Filter albums"
-                      : libraryView === "videos"
-                        ? "Filter videos"
-                        : "Filter playlists"
+                      : "Filter playlists"
                 }
                 aria-label={
                   libraryView === "artists"
                     ? "Filter artists"
                     : libraryView === "albums"
                       ? "Filter albums"
-                      : libraryView === "videos"
-                        ? "Filter videos"
-                        : "Filter playlists"
+                      : "Filter playlists"
                 }
                 type="text"
               />
@@ -1598,78 +1568,6 @@ export function Sidebar({
                 )}
               </div>
             )
-          ) : libraryView === "videos" ? (
-            visibleVideos.length ? (
-              visibleVideos.map((video) => (
-                <SidebarItemTooltip
-                  key={video.id}
-                  enabled={shouldHideText}
-                  title={video.title}
-                  subtitle={video.artist || "Video"}
-                >
-                  <button
-                    type="button"
-                    data-sidebar-item-id={video.id}
-                    data-sidebar-item-type="videos"
-                    className={itemClasses(video.id, "videos")}
-                    onClick={() =>
-                      handleSidebarItemClick(() => {
-                        void playerController.playTrackById(video.id, [
-                          {
-                            id: video.id,
-                            title: video.title,
-                            artist: video.artist || "Unknown Artist",
-                            artworkUrl: video.artworkUrl,
-                            source: "youtube",
-                            isVideo: true,
-                          },
-                        ]);
-                        playerUIStore.setLyricsOpen(true);
-                      })
-                    }
-                  >
-                    <TrackArtwork
-                      className={ARTWORK_TILE}
-                      size={ARTWORK_TILE_PX}
-                      artworkUrl={video.artworkUrl}
-                      iconSize={24}
-                      variant="track"
-                    />
-                    {!shouldHideText && (
-                      <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-sm text-foreground">{video.title}</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {video.artist || "Video"}
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                </SidebarItemTooltip>
-              ))
-            ) : libraryFilter.trim() ? (
-              <div className={EMPTY_STATE}>
-                <SearchIcon size={26} aria-hidden="true" />
-                {!shouldHideText && <span>Nothing matches “{libraryFilter.trim()}”.</span>}
-                <button
-                  type="button"
-                  className={RETRY_BUTTON}
-                  onClick={() => {
-                    setLibraryFilter("");
-                    filterInputRef.current?.focus();
-                  }}
-                >
-                  <CloseIcon size={15} aria-hidden="true" />
-                  {!shouldHideText && <span>Clear filter</span>}
-                </button>
-              </div>
-            ) : (
-              <div className={EMPTY_STATE}>
-                <VideoIcon size={28} aria-hidden="true" />
-                {!shouldHideText && (
-                  <span>No saved videos yet. Save a video to bookmark it here.</span>
-                )}
-              </div>
-            )
           ) : (
             visiblePlaylists.length ? (
               <>
@@ -1789,7 +1687,7 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   shouldHideText && "justify-center px-0",
                 )}
                 onClick={onNavigateLibrary}
@@ -1804,7 +1702,7 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   shouldHideText && "justify-center px-0",
                 )}
                 onClick={onNavigateHistory}
@@ -1819,7 +1717,7 @@ export function Sidebar({
               <button
                 type="button"
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-lg px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   shouldHideText && "justify-center px-0",
                 )}
                 onClick={onNavigateSettings}

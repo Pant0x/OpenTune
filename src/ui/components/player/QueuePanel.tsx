@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
@@ -50,8 +50,8 @@ import {
   getLineProgress,
   isAdlibLine,
   isSyncedLyrics,
-  parseLyricTokens,
 } from "../../pages/lyricsTiming";
+import { LyricLineView } from "../lyrics/LyricLineView";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -520,28 +520,40 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
   const synced = isSyncedLyrics(lyrics);
   const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, currentTime) : -1;
-  const previewLyricsLines = useMemo(() => {
+  /*
+   * The whole song, not a 4-line window: the card is a Spotify-tall scrolling pane and the
+   * active line glides through it. Rows are keyed by absolute index and memoised inside
+   * LyricLineView, so the 250ms tick re-renders at most the rows whose state flipped.
+   */
+  const previewLyricsRows = useMemo(() => {
     if (!lyrics?.lines?.length) return [];
-    const buildRow = (line: (typeof lyrics.lines)[number], globalIndex: number, isCurrent: boolean) => ({
+    return lyrics.lines.map((line, globalIndex) => ({
       line,
       globalIndex,
-      isCurrent,
-      tokens: parseLyricTokens(line.text),
+      isCurrent: globalIndex === activeLyricIndex,
       isAdlib: isAdlibLine(line.text),
       // Unsynced lines have no timings: a 0% sweep would paint the row dim, so they stay full.
-      sweep: isCurrent && synced
+      sweep: globalIndex === activeLyricIndex && synced
         ? getLineProgress(lyrics.lines, globalIndex, currentTime, currentTrack?.durationSec)
         : 1,
-    });
-    if (!synced) {
-      return lyrics.lines.slice(0, 4).map((line, idx) => buildRow(line, idx, idx === 0));
-    }
-    const activeIdx = activeLyricIndex >= 0 ? activeLyricIndex : 0;
-    const startIndex = Math.max(0, activeIdx - 1);
-    return lyrics.lines
-      .slice(startIndex, startIndex + 4)
-      .map((line, idx) => buildRow(line, startIndex + idx, startIndex + idx === activeIdx));
+    }));
   }, [lyrics, synced, activeLyricIndex, currentTime, currentTrack?.durationSec]);
+
+  // Follow the sung line: keep it centred in the card without touching ancestor scrollers.
+  const lyricsPreviewScrollRef = useRef<HTMLDivElement | null>(null);
+  const activePreviewNodeRef = useRef<HTMLElement | null>(null);
+  const setActivePreviewNode = useCallback((el: HTMLElement | null) => {
+    // Set-only: on a backward seek React detaches the old row after attaching the new one,
+    // and a null-write there must not blank the fresh node.
+    if (el) activePreviewNodeRef.current = el;
+  }, []);
+  useEffect(() => {
+    const node = activePreviewNodeRef.current;
+    const scroller = lyricsPreviewScrollRef.current;
+    if (!node || !scroller || activeLyricIndex < 0) return;
+    const top = node.offsetTop - scroller.clientHeight / 2 + node.clientHeight / 2;
+    scroller.scrollTo({ top, behavior: "smooth" });
+  }, [activeLyricIndex, lyrics]);
 
   /*
    * Buttery karaoke fill on the active preview row (Spicy Lyrics style). The panel already
@@ -549,12 +561,11 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
    * percentage is written straight to the row's `--sweep` var on every frame instead — no
    * re-render involved. Parked unless the Now Playing tab is up and something is playing.
    */
-  const activePreviewRowRef = useRef<HTMLParagraphElement | null>(null);
   useEffect(() => {
     if (activeTab !== "nowplaying" || !isPlaying) return;
     let raf = 0;
     const tickSweep = () => {
-      const row = activePreviewRowRef.current;
+      const row = activePreviewNodeRef.current;
       if (row && synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
         const progress = getLineProgress(
           lyrics.lines,
@@ -904,103 +915,97 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
         )}
         aria-label="Now Playing and Queue"
       >
-        {/* Top Header */}
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border/40 bg-background/95 backdrop-blur-md px-3 py-2">
-        {activeTab === "nowplaying" && currentTrack?.album ? (
-          <button
-            type="button"
-            onClick={() => {
-              if (navigateAlbum) {
-                navigateAlbum({
-                  id: currentTrack.albumId || currentTrack.album!,
-                  title: currentTrack.album!,
-                  artist: currentTrack.artist,
-                });
-              }
-            }}
-            className="flex items-center gap-2 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer group"
-            title={currentTrack.album}
-          >
-            <span className="font-bold text-sm text-foreground truncate group-hover:underline">
-              {currentTrack.album}
-            </span>
-          </button>
-        ) : (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => playerUIStore.setRightPanelTab("nowplaying")}
-              className={cn(
-                "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
-                activeTab === "nowplaying"
-                  ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Now Playing
-            </button>
-            <button
-              type="button"
-              onClick={() => playerUIStore.setRightPanelTab("queue")}
-              className={cn(
-                "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
-                activeTab === "queue"
-                  ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Queue
-            </button>
-            <button
-              type="button"
-              onClick={() => playerUIStore.setRightPanelTab("recent")}
-              className={cn(
-                "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
-                activeTab === "recent"
-                  ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Recently played
-            </button>
-          </div>
-        )}
+      {/* Top Header: panel title row + tab switcher (Spotify right-panel style) */}
+      <header className="sticky top-0 z-10 flex shrink-0 flex-col items-stretch gap-0.5 border-b border-border/40 bg-background/95 backdrop-blur-md px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-bold text-foreground">
+            {activeTab === "nowplaying"
+              ? (currentTrack?.title ?? "Now Playing")
+              : activeTab === "queue"
+                ? "Queue"
+                : "Recently played"}
+          </span>
+          <div className="flex shrink-0 items-center gap-1">
+            {activeTab === "nowplaying" && (
+              <button
+                type="button"
+                onClick={() => playerUIStore.setRightPanelTab("queue")}
+                className="px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary/40"
+                title="Switch to Queue"
+              >
+                Queue
+              </button>
+            )}
 
-        <div className="flex items-center gap-1">
-          {activeTab === "nowplaying" && (
-            <button
-              type="button"
-              onClick={() => playerUIStore.setRightPanelTab("queue")}
-              className="px-2 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary/40"
-              title="Switch to Queue"
-            >
-              Queue
-            </button>
-          )}
+            {currentTrack && activeTab === "nowplaying" && (
+              <Tooltip side="bottom" content="More options">
+                <button
+                  type="button"
+                  className={ICON_BUTTON}
+                  onClick={(e) => openTrackMenu(e, currentTrack)}
+                  aria-label="Track options"
+                >
+                  <MenuDotsIcon size={16} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
 
-          {currentTrack && activeTab === "nowplaying" && (
-            <Tooltip side="bottom" content="More options">
+            <Tooltip side="bottom" content="Close">
               <button
                 type="button"
                 className={ICON_BUTTON}
-                onClick={(e) => openTrackMenu(e, currentTrack)}
-                aria-label="Track options"
+                onClick={onClose}
+                aria-label="Close sidebar"
               >
-                <MenuDotsIcon size={16} aria-hidden="true" />
+                <CloseIcon size={14} aria-hidden="true" />
               </button>
             </Tooltip>
-          )}
+          </div>
+        </div>
 
-          <Tooltip side="bottom" content="Close">
-            <button
-              type="button"
-              className={ICON_BUTTON}
-              onClick={onClose}
-              aria-label="Close sidebar"
-            >
-              <CloseIcon size={14} aria-hidden="true" />
-            </button>
-          </Tooltip>
+        <div className="flex items-center gap-1" role="tablist" aria-label="Right panel tabs">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "nowplaying"}
+            onClick={() => playerUIStore.setRightPanelTab("nowplaying")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "nowplaying"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Now Playing
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "queue"}
+            onClick={() => playerUIStore.setRightPanelTab("queue")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "queue"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Queue
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "recent"}
+            onClick={() => playerUIStore.setRightPanelTab("recent")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none",
+              activeTab === "recent"
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Recently played
+          </button>
         </div>
       </header>
 
@@ -1149,46 +1154,24 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   </div>
                 </div>
 
-                {previewLyricsLines.length > 0 ? (
-                  <div className="flex flex-col gap-1.5 py-1 min-h-[110px] justify-center select-none">
-                    {previewLyricsLines.map((item) => (
-                      <p
+                {previewLyricsRows.length > 0 ? (
+                  <div
+                    ref={lyricsPreviewScrollRef}
+                    className="relative flex flex-col gap-1.5 py-1 max-h-[300px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    {previewLyricsRows.map((item) => (
+                      <LyricLineView
                         key={item.globalIndex}
-                        ref={item.isCurrent ? activePreviewRowRef : undefined}
-                        style={
-                          item.isCurrent && !item.isAdlib
-                            ? ({ "--sweep": `${Math.round(item.sweep * 100)}%` } as CSSProperties)
-                            : undefined
-                        }
-                        className={cn(
-                          "lyric-preview-in transition-all duration-300 leading-snug line-clamp-2",
-                          item.isCurrent && !item.isAdlib
-                            && "lyric-sweep font-black text-lg sm:text-xl drop-shadow-[0_0_12px_rgba(255,255,255,0.5)] scale-[1.01] origin-left",
-                          item.isCurrent && item.isAdlib
-                            && "text-white text-base italic font-bold scale-[1.01] origin-left",
-                          !item.isCurrent && !item.isAdlib
-                            && "text-white/40 font-semibold text-sm hover:text-white/70",
-                          !item.isCurrent && item.isAdlib
-                            && "text-white/35 text-[13px] italic font-medium",
-                        )}
-                      >
-                        {item.tokens.length > 0 ? (
-                          item.tokens.map((tok, i) =>
-                            tok.type === "adlib" ? (
-                              <span
-                                key={i}
-                                className="text-[0.82em] italic font-medium opacity-60"
-                              >
-                                {tok.text}
-                              </span>
-                            ) : (
-                              <span key={i}>{tok.text}</span>
-                            ),
-                          )
-                        ) : (
-                          <span aria-hidden="true">♪</span>
-                        )}
-                      </p>
+                        index={item.globalIndex}
+                        text={item.line.text}
+                        isActive={item.isCurrent}
+                        size="preview"
+                        forceAdlibLine={item.isAdlib}
+                        sweep01={item.sweep}
+                        emptyStyle="note"
+                        className="lyric-preview-in"
+                        elementRef={item.isCurrent ? setActivePreviewNode : undefined}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -1293,13 +1276,45 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                         credits.artists.slice(0, 3).map((a, i) => (
                           <div key={i} className="flex items-center justify-between gap-2">
                             <span className="font-semibold text-foreground truncate">{a.name}</span>
-                            <span className="text-[11px] text-muted-foreground shrink-0">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
+                            {i === 0 && currentTrack && a.name.toLowerCase() === currentTrack.artist.toLowerCase() ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void toggleFollowingArtist();
+                                }}
+                                className={cn(
+                                  "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
+                                  isFollowingArtist
+                                    ? "border-white bg-white text-black"
+                                    : "border-neutral-400 text-white hover:border-white",
+                                )}
+                              >
+                                {isFollowingArtist ? "Following" : "Follow"}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground shrink-0">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
+                            )}
                           </div>
                         ))
                       ) : (
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-semibold text-foreground truncate">{currentTrack.artist}</span>
-                          <span className="text-[11px] text-muted-foreground shrink-0">Main Artist</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void toggleFollowingArtist();
+                            }}
+                            className={cn(
+                              "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
+                              isFollowingArtist
+                                ? "border-white bg-white text-black"
+                                : "border-neutral-400 text-white hover:border-white",
+                            )}
+                          >
+                            {isFollowingArtist ? "Following" : "Follow"}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1354,7 +1369,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               {/* From the album Card (Spotify-style) */}
               {currentTrack.album && (
                 <div
-                  className="rounded-2xl bg-secondary/35 border border-border/40 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-secondary/45 transition-colors group shadow-sm"
+                  className="relative overflow-hidden rounded-2xl bg-[#242424]/90 border border-white/5 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-[#282828] transition-all group shadow-md"
                   onClick={() => {
                     if (navigateAlbum) {
                       navigateAlbum({

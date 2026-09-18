@@ -1,6 +1,5 @@
 import {
   type KeyboardEvent,
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -34,6 +33,7 @@ import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
 import { useLyricsDuetMode, useLyricsAdlibsMode } from "../settings/lyricsEnhancements";
 import { translateLines } from "../../datasource/translate";
+import { LyricLineView } from "../components/lyrics/LyricLineView";
 import {
   findActiveLineIndex,
   getLineProgress,
@@ -691,23 +691,28 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         const duetInfo = duetProcessedLines[index];
                         const displayText = duetInfo?.displayText ?? line.text;
                         const alignment = duetInfo?.alignment ?? "left";
+                        const dist = activeIndex < 0
+                          ? 1
+                          : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex));
+                        const depth = DEPTH[Math.min(dist, DEPTH.length - 1)];
+                        const lineActive = index === activeIndex;
 
                         return isSynced ? (
-                          <SyncedLine
+                          <LyricLineView
                             key={`${index}:${line.text}`}
                             index={index}
                             text={displayText}
+                            isActive={lineActive}
                             alignment={alignment}
                             enableAdlibs={isAdlibsMode}
-                            distance={
-                              activeIndex < 0
-                                ? 1
-                                : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
-                            }
-                            isActive={index === activeIndex}
-                            isTabbable={index === tabbableIndex}
-                            reduce={reduce}
+                            depthStyle={{
+                              opacity: lineActive ? 1 : depth.opacity,
+                              filter: lineActive ? "none" : depth.blur ? `blur(${depth.blur}px)` : undefined,
+                              transform: lineActive ? "scale(1.035) translateZ(0)" : "scale(0.985) translateZ(0)",
+                            }}
+                            reduceMotion={reduce}
                             translation={translations?.[index] || undefined}
+                            tabbable={index === tabbableIndex}
                             onSeek={seekLine}
                             onFocusLine={setFocusIndex}
                             register={registerLine}
@@ -813,21 +818,26 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                     </div>
                   )}
 
-                  {lines.map((line, index) =>
-                    isSynced ? (
-                      <SyncedLine
+                  {lines.map((line, index) => {
+                    const dist = activeIndex < 0
+                      ? 1
+                      : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex));
+                    const depth = DEPTH[Math.min(dist, DEPTH.length - 1)];
+                    const lineActive = index === activeIndex;
+                    return isSynced ? (
+                      <LyricLineView
                         key={`${index}:${line.text}`}
                         index={index}
                         text={line.text}
-                        distance={
-                          activeIndex < 0
-                            ? 1
-                            : Math.min(DEPTH.length - 1, Math.abs(index - activeIndex))
-                        }
-                        isActive={index === activeIndex}
-                        isTabbable={index === tabbableIndex}
-                        reduce={reduce}
+                        isActive={lineActive}
+                        depthStyle={{
+                          opacity: lineActive ? 1 : depth.opacity,
+                          filter: lineActive ? "none" : depth.blur ? `blur(${depth.blur}px)` : undefined,
+                          transform: lineActive ? "scale(1.035) translateZ(0)" : "scale(0.985) translateZ(0)",
+                        }}
+                        reduceMotion={reduce}
                         translation={translations?.[index] || undefined}
+                        tabbable={index === tabbableIndex}
                         onSeek={seekLine}
                         onFocusLine={setFocusIndex}
                         register={registerLine}
@@ -849,8 +859,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                           </span>
                         )}
                       </p>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
               )}
 
@@ -913,130 +923,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   );
 }
 
-interface SyncedLineProps {
-  index: number;
-  text: string;
-  alignment?: DuetAlignment;
-  enableAdlibs?: boolean;
-  distance: number;
-  isActive: boolean;
-  isTabbable: boolean;
-  reduce: boolean;
-  /** Absent when translation is off, still loading, or could not be aligned to this line. */
-  translation?: string;
-  onSeek: (index: number) => void;
-  onFocusLine: (index: number) => void;
-  register: (index: number, element: HTMLElement | null) => void;
-}
-
-/**
- * One lyric line, memoised.
- */
-const SyncedLine = memo(function SyncedLine({
-  index,
-  text,
-  alignment = "left",
-  enableAdlibs = true,
-  distance,
-  isActive,
-  isTabbable,
-  reduce,
-  translation,
-  onSeek,
-  onFocusLine,
-  register,
-}: SyncedLineProps) {
-  const depth = DEPTH[Math.min(distance, DEPTH.length - 1)];
-  const attach = useCallback(
-    (element: HTMLElement | null) => register(index, element),
-    [index, register],
-  );
-
-  const tokens = useMemo(() => {
-    if (!enableAdlibs) return [{ type: "main" as const, text }];
-    return parseLyricTokens(text);
-  }, [text, enableAdlibs]);
-
-  // Check if there's RTL characters (Arabic, Hebrew, etc.)
-  const isArabic = isRtlText(text);
-
-  // An empty LRC line is a real instrumental beat, not junk.
-  if (!text.trim()) {
-    return (
-      <div
-        ref={attach}
-        aria-hidden="true"
-        className={cn(
-          "flex items-center gap-1.5 py-1",
-          alignment === "right" && "self-end justify-end",
-          alignment === "center" && "self-center justify-center",
-          alignment === "left" && "self-start justify-start",
-        )}
-        style={{ opacity: depth.opacity }}
-      >
-        {[0, 1, 2].map((dot) => (
-          <span
-            key={dot}
-            className={cn(
-              "size-2 rounded-full bg-foreground/60",
-              isActive && !reduce && "animate-pulse",
-            )}
-            style={isActive ? { animationDelay: `${dot * 180}ms` } : undefined}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      ref={attach}
-      type="button"
-      // The direction of the language
-      dir={isArabic ? "rtl" : "ltr"}
-      tabIndex={isTabbable ? 0 : -1}
-      aria-current={isActive ? "true" : undefined}
-      onFocus={() => onFocusLine(index)}
-      className={cn(
-        "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%] synced-line lyrics-lyricsContent-lyric",
-        alignment === "right" && "self-end text-end origin-right",
-        alignment === "center" && "self-center text-center origin-center",
-        (!alignment || alignment === "left") && "self-start text-start origin-left",
-        "transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-        isActive && "is-active lyrics-lyricsContent-active",
-        isActive && !reduce ? "lyric-sweep font-black" : "text-foreground font-semibold",
-        !isActive && "hover:opacity-95 hover:filter-none hover:scale-100",
-      )}
-      style={{
-        opacity: isActive ? 1 : depth.opacity,
-        filter: isActive ? "none" : depth.blur ? `blur(${depth.blur}px)` : undefined,
-        transform: isActive ? "scale(1.035) translateZ(0)" : "scale(0.985) translateZ(0)",
-      }}
-      onClick={() => onSeek(index)}
-    >
-      {tokens.map((token, i) =>
-        token.type === "adlib" ? (
-          <span
-            key={i}
-            className="text-[0.76em] italic font-normal tracking-normal opacity-70 mx-1.5 inline-block text-white/80"
-          >
-            {token.text}
-          </span>
-        ) : (
-          <span key={i}>{token.text}</span>
-        ),
-      )}
-      {/* Sized in `em` so it tracks the line it belongs to, and deliberately quieter: it is
-          a gloss on the lyric, not a second lyric competing with it. */}
-      {translation && (
-        <span className="mt-1 block text-[0.62em] font-medium leading-snug text-muted-foreground">
-          {translation}
-        </span>
-      )}
-    </button>
-  );
-});
 
 void LYRICS_SOURCES;
 // Hidden per user request - API badges removed

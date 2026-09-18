@@ -151,7 +151,7 @@ export function TitleBar({
       <button
         type="button"
         className={cn(
-          "flex shrink-0 items-center gap-2.5 px-4 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset group cursor-pointer",
+          "flex shrink-0 items-center gap-2.5 px-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset group cursor-pointer",
           isHomeActive ? "text-primary" : "text-foreground",
         )}
         onClick={() => {
@@ -235,7 +235,7 @@ export function TitleBar({
         groups. They render regardless of the native-controls setting, since on Linux/native
         chrome the window buttons disappear but these still belong here.
       */}
-      <div className="flex shrink-0 items-center gap-1 pl-2 pr-1" aria-label="App actions">
+      <div className="flex shrink-0 items-center gap-1 px-2" aria-label="App actions">
         {/* Integration toggles */}
         {notificationsVisible && (
           <NotificationsPanel signedIn={libraryState.status === "ready"} />

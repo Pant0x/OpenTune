@@ -8,7 +8,7 @@ import {
   type VideoComment,
 } from "../../../datasource/youtube/videoService";
 import type { Track } from "../../../datasource/types";
-import { isSavedVideo, subscribeToSavedVideos, toggleSaveVideo } from "../../../player/savedVideos";
+
 import {
   isArtistFollowedLocally,
   setArtistFollowedLocally,
@@ -88,7 +88,6 @@ export function VideoPlayerView({
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [bellState, setBellState] = useState<"all" | "personalized" | "none">("all");
   const [showBellMenu, setShowBellMenu] = useState(false);
-  const [isSaved, setIsSaved] = useState(() => isSavedVideo(track.id));
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Comment posting
@@ -310,14 +309,6 @@ export function VideoPlayerView({
     };
   }, []);
 
-  // Track saved state
-  useEffect(() => {
-    setIsSaved(isSavedVideo(track.id));
-    return subscribeToSavedVideos(() => {
-      setIsSaved(isSavedVideo(track.id));
-    });
-  }, [track.id]);
-
   // Fetch video details and comments
   useEffect(() => {
     let active = true;
@@ -359,6 +350,9 @@ export function VideoPlayerView({
       setUserRating("like");
     }
   }, [isLikedInLibrary]);
+
+  // Saving a video saves the song (Liked Songs) — there is no separate videos collection.
+  const isSaved = userRating === "like" || isLikedInLibrary;
 
   const handleToggleLike = async () => {
     const nextRating = userRating === "like" ? "none" : "like";
@@ -427,8 +421,7 @@ export function VideoPlayerView({
   };
 
   const handleToggleSave = () => {
-    const saved = toggleSaveVideo(track);
-    setIsSaved(saved);
+    void handleToggleLike();
   };
 
   const handlePostComment = (e?: React.FormEvent) => {
@@ -763,7 +756,7 @@ export function VideoPlayerView({
               <span>Share</span>
             </button>
 
-            {/* Save to Videos Button */}
+            {/* Save Song Button (Liked Songs) */}
             <button
               type="button"
               onClick={handleToggleSave}
