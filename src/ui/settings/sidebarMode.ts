@@ -21,7 +21,7 @@ const DEFAULT_MODE: SidebarMode = "expanded";
 
 /** Rail width when collapsed. Wide enough for a 40px tile plus its padding. */
 export const SIDEBAR_COLLAPSED_WIDTH = 62;
-export const SIDEBAR_EXPANDED_WIDTH = 240;
+export const SIDEBAR_EXPANDED_WIDTH = 268;
 
 export function toggleSidebarMode() {
   const current = getSidebarMode();

@@ -1236,7 +1236,7 @@ export function Sidebar({
         and the width plumbing are left intact so restoring it is a one-line change.
       */}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col pt-3.5">
         {/*
           The list filter. Deliberately quieter than the destinations above: it does not
           change the page, only what the list below shows, and styling it identically was
@@ -1245,13 +1245,13 @@ export function Sidebar({
         {/* Header with Library views and Toggle button */}
         <div
           className={cn(
-            "flex shrink-0 items-center justify-between gap-1 pb-1",
-            shouldHideText ? "mx-auto flex-col px-1" : "mx-2",
+            "flex shrink-0 items-center justify-between gap-1.5 pb-2",
+            shouldHideText ? "mx-auto flex-col px-1" : "px-3",
           )}
         >
           {!shouldHideText ? (
             <div
-              className="flex min-w-0 flex-1 items-center gap-1.5 flex-wrap"
+              className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap"
               role="group"
               aria-label="Library view"
             >
@@ -1262,7 +1262,7 @@ export function Sidebar({
                     key={view.value}
                     type="button"
                     className={cn(
-                      "rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
+                      "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
                         ? "bg-white text-black font-bold shadow-xs"
