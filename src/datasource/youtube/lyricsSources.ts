@@ -35,10 +35,10 @@ export const LYRICS_SOURCES: LyricsSource[] = [
   {
     id: "lrclib-exact",
     label: "LRCLIB",
-    timeoutMs: 2_500,
+    timeoutMs: 3_500,
     wave: 1,
-    requiresDuration: true,
-    note: "Line-synced, matched on title, artist and exact duration — the same recording.",
+    requiresDuration: false,
+    note: "Line-synced, matched on title, artist and duration when available — the same recording.",
   },
   {
     id: "betterlyrics",
@@ -50,10 +50,10 @@ export const LYRICS_SOURCES: LyricsSource[] = [
   {
     id: "lrclib-search",
     label: "LRCLIB search",
-    timeoutMs: 4_500,
+    timeoutMs: 5_000,
     wave: 1,
-    requiresDuration: true,
-    note: "Same corpus, matched by text within two seconds of duration — can land on a different master.",
+    requiresDuration: false,
+    note: "Same corpus, matched by text search with or without duration.",
   },
   {
     id: "youtube-transcript",

@@ -539,8 +539,12 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   useEffect(() => {
     const node = activePreviewNodeRef.current;
     const scroller = lyricsPreviewScrollRef.current;
-    // Not connected (track switched before mount, detached node): never scroll blind.
-    if (!node || !scroller || !scroller.isConnected || activeLyricIndex < 0) return;
+    if (!node || !scroller || !scroller.isConnected || activeLyricIndex < 0) {
+      if (scroller && activeLyricIndex < 0 && scroller.scrollTop !== 0) {
+        scroller.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
     const rowTop = node.offsetTop;
     const rowBottom = rowTop + node.clientHeight;
     const viewTop = scroller.scrollTop;
@@ -906,14 +910,14 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
       <aside
         ref={panelRef}
         className={cn(
-          "flex h-full flex-col overflow-y-auto overscroll-contain",
+          "flex h-full flex-col overflow-hidden bg-[#121212]",
           draggedIndex !== null && "select-none",
         )}
         aria-label="Now Playing and Queue"
       >
       {/* Top Header: Spotify 1:1 Header */}
       {activeTab === "nowplaying" ? (
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212]/95 backdrop-blur-md px-4 py-3">
+        <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-4 py-3 z-10">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="text-[#b3b3b3] shrink-0" aria-hidden="true">
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -952,7 +956,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           </div>
         </header>
       ) : (
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212]/95 backdrop-blur-md px-4 py-2.5">
+        <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-4 py-2.5 z-10">
           <div className="flex items-center gap-1" role="tablist" aria-label="Queue tabs">
             <button
               type="button"
@@ -998,13 +1002,13 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
       {/* ── Tab 1: Now Playing / Song View (Spotify style 1:1) ── */}
       {activeTab === "nowplaying" && (
-        <div className="flex flex-1 flex-col overflow-y-auto p-4 gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-4 overscroll-contain">
           {currentTrack ? (
             <>
               {/* Square Album Artwork (Spotify 1:1, Cover Art only) */}
-              <div className="relative w-full aspect-square overflow-hidden rounded-lg bg-black/40 shadow-xl select-none">
+              <div className="relative w-full aspect-square shrink-0 overflow-hidden rounded-xl bg-black/40 shadow-2xl select-none">
                 <TrackArtwork
-                  className="size-full object-cover rounded-lg"
+                  className="size-full object-cover rounded-xl"
                   size={640}
                   artworkUrl={effectiveArtwork}
                   iconSize={56}
@@ -1021,7 +1025,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               </div>
 
               {/* Title & Artist & Spotify Plus/Like Button */}
-              <div className="flex items-start justify-between gap-3 pt-1">
+              <div className="flex shrink-0 items-start justify-between gap-3 pt-1">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight tracking-tight line-clamp-2">
                     {currentTrack.title}
@@ -1052,7 +1056,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     </button>
                   </Tooltip>
 
-                  {/* Liked / Add Button (Spotify style) */}
+                  {/* Liked / Add Button (Spotify style - Brand Red, no green!) */}
                   <button
                     type="button"
                     className="p-1 rounded-full transition-transform active:scale-95 cursor-pointer"
@@ -1061,7 +1065,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     aria-label={isLiked ? "Added to Liked Songs" : "Save to Your Library"}
                   >
                     {isLiked ? (
-                      <span className="flex size-7 items-center justify-center rounded-full bg-[#1ed760] text-black shadow-xs">
+                      <span className="flex size-7 items-center justify-center rounded-full bg-[#ff0033] text-white shadow-xs">
                         <CheckIcon size={14} className="stroke-[3]" />
                       </span>
                     ) : (
@@ -1078,7 +1082,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
               {/* Lyrics Preview Card (Spotify 1:1 Style with 3 icons & glowing active line) */}
               <div
-                className="relative overflow-hidden rounded-xl bg-[#242424] border border-white/5 p-4 transition-all hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
+                className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 transition-all hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
                 onClick={() => playerUIStore.setLyricsOpen(true)}
               >
                 <div className="flex items-center justify-between">
@@ -1142,17 +1146,17 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 </div>
 
                 {lyricsStatus === "loading" || lyricsStatus === "idle" ? (
-                  <div className="flex flex-col gap-2.5 py-2 min-h-[140px] justify-center" aria-label="Loading lyrics">
+                  <div className="flex flex-col gap-2.5 py-2 min-h-[160px] justify-center" aria-label="Loading lyrics">
                     {[92, 78, 86, 64, 84].map((width, i) => (
                       <div
                         key={i}
-                        className="h-4 rounded-full bg-white/10 animate-pulse"
+                        className="h-4 rounded-full bg-white/15 animate-pulse"
                         style={{ width: `${width}%`, animationDelay: `${i * 120}ms` }}
                       />
                     ))}
                   </div>
                 ) : lyricsStatus === "error" ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-6 min-h-[120px] text-center">
+                  <div className="flex flex-col items-center justify-center gap-2 py-6 min-h-[140px] text-center">
                     <span className="text-xs text-[#b3b3b3]">Couldn&apos;t load lyrics.</span>
                     <button
                       type="button"
@@ -1168,7 +1172,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 ) : previewLyricsRows.length > 0 ? (
                   <div
                     ref={lyricsPreviewScrollRef}
-                    className="relative flex flex-col gap-1.5 py-1 min-h-[120px] max-h-[280px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="relative flex flex-col gap-2.5 py-1 min-h-[160px] max-h-[300px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {previewLyricsRows.map((item) => (
                       <LyricLineView
@@ -1186,7 +1190,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     ))}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center py-6 min-h-[120px] text-xs text-[#b3b3b3]">
+                  <div className="flex items-center justify-center py-6 min-h-[140px] text-xs text-[#b3b3b3]">
                     <span>Lyrics available in full screen. Click to open.</span>
                   </div>
                 )}
@@ -1194,7 +1198,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
               {/* About the artist Card (Spotify 1:1 Style) */}
               <div
-                className="relative overflow-hidden rounded-xl bg-[#242424] border border-white/5 transition-all hover:bg-[#282828] cursor-pointer group/artist flex flex-col shadow-md"
+                className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 transition-all hover:bg-[#282828] cursor-pointer group/artist flex flex-col shadow-md"
                 onClick={() => {
                   if (navigateArtist && currentTrack.artist) {
                     navigateArtist(
@@ -1208,7 +1212,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 }}
               >
                 {/* Artist Header Photo / Banner */}
-                <div className="relative h-60 w-full overflow-hidden bg-[#181818]">
+                <div className="relative h-60 w-full shrink-0 overflow-hidden bg-[#181818]">
                   <img
                     src={artistOverview?.headerUrl || artistOverview?.avatarUrl || effectiveArtwork}
                     alt={currentTrack.artist}
@@ -1220,7 +1224,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   </span>
                 </div>
 
-                <div className="p-4 pt-2 flex flex-col gap-3">
+                <div className="p-4 pt-2 flex flex-col gap-3 shrink-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex flex-col min-w-0">
                       <span className="font-bold text-xl text-white leading-tight truncate group-hover/artist:underline">
@@ -1262,7 +1266,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               </div>
 
               {/* Credits Card (Spotify style) */}
-              <div className="relative overflow-hidden rounded-xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
+              <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-white">
                     Credits
@@ -1380,7 +1384,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               {/* From the album Card (Spotify-style) */}
               {currentTrack.album && (
                 <div
-                  className="relative overflow-hidden rounded-xl bg-[#242424] border border-white/5 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-[#282828] transition-all group shadow-md"
+                  className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-[#282828] transition-all group shadow-md"
                   onClick={() => {
                     if (navigateAlbum) {
                       navigateAlbum({
@@ -1412,7 +1416,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
 
               {/* Next in Queue Preview Card */}
               {(manual.length > 0 || automatic.length > 0) && (
-                <div className="relative overflow-hidden rounded-xl bg-[#242424] border border-white/5 p-3.5 flex items-center justify-between gap-3 shadow-md">
+                <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-3.5 flex items-center justify-between gap-3 shadow-md">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-11 rounded-lg overflow-hidden bg-black/40 shrink-0">
                       <TrackArtwork

@@ -5698,20 +5698,19 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchLrcLibExactLyrics(track: Track): Promise<LyricsProviderResult | null> {
     const durationSec = this.getRoundedDurationSec(track);
-    if (!durationSec) return null;
 
     for (const query of this.getLyricsQueries(track)) {
       const params = new URLSearchParams({
         track_name: query.title,
         artist_name: query.artist,
-        duration: String(durationSec),
       });
+      if (durationSec) params.set("duration", String(durationSec));
       if (query.album) params.set("album_name", query.album);
 
       try {
         const response = await tauriFetch(`https://lrclib.net/api/get?${params}`, {
           headers: this.getLyricsRequestHeaders(),
-          timeoutMs: 2_500,
+          timeoutMs: 3_500,
         });
         if (!response.ok) continue;
 
@@ -5733,7 +5732,6 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchLrcLibSearchLyrics(track: Track): Promise<LyricsProviderResult | null> {
     const durationSec = track.durationSec;
-    if (!durationSec || durationSec <= 0) return null;
 
     for (const query of this.getLyricsQueries(track)) {
       try {
@@ -5755,7 +5753,7 @@ export class YouTubeMusicDataSource extends DataSource {
             match,
             durationDelta: this.getLyricsDurationDelta(track, match.duration),
           }))
-          .filter(({ durationDelta }) => durationDelta <= 6)
+          .filter(({ durationDelta }) => !durationSec || durationDelta <= 8)
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
         // Prefer synced lyrics
@@ -5895,7 +5893,7 @@ export class YouTubeMusicDataSource extends DataSource {
   private getLyricsRequestHeaders(): Record<string, string> {
     return {
       Accept: "application/json",
-      "User-Agent": "Amber/1.0",
+      "User-Agent": "AmberMusic/1.0.0 (https://github.com/Pant0x/Amber-Music-Platform)",
     };
   }
 

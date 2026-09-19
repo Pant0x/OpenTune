@@ -139,7 +139,7 @@ export interface CustomSnippet {
   createdAt: number;
 }
 
-function getStoredEnabledIds(): Set<string> {
+export function getStoredEnabledIds(): Set<string> {
   if (typeof localStorage === "undefined") return new Set();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -151,10 +151,11 @@ function getStoredEnabledIds(): Set<string> {
   }
 }
 
-function setStoredEnabledIds(ids: Set<string>): void {
+export function setStoredEnabledIds(ids: Set<string>): void {
   if (typeof localStorage === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...ids]));
+    window.dispatchEvent(new CustomEvent("spicetify-snippets-changed", { detail: ids }));
   } catch {}
 }
 
