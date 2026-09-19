@@ -487,11 +487,14 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
               </div>
             </main>
 
-            {/* Scroll down indicator to details */}
+            {/* Scroll down indicator to details (Visible on hover/mouse activity like top bar) */}
             <button
               type="button"
               onClick={scrollToDetails}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white transition-colors cursor-pointer"
+              className={cn(
+                "flex items-center gap-1.5 text-xs font-semibold text-white/50 hover:text-white transition-all duration-300 cursor-pointer",
+                isIdle || isDetailsInView ? "opacity-0 pointer-events-none translate-y-2" : "opacity-100 translate-y-0",
+              )}
             >
               <span>Scroll for details & credits</span>
               <span>↓</span>

@@ -25,7 +25,6 @@ import {
   RefreshIcon,
   SearchIcon,
   SettingsIcon,
-  SidebarToggleIcon,
   SortIcon,
   UserIcon,
 } from "@/ui/icons";
@@ -42,7 +41,7 @@ import {
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
 import { getAppSetting, setAppSetting } from "../../internal/appSettings";
-import { resolveSidebarWidth, toggleSidebarMode, useSidebarMode } from "../settings/sidebarMode";
+import { resolveSidebarWidth, useSidebarMode } from "../settings/sidebarMode";
 import { ArtistLinks } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
@@ -1295,9 +1294,11 @@ export function Sidebar({
                     <button
                       type="button"
                       className={cn(
-                        "relative flex size-8 items-center justify-center rounded-full transition-colors",
+                        "relative flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer select-none",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                        isActive
+                          ? "bg-white text-black font-bold shadow-xs"
+                          : "text-muted-foreground hover:text-foreground hover:bg-white/10",
                       )}
                       aria-pressed={isActive}
                       aria-label={view.label}
@@ -1307,27 +1308,16 @@ export function Sidebar({
                         <motion.span
                           layoutId="sidebar-library-view-collapsed"
                           transition={{ type: "spring", stiffness: 520, damping: 42 }}
-                          className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
+                          className="absolute inset-0 -z-10 rounded-full bg-white shadow-xs"
                         />
                       )}
-                      <view.icon size={16} aria-hidden="true" />
+                      <view.icon size={16} aria-hidden="true" className={isActive ? "text-black" : "currentColor"} />
                     </button>
                   </SidebarItemTooltip>
                 );
               })}
             </div>
           )}
-
-          <Tooltip side="right" content={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-            <button
-              type="button"
-              onClick={() => toggleSidebarMode()}
-              aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="grid size-8 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <SidebarToggleIcon size={18} aria-hidden="true" />
-            </button>
-          </Tooltip>
         </div>
 
         <CreatePlaylistButton

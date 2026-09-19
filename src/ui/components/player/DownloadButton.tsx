@@ -22,7 +22,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
  * reports and does something — the same download / cancel / remove contract as the track
  * context menu, so the two can never disagree about what a click means.
  */
-export function DownloadButton() {
+export function DownloadButton({ className }: { className?: string } = {}) {
   const track = usePlayerSelector((state) => state.currentTrack);
   const offline = useOfflineState();
 
@@ -56,13 +56,14 @@ export function DownloadButton() {
       <button
         type="button"
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+          "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isReady || isDownloading
             ? "text-primary"
             : isQueued
               ? "text-muted-foreground"
               : "text-muted-foreground hover:text-foreground",
+          className,
         )}
         onClick={onClick}
         aria-label={label}

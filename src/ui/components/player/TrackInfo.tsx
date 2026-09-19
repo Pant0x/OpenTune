@@ -13,6 +13,7 @@ import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
 import type { DominantColorResult } from "../../hooks/useArtworkDominantColor";
 import { useDjTrackInfo } from "../../settings/playerAddons";
+import { DownloadButton } from "./DownloadButton";
 
 function getTrackDjInfo(track: { title: string; id: string }) {
   let hash = 0;
@@ -334,52 +335,55 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: _propDomi
         </div>
       </div>
 
-      {canLikeCurrentTrack && (
-        <button
-          type="button"
-          className={cn(
-            "group/like relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
-            "disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-foreground hover:scale-110",
-          )}
-          onClick={() => void toggleTrackLike(currentTrack)}
-          disabled={isLikeStatusLoading || isLikePending}
-          aria-label={
-            isLikeStatusLoading || isLikePending
-              ? "Loading like status"
-              : isLiked
-                ? "Remove like"
-                : libraryState.status === "signed-out"
-                  ? "Sign in to like"
+      <div className="relative z-10 flex items-center gap-1 shrink-0">
+        <DownloadButton className="cursor-pointer hover:scale-110 transition-transform" />
+        {canLikeCurrentTrack && (
+          <button
+            type="button"
+            className={cn(
+              "group/like relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors cursor-pointer",
+              "disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isLiked ? "text-primary hover:scale-110" : "text-muted-foreground hover:text-foreground hover:scale-110",
+            )}
+            onClick={() => void toggleTrackLike(currentTrack)}
+            disabled={isLikeStatusLoading || isLikePending}
+            aria-label={
+              isLikeStatusLoading || isLikePending
+                ? "Loading like status"
+                : isLiked
+                  ? "Remove like"
+                  : libraryState.status === "signed-out"
+                    ? "Sign in to like"
+                    : "Like song"
+            }
+            title={
+              libraryState.status === "signed-out"
+                ? "Sign in to like"
+                : isLiked
+                  ? "Remove like"
                   : "Like song"
-          }
-          title={
-            libraryState.status === "signed-out"
-              ? "Sign in to like"
-              : isLiked
-                ? "Remove like"
-                : "Like song"
-          }
-        >
-          {isLikeStatusLoading || isLikePending ? (
-            <SpinnerSteps size={18} color="currentColor" />
-          ) : isLiked ? (
-            // Hovering a liked track previews the un-like action.
-            <span className="relative grid size-[18px] place-items-center" aria-hidden="true">
-              <HeartActiveIcon
-                size={18}
-                className="absolute transition-opacity group-hover/like:opacity-0"
-              />
-              <HeartBrokenIcon
-                size={18}
-                className="absolute opacity-0 transition-opacity group-hover/like:opacity-100"
-              />
-            </span>
-          ) : (
-            <HeartIcon size={18} />
-          )}
-        </button>
-      )}
+            }
+          >
+            {isLikeStatusLoading || isLikePending ? (
+              <SpinnerSteps size={18} color="currentColor" />
+            ) : isLiked ? (
+              // Hovering a liked track previews the un-like action.
+              <span className="relative grid size-[18px] place-items-center" aria-hidden="true">
+                <HeartActiveIcon
+                  size={18}
+                  className="absolute transition-opacity group-hover/like:opacity-0"
+                />
+                <HeartBrokenIcon
+                  size={18}
+                  className="absolute opacity-0 transition-opacity group-hover/like:opacity-100"
+                />
+              </span>
+            ) : (
+              <HeartIcon size={18} />
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

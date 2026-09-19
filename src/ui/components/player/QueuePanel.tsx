@@ -922,78 +922,66 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
         )}
         aria-label="Now Playing and Queue"
       >
-      {/* Top Header: Spotify 1:1 Header */}
-      {activeTab === "nowplaying" ? (
-        <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-4 py-3 z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="text-[#b3b3b3] shrink-0" aria-hidden="true">
-              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <line x1="15" y1="3" x2="15" y2="21" />
-              </svg>
-            </span>
-            <span className="truncate text-sm font-bold text-white tracking-wide uppercase">
-              {currentTrack?.title ?? "Now playing"}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {currentTrack && (
-              <Tooltip side="bottom" content="More options">
-                <button
-                  type="button"
-                  className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  onClick={(e) => openTrackMenu(e, currentTrack)}
-                  aria-label="Track options"
-                >
-                  <MenuDotsIcon size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
+      {/* Top Header: Unified Right Sidebar Tabs */}
+      <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-3 py-2 z-10">
+        <div className="flex items-center gap-1" role="tablist" aria-label="Sidebar views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "nowplaying"}
+            onClick={() => playerUIStore.setRightPanelTab("nowplaying")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
+              activeTab === "nowplaying"
+                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-[#b3b3b3] hover:text-white",
             )}
-
-            <Tooltip side="bottom" content="Close">
+          >
+            Now playing
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "queue"}
+            onClick={() => playerUIStore.setRightPanelTab("queue")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
+              activeTab === "queue"
+                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-[#b3b3b3] hover:text-white",
+            )}
+          >
+            Queue
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "recent"}
+            onClick={() => playerUIStore.setRightPanelTab("recent")}
+            className={cn(
+              "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
+              activeTab === "recent"
+                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-[#b3b3b3] hover:text-white",
+            )}
+          >
+            Recent
+          </button>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {activeTab === "nowplaying" && currentTrack && (
+            <Tooltip side="bottom" content="More options">
               <button
                 type="button"
                 className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                onClick={onClose}
-                aria-label="Close sidebar"
+                onClick={(e) => openTrackMenu(e, currentTrack)}
+                aria-label="Track options"
               >
-                <CloseIcon size={14} aria-hidden="true" />
+                <MenuDotsIcon size={16} aria-hidden="true" />
               </button>
             </Tooltip>
-          </div>
-        </header>
-      ) : (
-        <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-4 py-2.5 z-10">
-          <div className="flex items-center gap-1" role="tablist" aria-label="Queue tabs">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "queue"}
-              onClick={() => playerUIStore.setRightPanelTab("queue")}
-              className={cn(
-                "relative px-3 py-1.5 text-sm font-bold transition-colors focus-visible:outline-none",
-                activeTab === "queue"
-                  ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                  : "text-[#b3b3b3] hover:text-white",
-              )}
-            >
-              Queue
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "recent"}
-              onClick={() => playerUIStore.setRightPanelTab("recent")}
-              className={cn(
-                "relative px-3 py-1.5 text-sm font-bold transition-colors focus-visible:outline-none",
-                activeTab === "recent"
-                  ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                  : "text-[#b3b3b3] hover:text-white",
-              )}
-            >
-              Recently played
-            </button>
-          </div>
+          )}
+
           <Tooltip side="bottom" content="Close">
             <button
               type="button"
@@ -1004,8 +992,8 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               <CloseIcon size={14} aria-hidden="true" />
             </button>
           </Tooltip>
-        </header>
-      )}
+        </div>
+      </header>
 
       {/* ── Tab 1: Now Playing / Song View (Spotify style 1:1) ── */}
       {activeTab === "nowplaying" && (

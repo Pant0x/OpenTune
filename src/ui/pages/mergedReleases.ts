@@ -146,7 +146,13 @@ export function mergeArtistReleases({
   combined.sort((a, b) => {
     const da = a.releaseDate || (a.year ? `${a.year}-01-01` : "");
     const db = b.releaseDate || (b.year ? `${b.year}-01-01` : "");
-    return db.localeCompare(da);
+    if (da && db && da !== db) {
+      return db.localeCompare(da);
+    }
+    const yearA = parseInt(a.year || "0", 10);
+    const yearB = parseInt(b.year || "0", 10);
+    if (yearA !== yearB) return yearB - yearA;
+    return a.title.localeCompare(b.title);
   });
 
   return combined;

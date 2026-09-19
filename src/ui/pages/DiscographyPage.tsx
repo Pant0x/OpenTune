@@ -26,6 +26,20 @@ function ListIcon({ className }: { className?: string }) {
 
 type DiscographyFilter = "all" | "album" | "ep" | "single";
 
+function formatReleaseSubtitle(release: Album): string {
+  const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
+  if (release.releaseDate) {
+    try {
+      const d = new Date(release.releaseDate);
+      if (!isNaN(d.getTime())) {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return `${months[d.getUTCMonth()]} ${d.getUTCFullYear()} • ${releaseTypeLabel}`;
+      }
+    } catch {}
+  }
+  return release.year ? `${release.year} • ${releaseTypeLabel}` : (release.releaseType ? releaseTypeLabel : release.artist);
+}
+
 export function DiscographyPage({
   artist,
   releases,
@@ -228,8 +242,7 @@ export function DiscographyPage({
       {viewMode === "grid" && (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))]">
           {filteredReleases.map((release) => {
-            const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
-            const subtitleText = release.year ? `${release.year} • ${releaseTypeLabel}` : (release.releaseType ? releaseTypeLabel : release.artist);
+            const subtitleText = formatReleaseSubtitle(release);
             return (
               <AlbumCard
                 key={release.id}
@@ -249,7 +262,7 @@ export function DiscographyPage({
         <div className="flex flex-col gap-2">
           {filteredReleases.map((release, index) => {
             const releaseTypeLabel = release.releaseType === "ep" ? "EP" : release.releaseType === "single" ? "Single" : "Album";
-            const subtitleText = release.year ? `${release.year} • ${releaseTypeLabel}` : (release.releaseType ? releaseTypeLabel : release.artist);
+            const subtitleText = formatReleaseSubtitle(release);
             return (
               <div
                 key={release.id}

@@ -865,9 +865,8 @@ export function ArtistView({
       </div>
 
       {/* Modern Panoramic Hero Header */}
-      <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[380px] md:min-h-[440px] flex flex-col justify-end overflow-hidden p-6 md:p-10 rounded-b-2xl">
-        {/* Hero Background — real banner (Spotify, else the artist page's landscape header),
-            or nothing: no blurred PFP substitute, just the gradients over plain background. */}
+      <div className="relative isolate -mx-6 md:-mx-8 -mt-6 md:-mt-8 min-h-[340px] sm:min-h-[380px] md:min-h-[420px] flex flex-col justify-end overflow-hidden p-6 md:p-10">
+        {/* Hero Background — real banner, or gradients over dark background */}
         <div className="absolute inset-0 z-0 overflow-hidden bg-zinc-950">
           {heroBanner ? (
             <img
@@ -877,37 +876,48 @@ export function ArtistView({
               className="w-full h-full object-cover object-[center_25%] opacity-90 transition-transform duration-700"
             />
           ) : null}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-transparent to-background/80" />
         </div>
 
-        {/* Hero Content with Circular PFP beside Name and Inline Controls */}
+        {/* Hero Content */}
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-end gap-6 max-w-5xl">
-          {/* Circular PFP that opens Lightbox on click */}
-          <button
-            type="button"
-            onClick={() => setIsLightboxOpen(true)}
-            className="group relative size-36 sm:size-44 md:size-48 shrink-0 rounded-full overflow-hidden shadow-2xl ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            title="Click to view artist photo"
-          >
-            <TrackArtwork
-              className="size-full object-cover"
-              artworkUrl={artistAvatar}
-              iconSize={72}
-              size={800}
-              loading="eager"
-              variant="artist"
-            />
-          </button>
+          {/* If there is NO panoramic banner (e.g. YouTube channels or local artists), show circular avatar */}
+          {!heroBanner && (
+            <button
+              type="button"
+              onClick={() => setIsLightboxOpen(true)}
+              className="group relative size-36 sm:size-44 md:size-48 shrink-0 rounded-full overflow-hidden shadow-2xl ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              title="Click to view artist photo"
+            >
+              <TrackArtwork
+                className="size-full object-cover"
+                artworkUrl={artistAvatar}
+                iconSize={72}
+                size={800}
+                loading="eager"
+                variant="artist"
+              />
+            </button>
+          )}
 
-          {/* Artist Name, Stats, Bio, and Action Controls */}
-          <div className="flex flex-col gap-3 min-w-0 flex-1 pb-1">
-            <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white drop-shadow-xl select-text leading-[1.15] pb-2 break-words">
+          {/* Artist Name, Verified Badge, Stats */}
+          <div className="flex flex-col gap-2 min-w-0 flex-1 pb-1">
+            {!isCreator && (
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white/90 drop-shadow-md">
+                <div className="flex size-4 sm:size-5 items-center justify-center rounded-full bg-blue-500 text-white shadow-xs">
+                  <CheckIcon size={10} className="sm:size-3" strokeWidth={3} />
+                </div>
+                <span>Verified Artist</span>
+              </div>
+            )}
+
+            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-white drop-shadow-2xl select-text leading-tight pb-1 break-words">
               {displayedArtist.name}
             </h1>
 
             {/* Monthly Listeners / Subscribers */}
-            <div className="flex items-center gap-2 text-sm md:text-base font-semibold text-white/90 drop-shadow-md">
+            <div className="flex items-center gap-2 text-sm sm:text-base font-medium text-white/90 drop-shadow-md">
               {!isCreator && spotifyOverview?.monthlyListeners ? (
                 <span>
                   {spotifyOverview.monthlyListeners.toLocaleString()} monthly listeners
@@ -922,163 +932,149 @@ export function ArtistView({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      </div>
 
-            {/* Short Bio Snippet (Official Artists Only) */}
-            {!isCreator && (spotifyOverview?.cleanBio || spotifyOverview?.bio) && (
-              <p className="line-clamp-2 text-xs md:text-sm text-white/70 max-w-xl">
-                {spotifyOverview?.cleanBio || sanitizeSpotifyBio(spotifyOverview?.bio || "")}
-                <button
-                  type="button"
-                  onClick={() => setIsAboutModalOpen(true)}
-                  className="ml-1.5 font-bold text-white underline hover:text-white/80 cursor-pointer"
-                >
-                  MORE
-                </button>
-              </p>
+      {/* Action Controls Bar Below Hero Banner */}
+      <div className="flex flex-wrap items-center gap-5 px-1 py-1 -mt-4">
+        {/* Play/Pause Button */}
+        <button
+          type="button"
+          onClick={togglePlayCollection}
+          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+          className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+          aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
+        >
+          {isCurrentCollection && isPlaying ? (
+            <PauseIcon size={26} fill="currentColor" />
+          ) : (
+            <PlayIcon size={26} fill="currentColor" className="ml-1" />
+          )}
+        </button>
+
+        {/* Shuffle Button */}
+        <button
+          type="button"
+          onClick={() => void playShuffled()}
+          disabled={isLoading || Boolean(error) || !page?.allSongs.length}
+          className="flex size-10 items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          aria-label="Shuffle play"
+        >
+          <ShuffleIcon size={22} />
+        </button>
+
+        {/* Follow / Subscribe / Settings Button */}
+        {isOwnChannel ? (
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.()}
+            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase text-white shadow-lg backdrop-blur-md transition-all duration-200 cursor-pointer select-none active:scale-95"
+          >
+            <SettingsIcon size={16} />
+            <span>Settings</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void toggleArtistSubscription()}
+            disabled={isLoading || Boolean(error) || isSubscribing}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
+              isSubscribed
+                ? "bg-white hover:bg-white/90 text-black shadow-lg active:scale-95"
+                : "border border-white/40 bg-black/30 text-white hover:border-white hover:bg-white/10 active:scale-95",
             )}
+          >
+            <span>
+              {isCreator
+                ? isSubscribed
+                  ? "Subscribed"
+                  : compactSubCount ? `Subscribe ${compactSubCount}` : "Subscribe"
+                : isSubscribed
+                  ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
+                  : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
+            </span>
+          </button>
+        )}
 
-            {/* Hero Action Controls Inline Under Listeners */}
-            <div className="flex flex-wrap items-center gap-4 pt-1">
-              {/* Play/Pause Button */}
-              <button
-                type="button"
-                onClick={togglePlayCollection}
-                disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-                className="flex size-12 sm:size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
-                aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
-              >
-                {isCurrentCollection && isPlaying ? (
-                  <PauseIcon size={24} fill="currentColor" />
-                ) : (
-                  <PlayIcon size={24} fill="currentColor" className="ml-1" />
-                )}
-              </button>
+        {/* Share button */}
+        <button
+          type="button"
+          onClick={() => void copyArtistShareLink()}
+          className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-xs md:text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+          title="Share artist link"
+        >
+          <ShareIcon size={15} />
+          <span>Share</span>
+        </button>
 
-              {/* Shuffle Button */}
-              <button
-                type="button"
-                onClick={() => void playShuffled()}
-                disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-                className="flex size-10 items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                aria-label="Shuffle play"
-              >
-                <ShuffleIcon size={22} />
-              </button>
+        {/* 3-dots Dropdown Menu */}
+        <div className="relative" ref={headerMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
+            className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+            aria-label="More artist options"
+          >
+            <MenuDotsIcon size={20} />
+          </button>
 
-              {/* Follow / Subscribe / Settings Button */}
+          {isHeaderMenuOpen && (
+            <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
               {isOwnChannel ? (
                 <button
                   type="button"
-                  onClick={() => onOpenSettings?.()}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase text-white shadow-lg backdrop-blur-md transition-all duration-200 cursor-pointer select-none active:scale-95"
+                  onClick={() => {
+                    setIsHeaderMenuOpen(false);
+                    onOpenSettings?.();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <SettingsIcon size={16} />
-                  <span>Settings</span>
+                  <span>Channel settings</span>
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => void toggleArtistSubscription()}
-                  disabled={isLoading || Boolean(error) || isSubscribing}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
-                    isSubscribed
-                      ? "bg-white hover:bg-white/90 text-black shadow-lg active:scale-95"
-                      : "border border-white/40 bg-black/30 text-white hover:border-white hover:bg-white/10 active:scale-95",
-                  )}
+                  onClick={() => {
+                    setIsHeaderMenuOpen(false);
+                    void toggleArtistSubscription();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
                 >
-                  <span>
-                    {isCreator
-                      ? isSubscribed
-                        ? "Subscribed"
-                        : compactSubCount ? `Subscribe ${compactSubCount}` : "Subscribe"
-                      : isSubscribed
-                        ? compactSubCount ? `Following • ${compactSubCount}` : "Following"
-                        : compactSubCount ? `Follow • ${compactSubCount}` : "Follow"}
-                  </span>
+                  {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
+                  <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
                 </button>
               )}
 
-              {/* Share button */}
               <button
                 type="button"
-                onClick={() => void copyArtistShareLink()}
-                className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-xs md:text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
-                title="Share artist link"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  toggleBlockArtist();
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <ShareIcon size={15} />
-                <span>Share</span>
+                <CloseIcon size={16} className="text-red-400" />
+                <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
               </button>
 
-              {/* 3-dots Dropdown Menu */}
-              <div className="relative" ref={headerMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
-                  className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
-                  aria-label="More artist options"
-                >
-                  <MenuDotsIcon size={20} />
-                </button>
+              <div className="my-1 h-px bg-white/10" />
 
-                {isHeaderMenuOpen && (
-                  <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
-                    {isOwnChannel ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHeaderMenuOpen(false);
-                          onOpenSettings?.();
-                        }}
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                      >
-                        <SettingsIcon size={16} />
-                        <span>Channel settings</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHeaderMenuOpen(false);
-                          void toggleArtistSubscription();
-                        }}
-                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                      >
-                        {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
-                        <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsHeaderMenuOpen(false);
-                        toggleBlockArtist();
-                      }}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    >
-                      <CloseIcon size={16} className="text-red-400" />
-                      <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
-                    </button>
-
-                    <div className="my-1 h-px bg-white/10" />
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsHeaderMenuOpen(false);
-                        void copyArtistShareLink();
-                      }}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    >
-                      <ShareIcon size={16} />
-                      <span>Share artist link</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  void copyArtistShareLink();
+                }}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <ShareIcon size={16} />
+                <span>Share artist link</span>
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

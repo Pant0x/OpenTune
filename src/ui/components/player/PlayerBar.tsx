@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
-import { FullScreenIcon, NowPlayingViewIcon, PlayActiveIcon, QueuePanelIcon } from "@/ui/icons";
+import { FullScreenIcon, NowPlayingViewIcon, PlayActiveIcon } from "@/ui/icons";
 import { tauriFetch } from "../../../datasource/youtube/tauriFetch";
 import { usePlayerSelector } from "../../../player/playerStore";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
@@ -11,7 +11,6 @@ import { useArtworkDominantColor } from "../../hooks/useArtworkDominantColor";
 import { TrackInfo } from "./TrackInfo";
 import { PlaybackControls } from "./PlaybackControls";
 import { SeekBar } from "./SeekBar";
-import { DownloadButton } from "./DownloadButton";
 import { VolumeControl } from "./VolumeControl";
 import { LyricsButton } from "./LyricsButton";
 import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
@@ -25,7 +24,7 @@ interface PlayerBarProps {
   onToggleQueue: () => void;
   isQueueOpen: boolean;
   onConnectionRestored: () => Promise<void>;
-  handlePlayerBarClick:()=>void;
+  handlePlayerBarClick?: () => void;
 }
 
 /*
@@ -39,27 +38,14 @@ const CONNECTION_CHECK_URLS = [
   "https://cp.cloudflare.com/generate_204",
 ];
 
-export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQueueOpen: _isQueueOpen, onConnectionRestored, handlePlayerBarClick }: PlayerBarProps) {
+export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQueueOpen: _isQueueOpen, onConnectionRestored, handlePlayerBarClick: _handlePlayerBarClick }: PlayerBarProps) {
   const currentTrack = usePlayerSelector((player) => player.currentTrack);
   const playerUIState = usePlayerUIState();
   const isFullscreen = playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen;
-  const isNowPlayingOpen = playerUIState.isQueueOpen && playerUIState.rightPanelTab === "nowplaying";
-  const isQueueActive = playerUIState.isQueueOpen && playerUIState.rightPanelTab === "queue";
+  const isSidebarOpen = playerUIState.isQueueOpen;
 
-  const handleToggleNowPlaying = () => {
-    if (isNowPlayingOpen) {
-      playerUIStore.setQueueOpen(false);
-    } else {
-      playerUIStore.setRightPanelTab("nowplaying");
-    }
-  };
-
-  const handleToggleQueueTab = () => {
-    if (isQueueActive) {
-      playerUIStore.setQueueOpen(false);
-    } else {
-      playerUIStore.setRightPanelTab("queue");
-    }
+  const handleToggleSidebar = () => {
+    playerUIStore.setQueueOpen(!playerUIState.isQueueOpen);
   };
 
   const handleToggleFullscreen = () => {
@@ -240,13 +226,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
 
       <div
         style={coverAmbienceStyle}
-        className="group/playerbar flex shrink-0 items-center rounded-2xl bg-background px-4 py-2 min-h-[72px] cursor-pointer"
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest("button, input, [role='slider'], a")) {
-            return;
-          }
-          handlePlayerBarClick();
-        }}
+        className="group/playerbar flex shrink-0 items-center rounded-2xl bg-background px-4 py-2 min-h-[72px]"
       >
         <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}
@@ -262,7 +242,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
             </div>
           </div>
 
-          {/* Right: Secondary controls */}
+          {/* Right: Secondary controls (Right to left: Volume, Fullscreen, Sidebar, Lyrics) */}
           <div className="flex min-w-0 items-center justify-end gap-1.5">
             <div
               className={cn(
@@ -271,42 +251,26 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
                   "opacity-0 focus-within:opacity-100 group-hover/playerbar:opacity-100",
               )}
             >
-              {/* Now Playing View Button (Spotify style right sidebar) */}
+              {/* Lyrics Button */}
+              <LyricsButton onToggle={onToggleLyrics} />
+
+              {/* Sidebar Button (Now Playing / Queue / Recent panel toggle) */}
               <button
                 type="button"
                 className={cn(
                   "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                  isNowPlayingOpen
+                  isSidebarOpen
                     ? "bg-card text-primary"
                     : "text-muted-foreground hover:text-foreground",
                 )}
-                onClick={handleToggleNowPlaying}
-                aria-label={isNowPlayingOpen ? "Close now playing view" : "Now playing view"}
-                title={isNowPlayingOpen ? "Close now playing view" : "Now playing view"}
+                onClick={handleToggleSidebar}
+                aria-label={isSidebarOpen ? "Close sidebar panel" : "Open sidebar panel"}
+                title={isSidebarOpen ? "Close sidebar panel" : "Open sidebar panel"}
               >
                 <NowPlayingViewIcon size={17} />
               </button>
 
-              {/* Lyrics Button */}
-              <LyricsButton onToggle={onToggleLyrics} />
-
-              {/* Queue Button */}
-              <button
-                type="button"
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                  isQueueActive
-                    ? "bg-card text-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={handleToggleQueueTab}
-                aria-label={isQueueActive ? "Close queue" : "Open queue"}
-                title={isQueueActive ? "Close queue" : "Open queue"}
-              >
-                <QueuePanelIcon size={18} />
-              </button>
-
-              {/* Fullscreen Button (Apple Music / Spicetify Split Fullscreen) */}
+              {/* Fullscreen Button */}
               <button
                 type="button"
                 className={cn(
@@ -321,28 +285,8 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
               >
                 <FullScreenIcon size={17} />
               </button>
-
-              {/* Wave Player Miniplayer (03x1/Wave-Player) */}
-              <button
-                type="button"
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
-                  playerUIState.isWaveMiniPlayerOpen
-                    ? "bg-card text-primary"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => playerUIStore.toggleWaveMiniPlayer()}
-                aria-label={playerUIState.isWaveMiniPlayerOpen ? "Close mini player" : "Open mini player"}
-                title="Wave Player Miniplayer"
-              >
-                <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <rect x="12" y="9" width="8" height="6" rx="1" fill="currentColor" fillOpacity="0.2" />
-                </svg>
-              </button>
             </div>
 
-            <DownloadButton />
             <VolumeControl />
           </div>
         </div>

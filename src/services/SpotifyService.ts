@@ -782,7 +782,7 @@ class SpotifyServiceManager {
 
     if (typeof localStorage !== "undefined") {
       try {
-        const raw = localStorage.getItem(`sp_disc_${cacheKey}`);
+        const raw = localStorage.getItem(`sp_disc_v3_${cacheKey}`);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && Date.now() - parsed.timestamp < 3600_000 * 12) {
@@ -822,10 +822,11 @@ class SpotifyServiceManager {
         type = "ep";
       }
 
-      const year = release.date?.year || undefined;
-      const month = release.date?.month ? String(release.date.month).padStart(2, "0") : "01";
-      const day = release.date?.day ? String(release.date.day).padStart(2, "0") : "01";
-      const date = year ? `${year}-${month}-${day}` : undefined;
+      const isoDate = release.date?.isoString ? release.date.isoString.split("T")[0] : undefined;
+      const year = release.date?.year || (isoDate ? parseInt(isoDate.split("-")[0], 10) : undefined);
+      const month = release.date?.month ? String(release.date.month).padStart(2, "0") : (isoDate ? isoDate.split("-")[1] : "01");
+      const day = release.date?.day ? String(release.date.day).padStart(2, "0") : (isoDate ? isoDate.split("-")[2] : "01");
+      const date = isoDate || (year ? `${year}-${month}-${day}` : undefined);
 
       releases.push({
         id: release.id || "",
@@ -839,7 +840,7 @@ class SpotifyServiceManager {
       });
     }
 
-    // Sort by latest release date descending (new drops like Yeat appear at the top)
+    // Sort by latest release date descending (new drops appear at the top)
     releases.sort((a, b) => {
       const da = a.date || (a.year ? `${a.year}-01-01` : "");
       const db = b.date || (b.year ? `${b.year}-01-01` : "");
@@ -849,7 +850,7 @@ class SpotifyServiceManager {
     this.discographyCache.set(cacheKey, { data: releases, timestamp: Date.now() });
     if (typeof localStorage !== "undefined") {
       try {
-        localStorage.setItem(`sp_disc_${cacheKey}`, JSON.stringify({ data: releases, timestamp: Date.now() }));
+        localStorage.setItem(`sp_disc_v3_${cacheKey}`, JSON.stringify({ data: releases, timestamp: Date.now() }));
       } catch {}
     }
     return releases;
@@ -863,6 +864,7 @@ class SpotifyServiceManager {
     this.discographyCache.delete(cacheKey);
     if (typeof localStorage !== "undefined") {
       try {
+        localStorage.removeItem(`sp_disc_v3_${cacheKey}`);
         localStorage.removeItem(`sp_disc_${cacheKey}`);
       } catch {}
     }
