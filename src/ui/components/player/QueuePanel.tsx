@@ -521,12 +521,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
       globalIndex,
       isCurrent: globalIndex === activeLyricIndex,
       isAdlib: isAdlibLine(line.text),
-      // Unsynced lines have no timings: a 0% sweep would paint the row dim, so they stay full.
-      sweep: globalIndex === activeLyricIndex && synced
-        ? getLineProgress(lyrics.lines, globalIndex, currentTime, currentTrack?.durationSec)
-        : 1,
+      sweep: globalIndex === activeLyricIndex && synced ? 1 : 1,
     }));
-  }, [lyrics, synced, activeLyricIndex, currentTime, currentTrack?.durationSec]);
+  }, [lyrics, synced, activeLyricIndex]);
 
   // Follow the sung line: keep it centred in the card without touching ancestor scrollers.
   const lyricsPreviewScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1013,15 +1010,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   artworkUrl={effectiveArtwork}
                   iconSize={56}
                 />
-
-                {/* Explicit Badge (Spotify Style top-left) */}
-                {currentTrack.isExplicit && (
-                  <div className="absolute top-2.5 left-2.5 select-none">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-md text-[9px] font-black tracking-wider text-white/90 uppercase border border-white/10 shadow-md">
-                      Explicit
-                    </span>
-                  </div>
-                )}
               </div>
 
               {/* Title & Artist & Spotify Plus/Like Button */}
@@ -1155,24 +1143,24 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                       />
                     ))}
                   </div>
-                ) : lyricsStatus === "error" ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-6 min-h-[140px] text-center">
-                    <span className="text-xs text-[#b3b3b3]">Couldn&apos;t load lyrics.</span>
+                ) : lyricsStatus === "error" || (lyricsStatus === "ready" && previewLyricsRows.length === 0) ? (
+                  <div className="flex flex-col items-center justify-center gap-2.5 py-8 min-h-[160px] text-center">
+                    <span className="text-xs font-semibold text-[#b3b3b3]">No lyrics available for this song.</span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         reloadLyrics();
                       }}
-                      className="rounded-full border border-white/15 bg-white/10 px-3.5 py-1 text-xs font-bold text-white hover:bg-white/20 transition-colors cursor-pointer"
+                      className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-bold text-white hover:bg-white/20 transition-colors cursor-pointer"
                     >
-                      Retry
+                      Retry search
                     </button>
                   </div>
-                ) : previewLyricsRows.length > 0 ? (
+                ) : (
                   <div
                     ref={lyricsPreviewScrollRef}
-                    className="relative flex flex-col gap-2.5 py-1 min-h-[160px] max-h-[300px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="relative flex flex-col gap-3 py-1 min-h-[160px] max-h-[320px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {previewLyricsRows.map((item) => (
                       <LyricLineView
@@ -1182,16 +1170,17 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                         isActive={item.isCurrent}
                         size="preview"
                         forceAdlibLine={item.isAdlib}
-                        sweep01={item.sweep}
+                        sweep01={item.isCurrent ? 1 : undefined}
                         emptyStyle="note"
-                        className="lyric-preview-in"
+                        onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
+                          const targetTime = lyrics?.lines[index]?.startTimeSec;
+                          if (targetTime !== undefined) {
+                            void playerController.seekTo(targetTime);
+                          }
+                        } : undefined}
                         elementRef={item.isCurrent ? setActivePreviewNode : undefined}
                       />
                     ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center py-6 min-h-[140px] text-xs text-[#b3b3b3]">
-                    <span>Lyrics available in full screen. Click to open.</span>
                   </div>
                 )}
               </div>

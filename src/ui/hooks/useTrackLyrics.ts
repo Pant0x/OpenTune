@@ -11,7 +11,7 @@
  * window receives lyrics through snapshots — neither uses this hook.
  */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { playerController } from "../../player/playerStore";
 import { logInternalWarn } from "../../internal/logging";
 import type { Lyrics, Track } from "../../datasource/types";
@@ -146,6 +146,12 @@ export function reloadTrackLyrics(track: Track): void {
 
 export function useTrackLyrics(track: Track | null | undefined): TrackLyricsState {
   const trackId = track?.id ?? null;
+
+  useEffect(() => {
+    if (track && trackId) {
+      lastTracks.set(trackId, track);
+    }
+  }, [track, trackId]);
 
   const subscribe = useCallback(
     (callback: () => void) => {

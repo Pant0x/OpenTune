@@ -5700,27 +5700,56 @@ export class YouTubeMusicDataSource extends DataSource {
     const durationSec = this.getRoundedDurationSec(track);
 
     for (const query of this.getLyricsQueries(track)) {
-      const params = new URLSearchParams({
-        track_name: query.title,
-        artist_name: query.artist,
-      });
-      if (durationSec) params.set("duration", String(durationSec));
-      if (query.album) params.set("album_name", query.album);
+      // 1. First attempt: Query with duration constraint if duration is known
+      if (durationSec) {
+        const params = new URLSearchParams({
+          track_name: query.title,
+          artist_name: query.artist,
+          duration: String(durationSec),
+        });
+        if (query.album) params.set("album_name", query.album);
 
+        try {
+          const response = await tauriFetch(`https://lrclib.net/api/get?${params}`, {
+            headers: this.getLyricsRequestHeaders(),
+            timeoutMs: 3_500,
+          });
+          if (response.ok) {
+            const match = await response.json() as LrcLibTrack;
+            const result = this.toLrcLibLyrics(track, match, "LRCLIB", 16);
+            if (result) return result;
+            const plainResult = this.toLrcLibPlainLyrics(track, match, "LRCLIB (unsynced)", 24);
+            if (plainResult) return plainResult;
+          }
+        } catch (error) {
+          logInternalWarn("YouTubeMusicDataSource.getLyrics LRCLIB exact with duration failed", {
+            trackId: track.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      // 2. Fallback: Query exact title and artist without duration constraint (for streaming video length offsets)
       try {
-        const response = await tauriFetch(`https://lrclib.net/api/get?${params}`, {
+        const noDurParams = new URLSearchParams({
+          track_name: query.title,
+          artist_name: query.artist,
+        });
+        if (query.album) noDurParams.set("album_name", query.album);
+
+        const response = await tauriFetch(`https://lrclib.net/api/get?${noDurParams}`, {
           headers: this.getLyricsRequestHeaders(),
           timeoutMs: 3_500,
         });
-        if (!response.ok) continue;
-
-        const match = await response.json() as LrcLibTrack;
-        const result = this.toLrcLibLyrics(track, match, "LRCLIB");
-        if (result) return result;
-        const plainResult = this.toLrcLibPlainLyrics(track, match, "LRCLIB (unsynced)");
-        if (plainResult) return plainResult;
+        if (response.ok) {
+          const match = await response.json() as LrcLibTrack;
+          const result = this.toLrcLibLyrics(track, match, "LRCLIB", 18);
+          if (result) return result;
+          const plainResult = this.toLrcLibPlainLyrics(track, match, "LRCLIB (unsynced)", 24);
+          if (plainResult) return plainResult;
+        }
       } catch (error) {
-        logInternalWarn("YouTubeMusicDataSource.getLyrics LRCLIB exact unavailable", {
+        logInternalWarn("YouTubeMusicDataSource.getLyrics LRCLIB exact without duration failed", {
           trackId: track.id,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -5753,20 +5782,20 @@ export class YouTubeMusicDataSource extends DataSource {
             match,
             durationDelta: this.getLyricsDurationDelta(track, match.duration),
           }))
-          .filter(({ durationDelta }) => !durationSec || durationDelta <= 8)
+          .filter(({ durationDelta }) => !durationSec || durationDelta <= 20)
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
         // Prefer synced lyrics
         const syncedCandidates = withDelta.filter(({ match }) => Boolean(match.syncedLyrics));
         for (const candidate of syncedCandidates) {
-          const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search");
+          const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search", 20);
           if (result) return result;
         }
 
         // Fallback: accept unsynced lyrics if no synced found
         const unsyncedCandidates = withDelta.filter(({ match }) => Boolean(match.plainLyrics) && !match.syncedLyrics);
         for (const candidate of unsyncedCandidates) {
-          const result = this.toLrcLibPlainLyrics(track, candidate.match, "LRCLIB search (unsynced)");
+          const result = this.toLrcLibPlainLyrics(track, candidate.match, "LRCLIB search (unsynced)", 25);
           if (result) return result;
         }
       } catch (error) {
@@ -5839,10 +5868,11 @@ export class YouTubeMusicDataSource extends DataSource {
     track: Track,
     match: LrcLibTrack,
     sourceLabel: string,
+    maxDeltaSec = 16,
   ): LyricsProviderResult | null {
     if (!match.syncedLyrics) return null;
     const durationDelta = this.getLyricsDurationDelta(track, match.duration);
-    if (durationDelta > 2) return null;
+    if (Number.isFinite(durationDelta) && durationDelta > maxDeltaSec) return null;
 
     const lines = this.parseSyncedLyrics(match.syncedLyrics);
     if (lines.length === 0) return null;
@@ -5864,10 +5894,11 @@ export class YouTubeMusicDataSource extends DataSource {
     track: Track,
     match: LrcLibTrack,
     sourceLabel: string,
+    maxDeltaSec = 24,
   ): LyricsProviderResult | null {
     if (!match.plainLyrics?.trim()) return null;
     const durationDelta = this.getLyricsDurationDelta(track, match.duration);
-    if (durationDelta > 4) return null;
+    if (Number.isFinite(durationDelta) && durationDelta > maxDeltaSec) return null;
 
     const lines = match.plainLyrics
       .split(/\r?\n/)
@@ -5904,9 +5935,9 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private getLyricsDurationDelta(track: Track, providerDuration: number | undefined): number {
-    if (typeof providerDuration !== "number") return Number.POSITIVE_INFINITY;
+    if (typeof providerDuration !== "number") return 0;
     const durationSec = track.durationSec;
-    if (!durationSec || durationSec <= 0) return Number.POSITIVE_INFINITY;
+    if (!durationSec || durationSec <= 0) return 0;
     return Math.abs(providerDuration - durationSec);
   }
 
