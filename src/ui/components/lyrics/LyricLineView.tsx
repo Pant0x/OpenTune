@@ -224,11 +224,11 @@ export const LyricLineView = memo(function LyricLineView({
 
   if (size === "preview") {
     const rowClass = cn(
-      "transition-all duration-300 leading-snug line-clamp-2",
-      isActive && !adlibLine && "lyric-sweep font-black text-lg sm:text-xl drop-shadow-[0_0_12px_rgba(255,255,255,0.5)] scale-[1.01] origin-left",
-      isActive && adlibLine && "text-white text-base italic font-bold scale-[1.01] origin-left",
-      !isActive && !adlibLine && "text-white/40 font-semibold text-sm hover:text-white/70",
-      !isActive && adlibLine && "text-white/35 text-[13px] italic font-medium",
+      "transition-all duration-300 leading-snug line-clamp-2 select-text",
+      isActive && !adlibLine && "lyric-sweep font-bold text-lg sm:text-xl text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] scale-[1.01] origin-left",
+      isActive && adlibLine && "text-white text-base sm:text-lg italic font-bold scale-[1.01] origin-left",
+      !isActive && !adlibLine && "text-[#a7a7a7] font-bold text-base sm:text-lg hover:text-white/80",
+      !isActive && adlibLine && "text-[#a7a7a7]/60 text-sm sm:text-base italic font-semibold",
       className,
     );
     if (onSeek) {
