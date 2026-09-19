@@ -455,7 +455,7 @@ export function Layout({
               <div
                 ref={pageContentRef}
                 className={cn(
-                  "h-full overflow-y-auto overscroll-contain [will-change:scroll-position] transform-gpu",
+                  "h-full overflow-y-auto overflow-x-hidden overscroll-contain [will-change:scroll-position] transform-gpu",
                   fullBleedContent
                     ? "p-0 pb-0 scroll-pb-0 rounded-2xl"
                     : "rounded-xl px-4 pt-1 pb-28 scroll-pb-28",

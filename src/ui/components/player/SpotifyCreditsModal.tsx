@@ -44,7 +44,7 @@ export function SpotifyCreditsModal({
             },
           ],
           writers: [{ name: track.artist, role: "Composer, Lyricist" }],
-          producers: [{ name: "Production Team", role: "Producer, Engineer" }],
+          producers: [],
           label: track.album ? `Released by ${track.album}` : undefined,
         });
       }
@@ -167,20 +167,22 @@ export function SpotifyCreditsModal({
               </div>
 
               {/* 3. Produced by */}
-              <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
-                  Produced by
-                </span>
+              {Boolean(credits?.producers?.length) && (
+                <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                    Produced by
+                  </span>
 
-                <div className="flex flex-col gap-2.5">
-                  {credits?.producers.map((p, i) => (
-                    <div key={p.name + i} className="flex flex-col">
-                      <span className="text-sm font-semibold text-white/90">{p.name}</span>
-                      <span className="text-xs text-white/60">{p.role}</span>
-                    </div>
-                  ))}
+                  <div className="flex flex-col gap-2.5">
+                    {credits?.producers.map((p, i) => (
+                      <div key={p.name + i} className="flex flex-col">
+                        <span className="text-sm font-semibold text-white/90">{p.name}</span>
+                        <span className="text-xs text-white/60">{p.role}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* 4. Source / Record Label */}
               {(credits?.label || credits?.releaseDate) && (

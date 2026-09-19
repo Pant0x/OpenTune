@@ -869,6 +869,42 @@ class SpotifyServiceManager {
   }
 
   private trackCoverMemory = new Map<string, { url: string; timestamp: number }>();
+  private trackCreditsCache = new Map<string, { data: SpotifyTrackCredits; timestamp: number }>();
+
+  /**
+   * Synchronous cache retrieval for Spotify track album cover URL.
+   */
+  getCachedTrackCoverUrl(trackTitle: string, artist: string, album?: string): string | null {
+    if (!trackTitle?.trim()) return null;
+    let cleanTitle = trackTitle
+      .replace(/\s*[\(\[][^\)\]]*(?:video|audio|visualizer|lyric|clip|hd|4k|remastered|official)[^\)\]]*[\)\]]/gi, "")
+      .replace(/["“”]/g, "")
+      .trim();
+    let cleanArtist = (artist || "")
+      .replace(/\s*-\s*topic$/i, "")
+      .replace(/\s*vevo$/i, "")
+      .replace(/,\s*feat\..*$/i, "")
+      .replace(/\s+ft\..*$/i, "")
+      .replace(/\s+feat\..*$/i, "")
+      .trim();
+    const key = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}${album ? `|${album.toLowerCase().trim()}` : ""}`;
+    const mem = this.trackCoverMemory.get(key);
+    if (mem && mem.url) return mem.url;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const storageKey = `sp_trk_cover_v2_${key.replace(/[^\w-]/g, "_").slice(0, 80)}`;
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.data) {
+            this.trackCoverMemory.set(key, { url: parsed.data, timestamp: Date.now() });
+            return parsed.data;
+          }
+        }
+      } catch {}
+    }
+    return null;
+  }
 
   /**
    * The track's album cover straight from Spotify, for the player-bar dock.
@@ -1156,6 +1192,10 @@ class SpotifyServiceManager {
       .replace(/\s*vevo$/i, "")
       .trim();
 
+    const cacheKey = `${cleanTitle.toLowerCase()}|${cleanArtist.toLowerCase()}`;
+    const mem = this.trackCreditsCache.get(cacheKey);
+    if (mem && Date.now() - mem.timestamp < 7 * 86_400_000) return mem.data;
+
     try {
       const result = await this.callPathfinder<any>("searchDesktop", QUERY_HASHES.searchDesktop, {
         searchTerm: `${cleanTitle} ${cleanArtist}`,
@@ -1177,26 +1217,68 @@ class SpotifyServiceManager {
       if (!trackData) return null;
 
       const spotifyTrackName = trackData.name || cleanTitle;
+      const trackId = trackData.id || (typeof trackData.uri === "string" ? trackData.uri.replace("spotify:track:", "") : "");
       const albumId = trackData.albumOfTrack?.id;
       const albumMeta = albumId ? await this.getAlbumMetadata(albumId) : null;
       const artistAvatar = await this.getArtistAvatar(cleanArtist);
 
-      const rawArtists: any[] = Array.isArray(trackData.artists?.items)
-        ? trackData.artists.items
-        : [];
+      // Fetch authentic credits from Spotify internal credits endpoint
+      let spotifyCreditsData: any = null;
+      if (trackId) {
+        try {
+          const token = await this.getAccessToken();
+          if (token) {
+            const creditsRes = await safeFetch(
+              `https://spclient.wg.spotify.com/track-credits-view/v0/experimental/${trackId}/credits`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "app-platform": "WebPlayer",
+                  "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                },
+              },
+            );
+            if (creditsRes.ok) {
+              spotifyCreditsData = await creditsRes.json();
+            }
+          }
+        } catch (err) {
+          logInternalWarn("SpotifyService: track-credits-view request failed", { err });
+        }
+      }
 
-      const artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = await Promise.all(
-        rawArtists.map(async (a, index) => {
-          const name = a?.profile?.name || cleanArtist;
-          const avatar = index === 0 ? (artistAvatar || undefined) : (await this.getArtistAvatar(name) || undefined);
-          return {
-            name,
-            role: index === 0 ? "Main Artist" : "Featured Artist",
-            avatarUrl: avatar,
-            uri: a?.uri,
-          };
-        })
-      );
+      const roleCredits = Array.isArray(spotifyCreditsData?.roleCredits) ? spotifyCreditsData.roleCredits : [];
+      const performersSection = roleCredits.find((r: any) => r.roleTitle === "Performers");
+      const writersSection = roleCredits.find((r: any) => r.roleTitle === "Writers");
+      const producersSection = roleCredits.find((r: any) => r.roleTitle === "Producers");
+
+      // 1. Performers
+      let artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = [];
+      if (Array.isArray(performersSection?.artists) && performersSection.artists.length > 0) {
+        artists = performersSection.artists.map((a: any, index: number) => ({
+          name: a.name || cleanArtist,
+          role: a.subroles?.join(", ") || (index === 0 ? "Main Artist" : "Featured Artist"),
+          avatarUrl: a.imageUri || (index === 0 ? (artistAvatar || undefined) : undefined),
+          uri: a.uri,
+        }));
+      } else {
+        const rawArtists: any[] = Array.isArray(trackData.artists?.items)
+          ? trackData.artists.items
+          : [];
+        artists = await Promise.all(
+          rawArtists.map(async (a, index) => {
+            const name = a?.profile?.name || cleanArtist;
+            const avatar = index === 0 ? (artistAvatar || undefined) : (await this.getArtistAvatar(name) || undefined);
+            return {
+              name,
+              role: index === 0 ? "Main Artist" : "Featured Artist",
+              avatarUrl: avatar,
+              uri: a?.uri,
+            };
+          }),
+        );
+      }
 
       if (artists.length === 0) {
         artists.push({
@@ -1206,19 +1288,41 @@ class SpotifyServiceManager {
         });
       }
 
-      // Record label & copyrights from Spotify
-      const label = albumMeta?.copyrights?.[0]
-        || (albumMeta?.name ? `Released by ${albumMeta.name}` : undefined);
+      // 2. Writers
+      let writers: Array<{ name: string; role: string }> = [];
+      if (Array.isArray(writersSection?.artists) && writersSection.artists.length > 0) {
+        writers = writersSection.artists.map((w: any) => ({
+          name: w.name || cleanArtist,
+          role: w.subroles?.join(", ") || "Composer, Lyricist",
+        }));
+      } else {
+        writers = [{ name: cleanArtist, role: "Composer, Lyricist" }];
+      }
+
+      // 3. Producers
+      let producers: Array<{ name: string; role: string }> = [];
+      if (Array.isArray(producersSection?.artists) && producersSection.artists.length > 0) {
+        producers = producersSection.artists.map((p: any) => ({
+          name: p.name,
+          role: p.subroles?.join(", ") || "Producer",
+        }));
+      }
+
+      // 4. Source & Label
+      const sourceNames = Array.isArray(spotifyCreditsData?.sourceNames)
+        ? spotifyCreditsData.sourceNames.filter(Boolean)
+        : [];
+      const cleanCopyright = albumMeta?.copyrights?.[0]
+        ? albumMeta.copyrights[0].replace(/^[©℗]\s*(\d{4})?\s*/, "").trim()
+        : undefined;
+      const label =
+        sourceNames.length > 0
+          ? sourceNames.join(", ")
+          : (cleanCopyright || (albumMeta?.name ? `Released by ${albumMeta.name}` : undefined));
+
       const releaseDate = albumMeta?.formattedReleaseDate || albumMeta?.releaseDate;
 
-      const writers = [
-        { name: cleanArtist, role: "Composer, Lyricist" },
-      ];
-      const producers = [
-        { name: "Production Team", role: "Producer, Engineer" },
-      ];
-
-      return {
+      const creditsResult: SpotifyTrackCredits = {
         trackTitle: spotifyTrackName,
         artists,
         writers,
@@ -1226,6 +1330,9 @@ class SpotifyServiceManager {
         label,
         releaseDate,
       };
+
+      this.trackCreditsCache.set(cacheKey, { data: creditsResult, timestamp: Date.now() });
+      return creditsResult;
     } catch (err) {
       logInternalWarn("SpotifyService.getTrackCredits failed", { trackTitle, artistName, err });
       return null;
@@ -1284,3 +1391,43 @@ export function useSpotifyArtistAvatar(artistName?: string, fallbackUrl?: string
 
   return avatar;
 }
+
+/**
+ * Resolves track cover art prioritizing official Spotify album covers,
+ * with synchronous instant cache lookup and automatic fallback.
+ */
+export function useSpotifyTrackCover(
+  trackTitle?: string,
+  artistName?: string,
+  fallbackUrl?: string,
+  albumName?: string,
+): string | undefined {
+  const [cover, setCover] = useState<string | undefined>(() => {
+    if (!trackTitle) return fallbackUrl;
+    return SpotifyService.getCachedTrackCoverUrl(trackTitle, artistName || "", albumName) || fallbackUrl;
+  });
+
+  useEffect(() => {
+    if (!trackTitle?.trim()) {
+      setCover(fallbackUrl);
+      return;
+    }
+    const cached = SpotifyService.getCachedTrackCoverUrl(trackTitle, artistName || "", albumName);
+    if (cached) {
+      setCover(cached);
+      return;
+    }
+    let active = true;
+    void SpotifyService.getTrackCoverUrl(trackTitle, artistName || "", albumName).then((url) => {
+      if (active && url) {
+        setCover(url);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [trackTitle, artistName, fallbackUrl, albumName]);
+
+  return cover || fallbackUrl;
+}
+

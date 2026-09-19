@@ -441,10 +441,20 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.album]);
 
   const effectiveArtwork = spotifyCover || currentTrack?.artworkUrl;
-  const isFollowingArtist = useFollowedArtistLocally(
+  const isFollowedLocally = useFollowedArtistLocally(
     currentTrack?.artist ?? null,
     currentTrack?.artists?.[0]?.id ?? null,
   );
+  const isSubscribedInLibrary = useMemo(() => {
+    if (!currentTrack?.artist) return false;
+    const artistNameLower = currentTrack.artist.toLowerCase();
+    const artistId = currentTrack.artists?.[0]?.id;
+    return (libraryState.library?.artists ?? []).some(
+      (a) => a.name.toLowerCase() === artistNameLower || (artistId && a.id === artistId),
+    );
+  }, [currentTrack?.artist, currentTrack?.artists, libraryState.library?.artists]);
+
+  const isFollowingArtist = isSubscribedInLibrary || isFollowedLocally;
 
   const toggleFollowingArtist = async () => {
     if (!currentTrack?.artist) return;
@@ -489,7 +499,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           trackTitle: currentTrack.title,
           artists: [{ name: currentTrack.artist, role: "Main Artist", avatarUrl: currentTrack.artworkUrl }],
           writers: [{ name: currentTrack.artist, role: "Composer, Lyricist" }],
-          producers: [{ name: "Production Team", role: "Producer, Engineer" }],
+          producers: [],
           label: currentTrack.album ? `Released by ${currentTrack.album}` : undefined,
         });
       }
@@ -1203,7 +1213,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 {/* Artist Header Photo / Banner */}
                 <div className="relative h-60 w-full shrink-0 overflow-hidden bg-[#181818]">
                   <img
-                    src={artistOverview?.headerUrl || artistOverview?.avatarUrl || effectiveArtwork}
+                    src={artistOverview?.galleryUrls?.[0] || artistOverview?.avatarUrl || artistOverview?.headerUrl || effectiveArtwork}
                     alt={currentTrack.artist}
                     className="size-full object-cover transition-transform duration-500 group-hover/artist:scale-105"
                   />

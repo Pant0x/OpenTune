@@ -11,7 +11,6 @@ import {
   InstagramIcon,
   ListIcon,
   MenuDotsIcon,
-  MusicNoteIcon,
   PauseIcon,
   PlayIcon,
   PlayActiveIcon,
@@ -51,6 +50,7 @@ import {
   SpotifyService,
   getSpotifyShareUrl,
   sanitizeSpotifyBio,
+  useSpotifyTrackCover,
   type SpotifyArtistOverview,
   type SpotifyRelease,
 } from "../../services/SpotifyService";
@@ -96,6 +96,69 @@ interface PopularSongItem {
   rawTrack?: Track;
   albumName?: string;
   albumId?: string;
+}
+
+function PopularSongThumbnail({ item }: { item: PopularSongItem }) {
+  const coverUrl = useSpotifyTrackCover(item.name, item.artist, item.coverUrl, item.albumName);
+  return (
+    <div className="size-10 shrink-0 mx-2 overflow-hidden rounded-md bg-zinc-800 shadow-sm">
+      <TrackArtwork
+        artworkUrl={coverUrl}
+        className="size-full object-cover"
+        size={40}
+        iconSize={18}
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+function LibrarySongCard({
+  libTrack,
+  artistName,
+  onPlay,
+}: {
+  libTrack: Track;
+  artistName: string;
+  onPlay: () => void;
+}) {
+  const coverUrl = useSpotifyTrackCover(
+    libTrack.title,
+    libTrack.artist || artistName,
+    libTrack.artworkUrl,
+    libTrack.album,
+  );
+
+  return (
+    <div
+      key={`lib-track-${libTrack.id}`}
+      onClick={onPlay}
+      className="group relative flex flex-col p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] transition-all duration-200 cursor-pointer"
+    >
+      <div className="relative aspect-square w-full rounded-lg overflow-hidden shadow-lg bg-zinc-800">
+        <TrackArtwork
+          artworkUrl={coverUrl}
+          className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
+          iconSize={48}
+          loading="lazy"
+        />
+        {/* Hover Play Button */}
+        <div className="absolute right-2.5 bottom-2.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 shadow-xl">
+          <div className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-lg">
+            <PlayIcon size={20} fill="currentColor" className="ml-0.5" />
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col mt-2.5 min-w-0">
+        <span className="truncate text-sm font-semibold text-white group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
+          {libTrack.title}
+        </span>
+        <span className="truncate text-xs text-muted-foreground mt-0.5">
+          Song • {artistName}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 const artistPageMemory = new Map<string, ArtistPage>();
@@ -644,7 +707,7 @@ export function ArtistView({
         isExplicit: Boolean(yt.isExplicit || matchedSpotify?.isExplicit),
         plays: matchedSpotify?.playcount || (yt.viewCount ? Number(yt.viewCount).toLocaleString() : compactViews(yt)),
         duration: durationStr,
-        coverUrl: yt.artworkUrl || matchedSpotify?.coverUrl,
+        coverUrl: matchedSpotify?.coverUrl || SpotifyService.getCachedTrackCoverUrl(yt.title, resolvedArtist, yt.album) || yt.artworkUrl,
         rawTrack: yt,
         albumName: yt.album,
         albumId: yt.albumId,
@@ -685,6 +748,14 @@ export function ArtistView({
         displayedArtist?.id,
         displayedArtist?.name?.toLowerCase(),
       );
+      const isSubscribedInLibrary = Boolean(
+        (libraryState.library?.artists ?? []).some(
+          (a) =>
+            (artist?.id && a.id === artist.id) ||
+            (displayedArtist?.id && a.id === displayedArtist.id) ||
+            (displayedArtist?.name && a.name.toLowerCase() === displayedArtist.name.toLowerCase()),
+        ),
+      );
       /*
        * A toggle newer than this page load is authoritative: the remote `page.subscribed` lags
        * behind the local toggle (YouTube only reflects a subscribe on the next page load), and
@@ -694,13 +765,13 @@ export function ArtistView({
       if (isFollowedOverrideFresh()) {
         setIsSubscribed(isFollowedLocally);
       } else {
-        setIsSubscribed(Boolean(page?.subscribed) || isFollowedLocally);
+        setIsSubscribed(Boolean(page?.subscribed) || isSubscribedInLibrary || isFollowedLocally);
       }
     };
 
     resolveFollowed();
     return subscribeToFollowedArtists(resolveFollowed);
-  }, [page?.subscribed, artist?.id, displayedArtist?.id, displayedArtist?.name]);
+  }, [page?.subscribed, artist?.id, displayedArtist?.id, displayedArtist?.name, libraryState.library?.artists]);
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -783,7 +854,7 @@ export function ArtistView({
   };
 
   return (
-    <div className="relative flex flex-col gap-10 pb-20">
+    <div className="relative flex flex-col gap-10 pb-20 w-full max-w-full overflow-x-hidden">
       {/* Ambient Gaussian Glow Background */}
       <div className="pointer-events-none absolute -top-12 -left-8 -right-8 h-[550px] overflow-hidden -z-10 opacity-35 blur-[60px] saturate-150">
         <img
@@ -1152,20 +1223,7 @@ export function ArtistView({
                         </div>
 
                         {/* Thumbnail Artwork (40x40) */}
-                        <div className="size-10 shrink-0 mx-2 overflow-hidden rounded-md bg-zinc-800 shadow-sm">
-                          {item.coverUrl ? (
-                            <img
-                              src={item.coverUrl}
-                              alt={item.name}
-                              className="size-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="size-full flex items-center justify-center bg-zinc-800 text-zinc-600">
-                              <MusicNoteIcon size={18} />
-                            </div>
-                          )}
-                        </div>
+                        <PopularSongThumbnail item={item} />
 
                         {/* Title and Clickable Artist */}
                         <div className="flex-1 min-w-0 flex flex-col justify-center pl-1 pr-4">
@@ -1315,36 +1373,14 @@ export function ArtistView({
               <h2 className="text-xl font-bold tracking-tight text-foreground">From your library</h2>
               <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(11rem,1fr))]">
                 {librarySongs.map((libTrack) => (
-                  <div
+                  <LibrarySongCard
                     key={`lib-track-${libTrack.id}`}
-                    onClick={() => {
+                    libTrack={libTrack}
+                    artistName={displayedArtist.name}
+                    onPlay={() => {
                       void playerController.playTrackById(libTrack.id, [libTrack, ...librarySongs]);
                     }}
-                    className="group relative flex flex-col p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] transition-all duration-200 cursor-pointer"
-                  >
-                    <div className="relative aspect-square w-full rounded-lg overflow-hidden shadow-lg bg-zinc-800">
-                      <TrackArtwork
-                        artworkUrl={libTrack.artworkUrl}
-                        className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        iconSize={48}
-                        loading="lazy"
-                      />
-                      {/* Hover Play Button */}
-                      <div className="absolute right-2.5 bottom-2.5 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 shadow-xl">
-                        <div className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground hover:scale-105 active:scale-95 shadow-lg">
-                          <PlayIcon size={20} fill="currentColor" className="ml-0.5" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col mt-2.5 min-w-0">
-                      <span className="truncate text-sm font-semibold text-white group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
-                        {libTrack.title}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground mt-0.5">
-                        Song • {displayedArtist.name}
-                      </span>
-                    </div>
-                  </div>
+                  />
                 ))}
                 {libraryAlbums.map((libAlbum) => (
                   <div
