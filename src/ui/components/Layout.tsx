@@ -265,7 +265,12 @@ export function Layout({
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
             composited layer and a blur pass to render something nothing can see through. */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-2xl bg-background px-4 pt-2">
+        <div
+          className={cn(
+            "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-background",
+            fullBleedContent ? "p-0 gap-0" : "gap-3 px-4 pt-2",
+          )}
+        >
           {/*
             Ambient wash for the page beneath. Rendered here rather than inside the page so
             it can start at the very top of the column — behind the search bar — instead of
@@ -306,13 +311,15 @@ export function Layout({
             </span>
           ) : null}
 
-          <div className="relative flex min-h-0 min-w-0 flex-1 gap-3 pb-3 ">
+          <div className={cn("relative flex min-h-0 min-w-0 flex-1", fullBleedContent ? "p-0 pb-0 gap-0" : "gap-3 pb-3")}>
             <div className="relative min-h-0 min-w-0 flex-1">
               <div
                 ref={pageContentRef}
                 className={cn(
-                  "h-full overflow-y-auto overscroll-contain rounded-xl pb-28 scroll-pb-28 [will-change:scroll-position] transform-gpu",
-                  fullBleedContent ? "p-0" : "px-4 pt-1",
+                  "h-full overflow-y-auto overscroll-contain [will-change:scroll-position] transform-gpu",
+                  fullBleedContent
+                    ? "p-0 pb-0 scroll-pb-0 rounded-2xl"
+                    : "rounded-xl px-4 pt-1 pb-28 scroll-pb-28",
                 )}
                 data-page-scroll-root
               >

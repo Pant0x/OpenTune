@@ -224,11 +224,11 @@ export const LyricLineView = memo(function LyricLineView({
 
   if (size === "preview") {
     const rowClass = cn(
-      "transition-all duration-300 leading-snug select-text text-left w-full",
-      isActive && !adlibLine && "font-bold text-lg sm:text-xl text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] scale-[1.01] origin-left",
-      isActive && adlibLine && "text-white text-base sm:text-lg italic font-bold scale-[1.01] origin-left",
-      !isActive && !adlibLine && "text-[#a7a7a7] font-bold text-base sm:text-lg hover:text-white/80",
-      !isActive && adlibLine && "text-[#a7a7a7]/60 text-sm sm:text-base italic font-semibold",
+      "transition-all duration-300 leading-normal select-text text-left w-full",
+      isActive && !adlibLine && "font-bold text-sm sm:text-base text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] scale-[1.01] origin-left",
+      isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.01] origin-left",
+      !isActive && !adlibLine && "text-[#a7a7a7] font-semibold text-xs sm:text-sm hover:text-white/80",
+      !isActive && adlibLine && "text-[#a7a7a7]/60 text-[11px] sm:text-xs italic font-semibold",
       sweeps && "lyric-sweep",
       className,
     );

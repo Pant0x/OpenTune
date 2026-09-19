@@ -1251,7 +1251,7 @@ export function Sidebar({
         >
           {!shouldHideText ? (
             <div
-              className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border overflow-hidden"
+              className="flex min-w-0 flex-1 items-center gap-1.5 flex-wrap"
               role="group"
               aria-label="Library view"
             >
@@ -1262,22 +1262,17 @@ export function Sidebar({
                     key={view.value}
                     type="button"
                     className={cn(
-                      "relative flex items-center justify-center rounded-full transition-colors flex-1 min-w-0 px-1.5 py-1 text-[11px] font-medium text-center",
+                      "rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground",
+                      isActive
+                        ? "bg-white text-black font-bold shadow-xs"
+                        : "bg-white/[0.08] text-white/85 hover:bg-white/[0.14] hover:text-white",
                     )}
                     aria-pressed={isActive}
                     aria-label={view.label}
                     onClick={() => setLibraryView(view.value)}
                   >
-                    {isActive && (
-                      <motion.span
-                        layoutId="sidebar-library-view"
-                        transition={{ type: "spring", stiffness: 520, damping: 42 }}
-                        className="absolute inset-0 -z-10 rounded-full bg-primary/10 shadow-sm ring-1 ring-inset ring-border/60"
-                      />
-                    )}
-                    <span className="truncate">{view.label}</span>
+                    <span>{view.label}</span>
                   </button>
                 );
               })}

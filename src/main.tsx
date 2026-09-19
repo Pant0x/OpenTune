@@ -40,7 +40,8 @@ import { hydrateToolbarItemSettings } from "./ui/settings/toolbarItems";
 import { hydrateHomeSectionSettings } from "./ui/settings/homeSections";
 import { hydrateDownloadLocation } from "./ui/settings/downloadLocation";
 import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEffects";
-import { initActiveSnippets } from "./ui/settings/snippets";
+import { purgeAllSnippets } from "./ui/settings/snippets";
+import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
 
 logInternalInfo("main.bootstrap start");
@@ -54,7 +55,7 @@ applyTheme();
 watchSystemTheme();
 applyPaperPcMode();
 applyRenderEffects();
-initActiveSnippets();
+purgeAllSnippets();
 // One line a minute in the app log, so "the renderer is using 220 MB" can be split into heap,
 // DOM, images and subframes instead of guessed at. Settings → Troubleshooting → Open log.
 startMemoryReport();
@@ -69,6 +70,7 @@ void Promise.all([
   hydrateWindowControlSettings(),
   hydrateMediaSessionSettings(),
   hydratePlayerControlSettings(),
+  hydratePlayerAddonSettings(),
   hydrateQueuePanelSettings(),
   hydrateTraySettings(),
   hydrateAudioQualitySettings(),

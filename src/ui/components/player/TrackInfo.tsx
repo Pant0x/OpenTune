@@ -11,7 +11,7 @@ import { ArtistLinks, useAlbumNavigation } from "../ArtistLinks";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { getVideoArtworkFallback } from "../../../datasource/youtube/artwork";
 import { SpotifyService } from "../../../services/SpotifyService";
-import { useArtworkDominantColor, type DominantColorResult } from "../../hooks/useArtworkDominantColor";
+import type { DominantColorResult } from "../../hooks/useArtworkDominantColor";
 import { useDjTrackInfo } from "../../settings/playerAddons";
 
 function getTrackDjInfo(track: { title: string; id: string }) {
@@ -58,7 +58,7 @@ interface TrackInfoProps {
   dominantColor?: DominantColorResult;
 }
 
-export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDominantColor }: TrackInfoProps = {}) {
+export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: _propDominantColor }: TrackInfoProps = {}) {
   const state = usePlayerSelector((player) => ({ currentTrack: player.currentTrack }), shallowEqual);
   const libraryState = useLibraryState();
   const uiState = usePlayerUIState();
@@ -132,8 +132,6 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
     ?? (currentTrack?.artworkUrl
       || (currentTrack?.id ? getVideoArtworkFallback(currentTrack.id) : undefined));
 
-  const fallbackDominantColor = useArtworkDominantColor(effectiveArtworkUrl);
-  const dominantColor = propDominantColor ?? fallbackDominantColor;
   const showDjInfo = useDjTrackInfo();
 
   if (!currentTrack) {
@@ -193,27 +191,19 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: propDomin
 
   return (
     <div
-      className="relative flex min-w-0 max-w-full items-center gap-3 py-1 main-nowPlayingBar-left"
+      className="relative flex min-w-0 max-w-full items-center gap-3 py-1"
       onContextMenu={(event) => openTrackMenu(event, currentTrack)}
     >
-      {dominantColor?.rgb && (
-        <div
-          className="pointer-events-none absolute -left-4 -top-3 -bottom-3 -right-8 z-0 transition-opacity duration-700 ease-out"
-          style={{
-            background: `linear-gradient(90deg, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.38) 0%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.22) 55%, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.06) 80%, transparent 100%)`,
-          }}
-        />
-      )}
       {uiState.showAlbumArt && (
         <button
           type="button"
           onClick={() => playerUIStore.openNowPlaying()}
           title="Open Now Playing view"
-          className="group relative z-10 size-12 shrink-0 overflow-hidden rounded-lg cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cover-art-image"
+          className="group relative z-10 size-14 shrink-0 overflow-hidden rounded-md cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TrackArtwork
-            className="size-12 shrink-0 object-cover transition-transform group-hover:scale-105 cover-art-image"
-            size={48}
+            className="size-14 shrink-0 object-cover rounded-md transition-transform group-hover:scale-105"
+            size={56}
             loading="eager"
             preferProxy
             artworkUrl={effectiveArtworkUrl}

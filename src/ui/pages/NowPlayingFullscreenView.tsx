@@ -341,20 +341,20 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
-      "relative h-full w-full overflow-hidden bg-black/95 text-white selection:bg-white/20 select-none flex flex-col",
-      isIdle && "cursor-none",
-    )}
-  >
-    {/* Dynamic moving ambient background ("Cover Ambience") */}
-    <CoverAmbienceCanvas artworkUrl={track?.artworkUrl} />
-
-    {/* Top Header Bar */}
-    <header
-      className={cn(
-        "sticky top-0 inset-x-0 px-6 py-3.5 flex items-center justify-between z-30 transition-all duration-300 bg-black/40 backdrop-blur-md border-b border-white/10 shrink-0",
-        isIdle && !isDetailsInView ? "-translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
+        "relative h-full w-full overflow-hidden rounded-2xl bg-black/95 text-white selection:bg-white/20 select-none flex flex-col",
+        isIdle && "cursor-none",
       )}
     >
+      {/* Dynamic moving ambient background ("Cover Ambience") */}
+      <CoverAmbienceCanvas artworkUrl={track?.artworkUrl} />
+
+      {/* Top Header Bar */}
+      <header
+        className={cn(
+          "sticky top-0 inset-x-0 px-6 py-3.5 flex items-center justify-between z-30 transition-all duration-300 bg-black/40 backdrop-blur-md border-b border-white/10 shrink-0 rounded-t-2xl",
+          isIdle && !isDetailsInView ? "-translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
+        )}
+      >
       {/* Left: Back button */}
       <button
         type="button"

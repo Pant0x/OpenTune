@@ -1160,7 +1160,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 ) : (
                   <div
                     ref={lyricsPreviewScrollRef}
-                    className="relative flex flex-col gap-3 py-1 min-h-[160px] max-h-[320px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="relative flex flex-col gap-2 py-1 min-h-[140px] max-h-[220px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     {previewLyricsRows.map((item) => (
                       <LyricLineView

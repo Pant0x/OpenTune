@@ -5,7 +5,6 @@ import { playerUIStore, usePlayerUIState } from "../../stores/playerUIStore";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import { useWaveSeekbar } from "../../settings/playerAddons";
 import { WaveformCanvas } from "./WaveformCanvas";
-import { getStoredEnabledIds } from "../../settings/snippets";
 
 /*
  * Deliberately NOT beUI's RangeSlider: that component snaps to discrete steps, while
@@ -49,17 +48,6 @@ export function SeekBar() {
   const isWave = useWaveSeekbar();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [enabledSnippets, setEnabledSnippets] = useState<Set<string>>(() => getStoredEnabledIds());
-
-  useEffect(() => {
-    const handleUpdate = () => setEnabledSnippets(getStoredEnabledIds());
-    window.addEventListener("spicetify-snippets-changed", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
-    return () => {
-      window.removeEventListener("spicetify-snippets-changed", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
-    };
-  }, []);
   const seekTargetRef = useRef(0);
   const seekAnimationRef = useRef<number | null>(null);
   const seekAnimationDoneRef = useRef<(() => void) | null>(null);
@@ -263,28 +251,6 @@ export function SeekBar() {
         {formatTime(currentTime)}
       </span>
       <div className="relative flex-1 flex items-center min-w-0 playback-progressbar overflow-visible">
-        {/* Spicetify Snippets: Dancing characters on timeline */}
-        {enabledSnippets.has("hamsters-dancing") && (
-          <>
-            <img
-              src="/snippets/hamster-left.gif"
-              alt="Dancing Hamster Left"
-              className="pointer-events-none absolute -top-12 left-0 size-14 z-30 select-none drop-shadow-md"
-            />
-            <img
-              src="/snippets/hamster-right.gif"
-              alt="Dancing Hamster Right"
-              className="pointer-events-none absolute -top-12 right-0 size-14 z-30 select-none drop-shadow-md"
-            />
-          </>
-        )}
-        {enabledSnippets.has("sonic-dancing") && (
-          <img
-            src="/snippets/sonic.gif"
-            alt="Dancing Sonic"
-            className="pointer-events-none absolute -top-10 right-2 size-11 z-30 select-none [image-rendering:pixelated] drop-shadow-md"
-          />
-        )}
         {isWave && (
           <WaveformCanvas
             progress={duration > 0 ? currentTime / duration : 0}

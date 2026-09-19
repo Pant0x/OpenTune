@@ -1,4 +1,10 @@
 import { useSyncExternalStore } from "react";
+import {
+  hydrateLocalBooleanSetting,
+  readLocalBooleanSetting,
+  writeLocalBooleanSetting,
+} from "../../internal/durableLocalSetting";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 
 const EVENT_NAME = "amber-player-addons-changed";
 
@@ -22,28 +28,10 @@ export const ONEKO_VARIANTS: { id: OnekoVariant; label: string }[] = [
   { id: "vaporwave", label: "Vaporwave" },
 ];
 
-function readBool(key: string, defaultValue: boolean): boolean {
-  try {
-    const val = localStorage.getItem(key);
-    if (val === null) return defaultValue;
-    return val !== "false";
-  } catch {
-    return defaultValue;
-  }
-}
-
-function writeBool(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {}
-  window.dispatchEvent(new Event(EVENT_NAME));
-}
-
 function readString<T extends string>(key: string, defaultValue: T): T {
   try {
     const val = localStorage.getItem(key);
     if (!val) return defaultValue;
-    // Strip JSON quotes if present
     const clean = val.replace(/^"|"$/g, "");
     return (clean as T) || defaultValue;
   } catch {
@@ -55,6 +43,7 @@ function writeString(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {}
+  void setAppSetting(key, value);
   window.dispatchEvent(new Event(EVENT_NAME));
 }
 
@@ -68,31 +57,47 @@ function subscribe(callback: () => void) {
 }
 
 export function useVolumeBadge(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.volumeBadge, true), () => true);
+  return useSyncExternalStore(
+    subscribe,
+    () => readLocalBooleanSetting(KEYS.volumeBadge, true),
+    () => true,
+  );
 }
 export function setVolumeBadge(enabled: boolean): void {
-  writeBool(KEYS.volumeBadge, enabled);
+  writeLocalBooleanSetting(KEYS.volumeBadge, enabled, EVENT_NAME);
 }
 
 export function useWaveSeekbar(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.waveSeekbar, true), () => true);
+  return useSyncExternalStore(
+    subscribe,
+    () => readLocalBooleanSetting(KEYS.waveSeekbar, false),
+    () => false,
+  );
 }
 export function setWaveSeekbar(enabled: boolean): void {
-  writeBool(KEYS.waveSeekbar, enabled);
+  writeLocalBooleanSetting(KEYS.waveSeekbar, enabled, EVENT_NAME);
 }
 
 export function useDjTrackInfo(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.djTrackInfo, true), () => true);
+  return useSyncExternalStore(
+    subscribe,
+    () => readLocalBooleanSetting(KEYS.djTrackInfo, false),
+    () => false,
+  );
 }
 export function setDjTrackInfo(enabled: boolean): void {
-  writeBool(KEYS.djTrackInfo, enabled);
+  writeLocalBooleanSetting(KEYS.djTrackInfo, enabled, EVENT_NAME);
 }
 
 export function useOnekoEnabled(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.oneko, false), () => false);
+  return useSyncExternalStore(
+    subscribe,
+    () => readLocalBooleanSetting(KEYS.oneko, false),
+    () => false,
+  );
 }
 export function setOnekoEnabled(enabled: boolean): void {
-  writeBool(KEYS.oneko, enabled);
+  writeLocalBooleanSetting(KEYS.oneko, enabled, EVENT_NAME);
 }
 
 export function useOnekoVariant(): OnekoVariant {
@@ -109,17 +114,40 @@ export function setOnekoVariant(variant: OnekoVariant): void {
 export function useOnekoKuroneko(): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => readBool(KEYS.onekoKuroneko, false),
+    () => readLocalBooleanSetting(KEYS.onekoKuroneko, false),
     () => false,
   );
 }
 export function setOnekoKuroneko(enabled: boolean): void {
-  writeBool(KEYS.onekoKuroneko, enabled);
+  writeLocalBooleanSetting(KEYS.onekoKuroneko, enabled, EVENT_NAME);
 }
 
 export function useRewindButton(): boolean {
-  return useSyncExternalStore(subscribe, () => readBool(KEYS.rewindButton, false), () => false);
+  return useSyncExternalStore(
+    subscribe,
+    () => readLocalBooleanSetting(KEYS.rewindButton, false),
+    () => false,
+  );
 }
 export function setRewindButton(enabled: boolean): void {
-  writeBool(KEYS.rewindButton, enabled);
+  writeLocalBooleanSetting(KEYS.rewindButton, enabled, EVENT_NAME);
+}
+
+export async function hydratePlayerAddonSettings(): Promise<void> {
+  await Promise.all([
+    hydrateLocalBooleanSetting(KEYS.volumeBadge, true, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.waveSeekbar, false, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.djTrackInfo, false, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.oneko, false, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.onekoKuroneko, false, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.rewindButton, false, EVENT_NAME),
+  ]);
+
+  try {
+    const storedVariant = await getAppSetting<string>(KEYS.onekoVariant);
+    if (storedVariant) {
+      localStorage.setItem(KEYS.onekoVariant, storedVariant);
+      window.dispatchEvent(new Event(EVENT_NAME));
+    }
+  } catch {}
 }
