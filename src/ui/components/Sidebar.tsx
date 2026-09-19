@@ -124,6 +124,7 @@ function mergeVisibleOrderWithStoredOrder(storedOrder: string[], visibleOrder: s
 
 interface SidebarProps {
   width: number;
+  isResizing?: boolean;
   /** Retained for the callers' benefit; the rail no longer resizes, so it is unused. */
   onWidthChange: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
@@ -578,7 +579,8 @@ function SidebarArtistRow({
 
 export function Sidebar({
   width,
-  onWidthChange,
+  isResizing = false,
+  onWidthChange: _onWidthChange,
   onNavigateAlbum,
   onNavigatePlaylist,
   onNavigateArtist,
@@ -644,9 +646,8 @@ export function Sidebar({
 
 
   /*
-   * The rail owns its own width now, derived from the mode rather than read from the `width`
-   * prop. The prop stays the source of truth for everyone else — the title bar sizes its home
-   * button to match — so the resolved width is reported upward rather than taken from there.
+   * The rail derives its width from the mode and the user's customized width.
+   * Collapsed resolves to the compact icon strip, while expanded respects the user-resized width.
    */
   const sidebarMode = useSidebarMode();
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
@@ -659,11 +660,7 @@ export function Sidebar({
    * because these controls only render when expanded, collapsing unmounts the thing being used.
    */
   const isExpansionHeld = isSidebarHovered || isCreatePanelOpen || isSortMenuOpen;
-  const effectiveWidth = resolveSidebarWidth(sidebarMode, isExpansionHeld);
-
-  useEffect(() => {
-    if (width !== effectiveWidth) onWidthChange(effectiveWidth);
-  }, [effectiveWidth, onWidthChange, width]);
+  const effectiveWidth = resolveSidebarWidth(sidebarMode, isExpansionHeld, width);
 
   const isCollapsed = effectiveWidth <= COLLAPSED_WIDTH;
   const shouldHideText = effectiveWidth <= TEXT_HIDE_THRESHOLD;
@@ -1213,7 +1210,10 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRef}
-      className="relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl bg-background transition-[width] duration-200 ease-out"
+      className={cn(
+        "relative flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl bg-background",
+        isResizing ? "transition-none select-none" : "transition-[width] duration-200 ease-out",
+      )}
       style={{ width: `${effectiveWidth}px` }}
       onPointerEnter={(event) => {
         // Pointer only. A drag passing over the rail is not a request to expand it, and a
@@ -1231,9 +1231,7 @@ export function Sidebar({
       }}
     >
       {/*
-        The resize grip is deliberately not rendered: the rail is a fixed icon strip and
-        hovering an item explains it, so there is nothing to widen it for. `handleMouseDown`
-        and the width plumbing are left intact so restoring it is a one-line change.
+        The resize grip is handled in Layout.tsx to enable resizing between panels.
       */}
 
       <div className="flex min-h-0 flex-1 flex-col pt-3.5">
@@ -1251,7 +1249,7 @@ export function Sidebar({
         >
           {!shouldHideText ? (
             <div
-              className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap"
+              className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar"
               role="group"
               aria-label="Library view"
             >

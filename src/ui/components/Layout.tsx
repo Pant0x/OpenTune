@@ -5,6 +5,18 @@ import { TrackArtwork } from "./TrackArtwork";
 import { useAmbientArtwork } from "../stores/ambientArtworkStore";
 import { Sidebar } from "./Sidebar";
 import type { Album, Artist, Playlist } from "../../datasource/types";
+import {
+  SIDEBAR_EXPANDED_WIDTH,
+  SIDEBAR_MIN_EXPANDED_WIDTH,
+  SIDEBAR_MAX_EXPANDED_WIDTH,
+  useSidebarMode,
+  setSidebarMode,
+} from "../settings/sidebarMode";
+import {
+  DEFAULT_QUEUE_PANEL_WIDTH,
+  MIN_QUEUE_PANEL_WIDTH,
+  MAX_QUEUE_PANEL_WIDTH,
+} from "../settings/queuePanel";
 
 interface LayoutProps {
   children: ReactNode;
@@ -33,6 +45,7 @@ interface LayoutProps {
   rightPanel?: ReactNode;
   rightPanelWidth?: number;
   onRightPanelWidthChange?: (width: number) => void;
+  isQueuePanelCollapsed?: boolean;
   /**
    * Identifies which page is currently in the scroll root — the same string `App` keys the page
    * content on. `children` swap out under one persistent scroll container (see `pageContentRef`
@@ -73,8 +86,96 @@ export function Layout({
   showTransientScrollbar = false,
   rightPanel,
   rightPanelWidth = 340,
+  onRightPanelWidthChange,
+  isQueuePanelCollapsed = false,
   scrollKey,
 }: LayoutProps) {
+  const [isDraggingLeft, setIsDraggingLeft] = useState(false);
+  const [isDraggingRight, setIsDraggingRight] = useState(false);
+  const leftDragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const rightDragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const sidebarMode = useSidebarMode();
+
+  const handleLeftResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    if (sidebarMode === "collapsed") {
+      setSidebarMode("expanded");
+    }
+
+    leftDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    };
+    setIsDraggingLeft(true);
+  };
+
+  const handleLeftResizePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = leftDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+
+    const delta = event.clientX - drag.startX;
+    const clamped = Math.round(
+      Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, drag.startWidth + delta)),
+    );
+    onSidebarWidthChange(clamped);
+  };
+
+  const handleLeftResizePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = leftDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+    leftDragRef.current = null;
+    setIsDraggingLeft(false);
+  };
+
+  const handleRightResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    rightDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: rightPanelWidth,
+    };
+    setIsDraggingRight(true);
+  };
+
+  const handleRightResizePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = rightDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+
+    const delta = drag.startX - event.clientX;
+    const clamped = Math.round(
+      Math.max(MIN_QUEUE_PANEL_WIDTH, Math.min(MAX_QUEUE_PANEL_WIDTH, drag.startWidth + delta)),
+    );
+    onRightPanelWidthChange?.(clamped);
+  };
+
+  const handleRightResizePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = rightDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+    rightDragRef.current = null;
+    setIsDraggingRight(false);
+  };
+
   const ambientArtwork = useAmbientArtwork();
   const pageContentRef = useRef<HTMLDivElement>(null);
   /** One entry per `scrollKey` ever visited this session. Ephemeral on purpose — a browser tab
@@ -245,11 +346,17 @@ export function Layout({
   useEffect(() => () => clearScrollHideTimer(), [clearScrollHideTimer]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 gap-2 overflow-hidden px-2 pt-2">
-      <div className="relative flex min-h-0 min-w-0 flex-1 gap-2">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden px-2 pt-2">
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1",
+          (isDraggingLeft || isDraggingRight) && "select-none",
+        )}
+      >
         {!hideSidebar && (
           <Sidebar
             width={sidebarWidth}
+            isResizing={isDraggingLeft}
             onWidthChange={onSidebarWidthChange}
             onNavigateAlbum={onNavigateAlbum}
             onNavigatePlaylist={onNavigatePlaylist}
@@ -262,6 +369,38 @@ export function Layout({
             onNavigateReleases={onNavigateReleases}
             onNavigateLocalFiles={onNavigateLocalFiles}
           />
+        )}
+
+        {/* Left Sidebar Resize Slider */}
+        {!hideSidebar && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize library sidebar"
+            tabIndex={0}
+            className={cn(
+              "group relative z-20 flex h-full w-2 shrink-0 cursor-col-resize select-none items-center justify-center transition-colors",
+              "before:absolute before:-inset-x-1.5 before:inset-y-0 before:z-10",
+              isDraggingLeft && "cursor-col-resize",
+            )}
+            onPointerDown={handleLeftResizePointerDown}
+            onPointerMove={handleLeftResizePointerMove}
+            onPointerUp={handleLeftResizePointerUp}
+            onPointerCancel={handleLeftResizePointerUp}
+            onDoubleClick={() => {
+              if (sidebarMode === "collapsed") setSidebarMode("expanded");
+              onSidebarWidthChange(SIDEBAR_EXPANDED_WIDTH);
+            }}
+          >
+            <div
+              className={cn(
+                "h-full w-0.5 rounded-full transition-colors duration-150",
+                isDraggingLeft
+                  ? "bg-white/40"
+                  : "bg-transparent group-hover:bg-white/20",
+              )}
+            />
+          </div>
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
             composited layer and a blur pass to render something nothing can see through. */}
@@ -407,45 +546,64 @@ export function Layout({
           </div>
         </div>
 
- <AnimatePresence initial={false}>
-              {rightPanel && (
-                <motion.div
-                  ref={rightPanelRef}
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: rightPanelWidth, opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  /*
-                   * A tween, not a spring, and `width` gets its own shorter one than `opacity`.
-                   *
-                   * `width` is a layout property — every frame Framer emits for it costs a real
-                   * synchronous browser layout, not a compositor-only step like `x` or
-                   * `opacity` would. A spring has no fixed end time; it keeps emitting
-                   * low-amplitude correction frames well past the point it looks finished,
-                   * which was still paying for a layout pass on each one. A tween has a hard
-                   * stop at `duration`, so the frame count — and the reflow cost — is bounded
-                   * and known. Opacity gets a hair longer so the fade reads as settling into
-                   * the now-correctly-sized box rather than racing to beat it there.
-                   */
-                  transition={{
-                    width: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
-                    opacity: { duration: 0.16, ease: "easeOut" },
-                  }}
-                  className="relative min-h-0 shrink-0 overflow-hidden rounded-2xl bg-background"
-                >
-                  {/*
-                    Pinned to the target width, not 100%: this box's *wrapper* is what's
-                    animating. If the queue list tracked that width instead, every row's flex
-                    layout and text truncation would recompute on every animation frame — for a
-                    25+ row queue that's the actual cost behind a "laggy" close. Fixed width
-                    means the wrapper's shrinking `overflow-hidden` clip is the only thing that
-                    changes per frame; the panel's own layout is computed once.
-                  */}
-                  <div className="h-full" style={{ width: rightPanelWidth }}>
-                    {rightPanel}
-                  </div>
-                </motion.div>
+        {/* Right Panel Resize Slider */}
+        {Boolean(rightPanel) && (
+          onRightPanelWidthChange && !isQueuePanelCollapsed ? (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize right panel"
+              tabIndex={0}
+              className={cn(
+                "group relative z-20 flex h-full w-2 shrink-0 cursor-col-resize select-none items-center justify-center transition-colors",
+                "before:absolute before:-inset-x-1.5 before:inset-y-0 before:z-10",
+                isDraggingRight && "cursor-col-resize",
               )}
-            </AnimatePresence>
+              onPointerDown={handleRightResizePointerDown}
+              onPointerMove={handleRightResizePointerMove}
+              onPointerUp={handleRightResizePointerUp}
+              onPointerCancel={handleRightResizePointerUp}
+              onDoubleClick={() => {
+                onRightPanelWidthChange(DEFAULT_QUEUE_PANEL_WIDTH);
+              }}
+            >
+              <div
+                className={cn(
+                  "h-full w-0.5 rounded-full transition-colors duration-150",
+                  isDraggingRight
+                    ? "bg-white/40"
+                    : "bg-transparent group-hover:bg-white/20",
+                )}
+              />
+            </div>
+          ) : (
+            <div className="w-2 shrink-0" aria-hidden="true" />
+          )
+        )}
+
+        <AnimatePresence initial={false}>
+          {rightPanel && (
+            <motion.div
+              ref={rightPanelRef}
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: rightPanelWidth, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={
+                isDraggingRight
+                  ? { duration: 0 }
+                  : {
+                      width: { duration: 0.22, ease: [0.16, 1, 0.3, 1] },
+                      opacity: { duration: 0.16, ease: "easeOut" },
+                    }
+              }
+              className="relative min-h-0 shrink-0 overflow-hidden rounded-2xl bg-background"
+            >
+              <div className="h-full" style={{ width: rightPanelWidth }}>
+                {rightPanel}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>

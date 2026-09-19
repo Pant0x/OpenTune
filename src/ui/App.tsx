@@ -55,7 +55,12 @@ import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
 import { QueuePanel } from "./components/player/QueuePanel";
 import { MiniWindowSync } from "./components/player/MiniWindowSync";
-import { useQueuePanelCollapsed } from "./settings/queuePanel";
+import {
+  readQueuePanelWidth,
+  useQueuePanelCollapsed,
+  writeQueuePanelWidth,
+} from "./settings/queuePanel";
+import { readSidebarWidth, writeSidebarWidth } from "./settings/sidebarMode";
 import { useNativeWindowControls } from "./settings/windowControls";
 
 /** Wide enough for a 44px cover plus breathing room, matching the sidebar rail's feel. */
@@ -269,14 +274,30 @@ export default function App() {
   const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>([]);
   const [forwardHistory, setForwardHistory] = useState<AppViewState[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  /*
-   * The sidebar is a fixed icon rail. 72px sits below the Sidebar's own text-hide threshold,
-   * so every row renders as artwork only and explains itself through a tooltip on hover.
-   * Still state rather than a constant because TitleBar aligns its home button to this width.
-   */
-  const [sidebarWidth, setSidebarWidth] = useState(62);
-  const [queuePanelWidth, setQueuePanelWidth] = useState(380);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [queuePanelWidth, setQueuePanelWidth] = useState(readQueuePanelWidth);
   const isQueuePanelCollapsed = useQueuePanelCollapsed();
+
+  useEffect(() => {
+    const handleSidebarWidthChange = () => setSidebarWidth(readSidebarWidth());
+    const handleQueuePanelWidthChange = () => setQueuePanelWidth(readQueuePanelWidth());
+    window.addEventListener("sidebar-width-change", handleSidebarWidthChange);
+    window.addEventListener("queue-panel-width-change", handleQueuePanelWidthChange);
+    return () => {
+      window.removeEventListener("sidebar-width-change", handleSidebarWidthChange);
+      window.removeEventListener("queue-panel-width-change", handleQueuePanelWidthChange);
+    };
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((newWidth: number) => {
+    setSidebarWidth(newWidth);
+    writeSidebarWidth(newWidth);
+  }, []);
+
+  const handleQueuePanelWidthChange = useCallback((newWidth: number) => {
+    setQueuePanelWidth(newWidth);
+    writeQueuePanelWidth(newWidth);
+  }, []);
   const nativeWindowControls = useNativeWindowControls();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(() =>
     readLocalOnboardingComplete() ? true : null
@@ -1252,7 +1273,7 @@ export default function App() {
       <div className="flex min-h-0 flex-1 flex-col">
         <Layout
           sidebarWidth={sidebarWidth}
-          onSidebarWidthChange={setSidebarWidth}
+          onSidebarWidthChange={handleSidebarWidthChange}
           onNavigateAlbum={handleNavigateAlbum}
           onNavigatePlaylist={handleNavigatePlaylist}
           onNavigateArtist={handleNavigateArtist}
@@ -1278,7 +1299,8 @@ export default function App() {
           }
           rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} /> : undefined}
           rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
-          onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : setQueuePanelWidth}
+          onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange}
+          isQueuePanelCollapsed={isQueuePanelCollapsed}
           scrollKey={activeViewKey}
         >
           <ErrorBoundary

@@ -1,8 +1,11 @@
 import { useSyncExternalStore } from "react";
 import {
   hydrateLocalBooleanSetting,
+  hydrateLocalJsonSetting,
   readLocalBooleanSetting,
+  readLocalJsonSetting,
   writeLocalBooleanSetting,
+  writeLocalJsonSetting,
 } from "../../internal/durableLocalSetting";
 
 /**
@@ -13,6 +16,32 @@ import {
  */
 const QUEUE_PANEL_COLLAPSED_STORAGE_KEY = "queue-panel-collapsed";
 const CHANGE_EVENT = "queue-panel-change";
+
+export const DEFAULT_QUEUE_PANEL_WIDTH = 380;
+export const MIN_QUEUE_PANEL_WIDTH = 260;
+export const MAX_QUEUE_PANEL_WIDTH = 500;
+
+const QUEUE_PANEL_WIDTH_STORAGE_KEY = "amber:queue-panel-width";
+const QUEUE_PANEL_WIDTH_CHANGE_EVENT = "queue-panel-width-change";
+
+export function isQueuePanelWidth(value: unknown): value is number {
+  return typeof value === "number" && !Number.isNaN(value) && value >= 200 && value <= 700;
+}
+
+export function readQueuePanelWidth(): number {
+  return (
+    readLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, isQueuePanelWidth) ??
+    DEFAULT_QUEUE_PANEL_WIDTH
+  );
+}
+
+export function writeQueuePanelWidth(width: number): void {
+  const clamped = Math.round(
+    Math.max(MIN_QUEUE_PANEL_WIDTH, Math.min(MAX_QUEUE_PANEL_WIDTH, width)),
+  );
+  writeLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, clamped);
+  window.dispatchEvent(new Event(QUEUE_PANEL_WIDTH_CHANGE_EVENT));
+}
 
 function readQueuePanelCollapsed() {
   return readLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, true);
@@ -38,8 +67,11 @@ export function toggleQueuePanelCollapsed() {
 
 export async function hydrateQueuePanelSettings() {
   await hydrateLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, true, CHANGE_EVENT);
+  await hydrateLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, isQueuePanelWidth);
+  window.dispatchEvent(new Event(QUEUE_PANEL_WIDTH_CHANGE_EVENT));
 }
 
 export function useQueuePanelCollapsed() {
   return useSyncExternalStore(subscribe, readQueuePanelCollapsed, () => true);
 }
+

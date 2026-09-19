@@ -22,6 +22,27 @@ const DEFAULT_MODE: SidebarMode = "expanded";
 /** Rail width when collapsed. Wide enough for a 40px tile plus its padding. */
 export const SIDEBAR_COLLAPSED_WIDTH = 62;
 export const SIDEBAR_EXPANDED_WIDTH = 268;
+export const SIDEBAR_MIN_EXPANDED_WIDTH = 160;
+export const SIDEBAR_MAX_EXPANDED_WIDTH = 440;
+
+const SIDEBAR_WIDTH_STORAGE_KEY = "amber:sidebar-width";
+const SIDEBAR_WIDTH_CHANGE_EVENT = "sidebar-width-change";
+
+export function isSidebarWidth(value: unknown): value is number {
+  return typeof value === "number" && !Number.isNaN(value) && value >= 140 && value <= 600;
+}
+
+export function readSidebarWidth(): number {
+  return readLocalJsonSetting(SIDEBAR_WIDTH_STORAGE_KEY, isSidebarWidth) ?? SIDEBAR_EXPANDED_WIDTH;
+}
+
+export function writeSidebarWidth(width: number): void {
+  const clamped = Math.round(
+    Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, width)),
+  );
+  writeLocalJsonSetting(SIDEBAR_WIDTH_STORAGE_KEY, clamped);
+  window.dispatchEvent(new Event(SIDEBAR_WIDTH_CHANGE_EVENT));
+}
 
 export function toggleSidebarMode() {
   const current = getSidebarMode();
@@ -71,6 +92,7 @@ const MIGRATION_KEY = "sidebar-mode-spotify-panel-seen";
 
 export async function hydrateSidebarSettings() {
   await hydrateLocalJsonSetting(STORAGE_KEY, isSidebarMode);
+  await hydrateLocalJsonSetting(SIDEBAR_WIDTH_STORAGE_KEY, isSidebarWidth);
   try {
     if (!localStorage.getItem(MIGRATION_KEY)) {
       writeLocalJsonSetting(STORAGE_KEY, DEFAULT_MODE);
@@ -80,6 +102,7 @@ export async function hydrateSidebarSettings() {
     // A failed migration must never block the rest of boot.
   }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+  window.dispatchEvent(new Event(SIDEBAR_WIDTH_CHANGE_EVENT));
 }
 
 export function useSidebarMode(): SidebarMode {
@@ -92,8 +115,12 @@ export function useSidebarMode(): SidebarMode {
  * `hover` only counts as hovered when the pointer is actually over the rail — a keyboard user
  * tabbing through the list never triggers it, which is why focus widens it too at the call site.
  */
-export function resolveSidebarWidth(mode: SidebarMode, isHovered: boolean): number {
-  if (mode === "expanded") return SIDEBAR_EXPANDED_WIDTH;
+export function resolveSidebarWidth(
+  mode: SidebarMode,
+  isHovered: boolean,
+  expandedWidth: number = SIDEBAR_EXPANDED_WIDTH,
+): number {
+  if (mode === "expanded") return expandedWidth;
   if (mode === "collapsed") return SIDEBAR_COLLAPSED_WIDTH;
-  return isHovered ? SIDEBAR_EXPANDED_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
+  return isHovered ? expandedWidth : SIDEBAR_COLLAPSED_WIDTH;
 }
