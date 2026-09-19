@@ -290,7 +290,7 @@ function buildPinnedShelves(
       if (combinedPlaylists.length > 0 || userAlbums.length > 0 || likedSongs.length > 0) {
         result.push({
           title: section.title,
-          tracks: [],
+          tracks: likedSongs.slice(0, 10),
           albums: userAlbums.slice(0, 10),
           playlists: combinedPlaylists.slice(0, 16),
           artists: [],

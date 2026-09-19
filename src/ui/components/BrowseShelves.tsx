@@ -101,23 +101,40 @@ function BrowseShelfSection({
 }) {
   const { openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const tracksScrollRef = useRef<HTMLDivElement>(null);
+  const cardsScrollRef = useRef<HTMLDivElement>(null);
+  const artistsScrollRef = useRef<HTMLDivElement>(null);
 
-  const scroll = (direction: "left" | "right") => {
-    if (!scrollRef.current) return;
+  const scrollTracks = (direction: "left" | "right") => {
+    if (!tracksScrollRef.current) return;
     const distance = direction === "left" ? -480 : 480;
-    scrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
+    tracksScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
+  };
+
+  const scrollCards = (direction: "left" | "right") => {
+    if (!cardsScrollRef.current) return;
+    const distance = direction === "left" ? -480 : 480;
+    cardsScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
+  };
+
+  const scrollArtists = (direction: "left" | "right") => {
+    if (!artistsScrollRef.current) return;
+    const distance = direction === "left" ? -480 : 480;
+    artistsScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
   };
 
   const playShelfTrack = (shelfTracks: Track[], track: Track) => {
     void playerController.playTrackById(track.id, shelfTracks, true);
   };
 
+  const hasTracks = shelf.tracks.length > 0;
   const cardsCount = shelf.playlists.length + shelf.albums.length;
-  const hasMultipleItems =
-    shelf.tracks.length > 4 ||
-    cardsCount > 4 ||
-    shelf.artists.length > 4;
+  const hasCards = cardsCount > 0;
+  const hasArtists = shelf.artists.length > 0;
+
+  const hasMultipleTrackItems = shelf.tracks.length > 4;
+  const hasMultipleCardItems = cardsCount > 4;
+  const hasMultipleArtistItems = shelf.artists.length > 4;
 
   const isLongListens = shelf.title.toLowerCase().includes("long listen");
 
@@ -142,43 +159,87 @@ function BrowseShelfSection({
         </div>
 
         <div className="flex items-center gap-2">
-          {shelf.tracks.length > 0 && (
+          {hasTracks && (
             <button
               type="button"
               onClick={() => playShelfTrack(shelf.tracks, shelf.tracks[0])}
-              className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground transition-all hover:bg-muted hover:scale-105 active:scale-95 border border-border/40"
+              className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground transition-all hover:bg-muted hover:scale-105 active:scale-95 border border-border/40 cursor-pointer"
             >
               <PlayActiveIcon size={14} className="text-primary" />
               <span>Play all</span>
             </button>
           )}
 
-          {hasMultipleItems && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="Scroll left"
-                onClick={() => scroll("left")}
-                className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40"
-              >
-                <ArrowLeftIcon size={14} />
-              </button>
-              <button
-                type="button"
-                aria-label="Scroll right"
-                onClick={() => scroll("right")}
-                className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40"
-              >
-                <ArrowRightIcon size={14} />
-              </button>
-            </div>
-          )}
+          {hasTracks ? (
+            hasMultipleTrackItems && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Scroll left"
+                  onClick={() => scrollTracks("left")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowLeftIcon size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Scroll right"
+                  onClick={() => scrollTracks("right")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowRightIcon size={14} />
+                </button>
+              </div>
+            )
+          ) : hasCards ? (
+            hasMultipleCardItems && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Scroll left"
+                  onClick={() => scrollCards("left")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowLeftIcon size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Scroll right"
+                  onClick={() => scrollCards("right")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowRightIcon size={14} />
+                </button>
+              </div>
+            )
+          ) : hasArtists ? (
+            hasMultipleArtistItems && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Scroll left"
+                  onClick={() => scrollArtists("left")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowLeftIcon size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Scroll right"
+                  onClick={() => scrollArtists("right")}
+                  className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                >
+                  <ArrowRightIcon size={14} />
+                </button>
+              </div>
+            )
+          ) : null}
         </div>
       </div>
 
-      {shelf.tracks.length > 0 && (
+      {hasTracks && (
         <div
-          ref={scrollRef}
+          ref={tracksScrollRef}
           className={cn(
             shelf.tracks.length >= 4
               ? "grid grid-rows-4 grid-flow-col auto-cols-[280px] sm:auto-cols-[320px] md:auto-cols-[350px] gap-x-5 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
@@ -233,81 +294,104 @@ function BrowseShelfSection({
         </div>
       )}
 
-      {(shelf.playlists.length > 0 || shelf.albums.length > 0) && (
-        <div
-          ref={scrollRef}
-          onWheel={(e) => {
-            if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey) {
-              e.currentTarget.scrollLeft += e.deltaY;
-            }
-          }}
-          className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
-        >
-          {shelf.playlists.map((playlist) => (
-            <div
-              key={playlist.id}
-              className="w-40 shrink-0 snap-start"
-            >
-              <PlaylistTile
-                playlist={playlist}
-                onOpen={() => onOpenPlaylist(playlist)}
-                onContextMenu={(event) => openPlaylistMenu(event, playlist)}
-              />
+      {hasCards && (
+        <div className="flex flex-col gap-2">
+          {hasTracks && (
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm font-semibold text-muted-foreground">Playlists & albums</span>
+              {hasMultipleCardItems && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Scroll playlists left"
+                    onClick={() => scrollCards("left")}
+                    className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                  >
+                    <ArrowLeftIcon size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Scroll playlists right"
+                    onClick={() => scrollCards("right")}
+                    className="grid size-7 place-items-center rounded-full bg-card text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95 border border-border/40 cursor-pointer"
+                  >
+                    <ArrowRightIcon size={14} />
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
-          {shelf.albums.map((album) => {
-            const releaseLabel = album.releaseType === "ep" ? "EP" : album.releaseType === "single" ? "Single" : "Album";
-            return (
+          )}
+
+          <div
+            ref={cardsScrollRef}
+            className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+          >
+            {shelf.playlists.map((playlist) => (
               <div
-                key={album.id}
+                key={playlist.id}
                 className="w-40 shrink-0 snap-start"
-                onContextMenu={(event) => openAlbumMenu(event, album)}
               >
-                <AlbumCard
-                  artworkUrl={album.artworkUrl}
-                  title={album.title}
-                  subtitleContent={
-                    album.artist ? (
-                      <span className="inline-flex items-center gap-1 flex-wrap">
-                        <span>{releaseLabel}</span>
-                        <span>•</span>
-                        {(album.artists && album.artists.length > 0
-                          ? album.artists
-                          : album.artist.split(",").map((n) => ({ id: "", name: n.trim() })).filter((a) => a.name.length > 0)
-                        ).map((art, idx, arr) => (
-                          <span key={`${art.name}:${idx}`} className="inline-flex items-center">
-                            <span
-                              role="link"
-                              tabIndex={0}
-                              className="cursor-pointer hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenArtist({
-                                  id: art.id ?? "",
-                                  name: art.name,
-                                });
-                              }}
-                            >
-                              {art.name}
-                            </span>
-                            {idx < arr.length - 1 && <span className="mr-1">,</span>}
-                          </span>
-                        ))}
-                      </span>
-                    ) : undefined
-                  }
-                  onClick={() => onOpenAlbum(album)}
-                  onContextMenu={(event) => openAlbumMenu(event, album)}
+                <PlaylistTile
+                  playlist={playlist}
+                  onOpen={() => onOpenPlaylist(playlist)}
+                  onContextMenu={(event) => openPlaylistMenu(event, playlist)}
                 />
               </div>
-            );
-          })}
+            ))}
+            {shelf.albums.map((album) => {
+              const releaseLabel = album.releaseType === "ep" ? "EP" : album.releaseType === "single" ? "Single" : "Album";
+              return (
+                <div
+                  key={album.id}
+                  className="w-40 shrink-0 snap-start"
+                  onContextMenu={(event) => openAlbumMenu(event, album)}
+                >
+                  <AlbumCard
+                    artworkUrl={album.artworkUrl}
+                    title={album.title}
+                    subtitleContent={
+                      album.artist ? (
+                        <span className="inline-flex items-center gap-1 flex-wrap">
+                          <span>{releaseLabel}</span>
+                          <span>•</span>
+                          {(album.artists && album.artists.length > 0
+                            ? album.artists
+                            : album.artist.split(",").map((n) => ({ id: "", name: n.trim() })).filter((a) => a.name.length > 0)
+                          ).map((art, idx, arr) => (
+                            <span key={`${art.name}:${idx}`} className="inline-flex items-center">
+                              <span
+                                role="link"
+                                tabIndex={0}
+                                className="cursor-pointer hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenArtist({
+                                    id: art.id ?? "",
+                                    name: art.name,
+                                  });
+                                }}
+                              >
+                                {art.name}
+                              </span>
+                              {idx < arr.length - 1 && <span className="mr-1">,</span>}
+                            </span>
+                          ))}
+                        </span>
+                      ) : undefined
+                    }
+                    onClick={() => onOpenAlbum(album)}
+                    onContextMenu={(event) => openAlbumMenu(event, album)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {shelf.artists.length > 0 && (
+      {hasArtists && (
         <div
-          ref={scrollRef}
+          ref={artistsScrollRef}
           className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
         >
           {shelf.artists.map((artist) => (
