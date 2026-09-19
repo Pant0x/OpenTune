@@ -14,7 +14,7 @@ import {
 import type { PlayerSession } from "../../player/PlayerController";
 import type { Track } from "../../datasource/types";
 import { playerUIStore } from "../stores/playerUIStore";
-import { SpotifyService, type SpotifyArtistOverview } from "../../services/SpotifyService";
+import { SpotifyService, type SpotifyArtistOverview, type SpotifyTrackCredits } from "../../services/SpotifyService";
 import { SpotifyCreditsModal } from "../components/player/SpotifyCreditsModal";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useArtistNavigation } from "../components/ArtistLinks";
@@ -158,6 +158,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const libraryState = useLibraryState();
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
   const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
+  const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
   const [isFollowingArtist, setIsFollowingArtist] = useState(false);
 
   // Lyrics (shared per-track fetch: same data as the side card, keyed by track id)
@@ -255,6 +256,23 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       active = false;
     };
   }, [track?.artist]);
+
+  // Fetch Track Credits from Spotify
+  useEffect(() => {
+    setCredits(null);
+    if (!track?.title || !track?.artist || track.source === "local") {
+      return;
+    }
+    let active = true;
+    void SpotifyService.getTrackCredits(track.title, track.artist).then((data) => {
+      if (active && data) {
+        setCredits(data);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [track?.title, track?.artist]);
 
   // Follow state unified across About-the-artist, Credits, and Library
   useEffect(() => {
@@ -635,38 +653,84 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                 </div>
 
                 <div className="rounded-2xl bg-white/5 border border-white/10 p-5 flex flex-col gap-4 shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-base font-bold text-white">{track?.artist}</span>
-                      <span className="text-xs text-white/60">Main Artist</span>
+                  {/* Performers */}
+                  <div className="flex flex-col gap-2.5">
+                    {credits?.artists?.length ? (
+                      credits.artists.slice(0, 3).map((a, i) => (
+                        <div key={i} className="flex items-center justify-between gap-3">
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-white truncate">{a.name}</span>
+                            <span className="text-xs text-white/60 truncate">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
+                          </div>
+                          {i === 0 && (
+                            <button
+                              type="button"
+                              onClick={toggleFollowingArtist}
+                              className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors cursor-pointer shrink-0",
+                                isFollowingArtist
+                                  ? "border-white/60 bg-white text-black hover:bg-white/90"
+                                  : "border-white/30 text-white hover:bg-white/15",
+                              )}
+                            >
+                              {isFollowingArtist ? "Following" : "Follow"}
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-base font-bold text-white">{track?.artist}</span>
+                          <span className="text-xs text-white/60">Main Artist</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={toggleFollowingArtist}
+                          className={cn(
+                            "rounded-full border px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
+                            isFollowingArtist
+                              ? "border-white/60 bg-white text-black hover:bg-white/90"
+                              : "border-white/30 text-white hover:bg-white/15",
+                          )}
+                        >
+                          {isFollowingArtist ? "Following" : "Follow"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Writers */}
+                  {credits?.writers?.length ? (
+                    <div className="flex flex-col border-t border-white/10 pt-3 gap-1">
+                      {credits.writers.slice(0, 2).map((w, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-white/90 truncate">{w.name}</span>
+                          <span className="text-xs text-white/60 shrink-0">{w.role || "Composer, Lyricist"}</span>
+                        </div>
+                      ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={toggleFollowingArtist}
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs font-semibold transition-colors cursor-pointer",
-                        isFollowingArtist
-                          ? "border-white/60 bg-white text-black hover:bg-white/90"
-                          : "border-white/30 text-white hover:bg-white/15",
-                      )}
-                    >
-                      {isFollowingArtist ? "Following" : "Follow"}
-                    </button>
-                  </div>
+                  ) : null}
 
-                  <div className="flex flex-col border-t border-white/10 pt-3">
-                    <span className="text-sm font-semibold text-white/90">
-                      {track?.artist}
-                    </span>
-                    <span className="text-xs text-white/60">Composer • Lyricist</span>
-                  </div>
+                  {/* Producers */}
+                  {credits?.producers?.length ? (
+                    <div className="flex flex-col border-t border-white/10 pt-3 gap-1">
+                      {credits.producers.slice(0, 2).map((p, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-white/90 truncate">{p.name}</span>
+                          <span className="text-xs text-white/60 shrink-0">{p.role || "Producer"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
 
-                  <div className="flex flex-col border-t border-white/10 pt-3">
-                    <span className="text-sm font-semibold text-white/90">
-                      Production Team
-                    </span>
-                    <span className="text-xs text-white/60">Engineer • Producer</span>
-                  </div>
+                  {/* Source / Label */}
+                  {(credits?.label || track?.album) && (
+                    <div className="flex flex-col border-t border-white/10 pt-3 text-xs text-white/60">
+                      <span className="font-semibold uppercase tracking-wider text-[10px] text-white/40 mb-0.5">Source</span>
+                      <span className="truncate">{credits?.label || `Released by ${track?.album}`}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

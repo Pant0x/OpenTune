@@ -440,6 +440,20 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     };
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.album]);
 
+  useEffect(() => {
+    setCredits(null);
+    if (!currentTrack || currentTrack.source === "local" || !currentTrack.title || !currentTrack.artist) return;
+    let active = true;
+    void SpotifyService.getTrackCredits(currentTrack.title, currentTrack.artist).then((data) => {
+      if (active && data) {
+        setCredits(data);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentTrack?.title, currentTrack?.artist]);
+
   const effectiveArtwork = spotifyCover || currentTrack?.artworkUrl;
   const isFollowedLocally = useFollowedArtistLocally(
     currentTrack?.artist ?? null,
@@ -1021,7 +1035,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                       artists={currentTrack.artists}
                       fallback={currentTrack.artist}
                       trackTitle={currentTrack.title}
-                      className="hover:text-white hover:underline transition-all"
+                      className="text-[#b3b3b3] hover:text-white transition-colors no-underline"
                     />
                   </div>
                 </div>
@@ -1214,7 +1228,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 <div className="p-4 pt-2 flex flex-col gap-3 shrink-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-xl text-white leading-tight truncate group-hover/artist:underline">
+                      <span className="font-bold text-xl text-white leading-tight truncate">
                         {currentTrack.artist}
                       </span>
                       {artistOverview?.monthlyListeners ? (

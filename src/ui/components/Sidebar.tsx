@@ -41,7 +41,7 @@ import {
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
 import { getAppSetting, setAppSetting } from "../../internal/appSettings";
-import { resolveSidebarWidth, useSidebarMode } from "../settings/sidebarMode";
+import { resolveSidebarWidth, toggleSidebarMode, useSidebarMode } from "../settings/sidebarMode";
 import { ArtistLinks } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
@@ -1249,73 +1249,105 @@ export function Sidebar({
           )}
         >
           {!shouldHideText ? (
-            <div
-              className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar"
-              role="group"
-              aria-label="Library filters"
-            >
-              {TOGGLE_LIBRARY_VIEWS.map((view) => {
-                const isActive = libraryView === view.value;
-                return (
-                  <button
-                    key={view.value}
-                    type="button"
-                    className={cn(
-                      "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive
-                        ? "bg-white text-black font-bold shadow-xs"
-                        : "bg-white/[0.08] text-white/85 hover:bg-white/[0.14] hover:text-white",
-                    )}
-                    aria-pressed={isActive}
-                    aria-label={view.label}
-                    onClick={() => toggleLibraryView(view.value)}
-                  >
-                    <span>{view.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div
-              className="flex shrink-0 flex-col items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
-              role="group"
-              aria-label="Library filters"
-            >
-              {TOGGLE_LIBRARY_VIEWS.map((view) => {
-                const isActive = libraryView === view.value;
-                return (
-                  <SidebarItemTooltip
-                    key={view.value}
-                    enabled={shouldHideText}
-                    title={view.label}
-                    subtitle={view.hint}
-                  >
+            <>
+              <div
+                className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar"
+                role="group"
+                aria-label="Library filters"
+              >
+                {TOGGLE_LIBRARY_VIEWS.map((view) => {
+                  const isActive = libraryView === view.value;
+                  return (
                     <button
+                      key={view.value}
                       type="button"
                       className={cn(
-                        "relative flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer select-none",
+                        "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         isActive
                           ? "bg-white text-black font-bold shadow-xs"
-                          : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                          : "bg-white/[0.08] text-white/85 hover:bg-white/[0.14] hover:text-white",
                       )}
                       aria-pressed={isActive}
                       aria-label={view.label}
                       onClick={() => toggleLibraryView(view.value)}
                     >
-                      {isActive && (
-                        <motion.span
-                          layoutId="sidebar-library-view-collapsed"
-                          transition={{ type: "spring", stiffness: 520, damping: 42 }}
-                          className="absolute inset-0 -z-10 rounded-full bg-white shadow-xs"
-                        />
-                      )}
-                      <view.icon size={16} aria-hidden="true" className={isActive ? "text-black" : "currentColor"} />
+                      <span>{view.label}</span>
                     </button>
-                  </SidebarItemTooltip>
-                );
-              })}
+                  );
+                })}
+              </div>
+              <Tooltip side="bottom" content="Collapse sidebar">
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarMode()}
+                  aria-label="Collapse sidebar"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                >
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                    <path d="m15 9-3 3 3 3" />
+                  </svg>
+                </button>
+              </Tooltip>
+            </>
+          ) : (
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <Tooltip side="right" content="Expand sidebar">
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarMode()}
+                  aria-label="Expand sidebar"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                >
+                  <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                    <path d="m13 9 3 3-3 3" />
+                  </svg>
+                </button>
+              </Tooltip>
+              <div
+                className="flex shrink-0 flex-col items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
+                role="group"
+                aria-label="Library filters"
+              >
+                {TOGGLE_LIBRARY_VIEWS.map((view) => {
+                  const isActive = libraryView === view.value;
+                  return (
+                    <SidebarItemTooltip
+                      key={view.value}
+                      enabled={shouldHideText}
+                      title={view.label}
+                      subtitle={view.hint}
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "relative flex size-8 items-center justify-center rounded-full transition-colors cursor-pointer select-none",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isActive
+                            ? "bg-white text-black font-bold shadow-xs"
+                            : "text-muted-foreground hover:text-foreground hover:bg-white/10",
+                        )}
+                        aria-pressed={isActive}
+                        aria-label={view.label}
+                        onClick={() => toggleLibraryView(view.value)}
+                      >
+                        {isActive && (
+                          <motion.span
+                            layoutId="sidebar-library-view-collapsed"
+                            transition={{ type: "spring", stiffness: 520, damping: 42 }}
+                            className="absolute inset-0 -z-10 rounded-full bg-white shadow-xs"
+                          />
+                        )}
+                        <view.icon size={16} aria-hidden="true" className={isActive ? "text-black" : "currentColor"} />
+                      </button>
+                    </SidebarItemTooltip>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
