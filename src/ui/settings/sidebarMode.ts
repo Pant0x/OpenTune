@@ -21,9 +21,9 @@ const DEFAULT_MODE: SidebarMode = "expanded";
 
 /** Rail width when collapsed. Wide enough for a 40px tile plus its padding. */
 export const SIDEBAR_COLLAPSED_WIDTH = 62;
-export const SIDEBAR_EXPANDED_WIDTH = 268;
-export const SIDEBAR_MIN_EXPANDED_WIDTH = 160;
-export const SIDEBAR_MAX_EXPANDED_WIDTH = 440;
+export const SIDEBAR_EXPANDED_WIDTH = 281;
+export const SIDEBAR_MIN_EXPANDED_WIDTH = 214;
+export const SIDEBAR_MAX_EXPANDED_WIDTH = 281;
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "amber:sidebar-width";
 const SIDEBAR_WIDTH_CHANGE_EVENT = "sidebar-width-change";
@@ -33,7 +33,11 @@ export function isSidebarWidth(value: unknown): value is number {
 }
 
 export function readSidebarWidth(): number {
-  return readLocalJsonSetting(SIDEBAR_WIDTH_STORAGE_KEY, isSidebarWidth) ?? SIDEBAR_EXPANDED_WIDTH;
+  const parsed = readLocalJsonSetting(SIDEBAR_WIDTH_STORAGE_KEY, isSidebarWidth);
+  if (parsed === null) return SIDEBAR_EXPANDED_WIDTH;
+  return Math.round(
+    Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, parsed)),
+  );
 }
 
 export function writeSidebarWidth(width: number): void {

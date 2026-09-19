@@ -484,14 +484,13 @@ function CreatePlaylistButton({
   );
 }
 
-/** The list filter's options. Videos were removed: saving a video saves the song. */
-const LIBRARY_VIEWS: Array<{
-  value: LibraryView;
+/** Toggle buttons for filtering by Albums or Artists. Playlists are shown by default. */
+const TOGGLE_LIBRARY_VIEWS: Array<{
+  value: "albums" | "artists";
   label: string;
   hint: string;
   icon: any;
 }> = [
-  { value: "playlists", label: "Playlists", hint: "Your playlists", icon: PlaylistIcon },
   { value: "albums", label: "Albums", hint: "Saved albums", icon: AlbumIcon },
   { value: "artists", label: "Artists", hint: "Subscribed artists", icon: UserIcon },
 ];
@@ -595,6 +594,9 @@ export function Sidebar({
   const libraryState = useLibraryState();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const [libraryView, setLibraryView] = useState<LibraryView>("playlists");
+  const toggleLibraryView = (targetView: "albums" | "artists") => {
+    setLibraryView((current) => (current === targetView ? "playlists" : targetView));
+  };
   const [recentPlaylistsRevision, setRecentPlaylistsRevision] = useState(0);
   const [playlistOrder, setPlaylistOrder] = useState<string[]>(() =>
     loadOrderFromStorage(PLAYLIST_ORDER_KEY, PLAYLIST_LIKED_ORDER_MIGRATION_KEY)
@@ -1251,9 +1253,9 @@ export function Sidebar({
             <div
               className="flex min-w-0 flex-1 items-center gap-1.5 flex-nowrap overflow-x-auto no-scrollbar"
               role="group"
-              aria-label="Library view"
+              aria-label="Library filters"
             >
-              {LIBRARY_VIEWS.map((view) => {
+              {TOGGLE_LIBRARY_VIEWS.map((view) => {
                 const isActive = libraryView === view.value;
                 return (
                   <button
@@ -1268,7 +1270,7 @@ export function Sidebar({
                     )}
                     aria-pressed={isActive}
                     aria-label={view.label}
-                    onClick={() => setLibraryView(view.value)}
+                    onClick={() => toggleLibraryView(view.value)}
                   >
                     <span>{view.label}</span>
                   </button>
@@ -1279,9 +1281,9 @@ export function Sidebar({
             <div
               className="flex shrink-0 flex-col items-center gap-0.5 rounded-full bg-card/40 p-0.5 border border-border"
               role="group"
-              aria-label="Library view"
+              aria-label="Library filters"
             >
-              {LIBRARY_VIEWS.map((view) => {
+              {TOGGLE_LIBRARY_VIEWS.map((view) => {
                 const isActive = libraryView === view.value;
                 return (
                   <SidebarItemTooltip
@@ -1299,7 +1301,7 @@ export function Sidebar({
                       )}
                       aria-pressed={isActive}
                       aria-label={view.label}
-                      onClick={() => setLibraryView(view.value)}
+                      onClick={() => toggleLibraryView(view.value)}
                     >
                       {isActive && (
                         <motion.span

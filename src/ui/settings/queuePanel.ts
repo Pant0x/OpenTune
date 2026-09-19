@@ -17,9 +17,9 @@ import {
 const QUEUE_PANEL_COLLAPSED_STORAGE_KEY = "queue-panel-collapsed";
 const CHANGE_EVENT = "queue-panel-change";
 
-export const DEFAULT_QUEUE_PANEL_WIDTH = 380;
-export const MIN_QUEUE_PANEL_WIDTH = 260;
-export const MAX_QUEUE_PANEL_WIDTH = 500;
+export const DEFAULT_QUEUE_PANEL_WIDTH = 352;
+export const MIN_QUEUE_PANEL_WIDTH = 290;
+export const MAX_QUEUE_PANEL_WIDTH = 352;
 
 const QUEUE_PANEL_WIDTH_STORAGE_KEY = "amber:queue-panel-width";
 const QUEUE_PANEL_WIDTH_CHANGE_EVENT = "queue-panel-width-change";
@@ -29,9 +29,10 @@ export function isQueuePanelWidth(value: unknown): value is number {
 }
 
 export function readQueuePanelWidth(): number {
-  return (
-    readLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, isQueuePanelWidth) ??
-    DEFAULT_QUEUE_PANEL_WIDTH
+  const parsed = readLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, isQueuePanelWidth);
+  if (parsed === null) return DEFAULT_QUEUE_PANEL_WIDTH;
+  return Math.round(
+    Math.max(MIN_QUEUE_PANEL_WIDTH, Math.min(MAX_QUEUE_PANEL_WIDTH, parsed)),
   );
 }
 
