@@ -705,7 +705,13 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
  * playback. The sung portion is crisp #ffffff with luminous text-shadow glow, and the unsung portion
  * is softly tinted white with a smooth gradient wash ramp.
  */
-.lyric-sweep {
+/*
+ * Lyrics: snake karaoke sweep (word-by-word sequential progression across multi-line wrapped text).
+ * When word tokens are present, each word is an inline element (.lyric-word) that wipes
+ * sequentially along its own bounds, preventing multi-line text from illuminating on 2 lines simultaneously.
+ * For un-tokenized elements, fallback whole-line sweep is preserved.
+ */
+.lyric-sweep:not(:has(.lyric-word)) {
   background-image: linear-gradient(
     90deg,
     #ffffff 0%,
@@ -722,9 +728,9 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 /* For RTL Arabic language */
-[dir="rtl"] .lyric-sweep,
-.lyric-sweep[dir="rtl"],
-.lyric-sweep:dir(rtl) {
+[dir="rtl"] .lyric-sweep:not(:has(.lyric-word)),
+.lyric-sweep[dir="rtl"]:not(:has(.lyric-word)),
+.lyric-sweep:dir(rtl):not(:has(.lyric-word)) {
   background-image: linear-gradient(
     270deg,
     #ffffff 0%,
@@ -738,6 +744,63 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
   will-change: background-size;
+}
+
+/* Individual snake lyric words */
+.lyric-word {
+  display: inline-block;
+  color: inherit;
+  filter: inherit;
+  transition: color 120ms ease;
+  will-change: background-size, color;
+}
+
+.lyric-sweep .lyric-word[data-state="sung"],
+.is-active .lyric-word[data-state="sung"] {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.65));
+}
+
+.lyric-sweep .lyric-word[data-state="unsung"],
+.is-active .lyric-word[data-state="unsung"] {
+  color: rgba(255, 255, 255, 0.40);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.40);
+  filter: none;
+}
+
+.lyric-sweep .lyric-word[data-state="active"],
+.is-active .lyric-word[data-state="active"] {
+  background-image: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #ffffff clamp(0%, var(--w-sweep, 0%), 100%),
+    rgba(255, 255, 255, 0.40) clamp(0%, calc(var(--w-sweep, 0%) + 8%), 100%),
+    rgba(255, 255, 255, 0.40) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #ffffff;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+}
+
+[dir="rtl"] .lyric-sweep .lyric-word[data-state="active"],
+[dir="rtl"] .is-active .lyric-word[data-state="active"],
+.lyric-word[dir="rtl"][data-state="active"],
+.lyric-word:dir(rtl)[data-state="active"] {
+  background-image: linear-gradient(
+    270deg,
+    #ffffff 0%,
+    #ffffff clamp(0%, var(--w-sweep, 0%), 100%),
+    rgba(255, 255, 255, 0.40) clamp(0%, calc(var(--w-sweep, 0%) + 8%), 100%),
+    rgba(255, 255, 255, 0.40) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #ffffff;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
 }
 
 /*

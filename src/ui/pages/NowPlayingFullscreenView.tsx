@@ -24,7 +24,11 @@ import {
   isAdlibLine,
   isSyncedLyrics,
 } from "./lyricsTiming";
-import { LyricLineView } from "../components/lyrics/LyricLineView";
+import {
+  LyricLineView,
+  setLineSweepState,
+  updateLineWordsSweep,
+} from "../components/lyrics/LyricLineView";
 import { VideoPlayerView } from "../components/player/VideoPlayerView";
 import { getMediaCounterpart } from "../../datasource/youtube/videoService";
 import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
@@ -35,8 +39,6 @@ import {
 } from "../../player/followedArtists";
 import { useTrackLyrics } from "../hooks/useTrackLyrics";
 import {
-  OFFSET_STEP_SEC,
-  setLyricsOffset,
   useLyricsOffset,
 } from "../settings/lyricsOffset";
 
@@ -348,9 +350,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           const el = lyricsLineRefs.current[i];
           if (!el) continue;
           if (i < next) {
-            el.style.setProperty("--sweep", "100%");
+            setLineSweepState(el, "sung");
           } else if (i > next) {
-            el.style.setProperty("--sweep", "0%");
+            setLineSweepState(el, "unsung");
           }
         }
 
@@ -368,8 +370,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       }
 
       if (next >= 0 && lyricsLineRefs.current[next]) {
-        const progress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current);
-        lyricsLineRefs.current[next]?.style.setProperty("--sweep", `${(progress * 100).toFixed(2)}%`);
+        const rawProgress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current);
+        const vocalProgress = Math.min(1, rawProgress * 1.18);
+        updateLineWordsSweep(lyricsLineRefs.current[next]!, vocalProgress);
       }
     };
 
@@ -485,30 +488,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     }
   };
 
-  // Keyboard shortcut: [ to delay lyrics, ] to advance lyrics
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target as HTMLElement)?.isContentEditable
-      ) {
-        return;
-      }
-
-      if (e.key === "[" && track?.id && lyrics && isSyncedLyrics(lyrics)) {
-        e.preventDefault();
-        setLyricsOffset(track.id, lyricsOffsetRef.current - OFFSET_STEP_SEC);
-      } else if (e.key === "]" && track?.id && lyrics && isSyncedLyrics(lyrics)) {
-        e.preventDefault();
-        setLyricsOffset(track.id, lyricsOffsetRef.current + OFFSET_STEP_SEC);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [track?.id, lyrics]);
-
   return (
     <div
       ref={containerRef}
@@ -517,7 +496,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
-        "relative h-full w-full overflow-hidden rounded-2xl bg-black/95 text-white selection:bg-white/20 select-none flex flex-col",
+        "relative h-full w-full overflow-hidden bg-black/95 text-white selection:bg-white/20 select-none flex flex-col rounded-none border-none",
         isIdle && "cursor-none",
       )}
     >
@@ -527,7 +506,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       {/* Top Header Bar */}
       <header
         className={cn(
-          "sticky top-0 inset-x-0 px-6 py-3.5 flex items-center justify-between z-30 transition-all duration-300 bg-black/40 backdrop-blur-md border-b border-white/10 shrink-0 rounded-t-2xl",
+          "sticky top-0 inset-x-0 px-6 py-3.5 flex items-center justify-between z-30 transition-all duration-300 bg-black/40 backdrop-blur-md border-b border-white/10 shrink-0 rounded-none",
           isIdle && !isDetailsInView ? "-translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100",
         )}
       >
@@ -574,57 +553,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
         </button>
       </div>
 
-      {/* Right Action: Lyrics Timing Offset Controls */}
-      <div className="flex items-center justify-end min-w-[130px]">
-        {lyrics && isSyncedLyrics(lyrics) && track?.id && mediaMode === "song" ? (
-          <div
-            className="flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md px-2 py-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg"
-            title="Adjust lyrics sync (Hotkey: [ to delay, ] to advance)"
-          >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLyricsOffset(track.id, lyricsOffset - OFFSET_STEP_SEC);
-              }}
-              className="size-6 flex items-center justify-center rounded-full hover:bg-white/20 active:scale-90 text-white transition-all cursor-pointer select-none font-bold"
-              aria-label="Delay lyrics by 0.25s"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLyricsOffset(track.id, 0);
-              }}
-              className={cn(
-                "px-2 py-0.5 rounded-full text-[11px] tabular-nums transition-colors cursor-pointer select-none",
-                lyricsOffset === 0
-                  ? "text-white/60 hover:text-white"
-                  : "text-amber-300 font-bold bg-amber-400/20 hover:bg-amber-400/30",
-              )}
-              title={lyricsOffset === 0 ? "Lyrics in sync (Click to reset)" : "Reset timing offset"}
-            >
-              {lyricsOffset === 0
-                ? "Sync"
-                : `${lyricsOffset > 0 ? "+" : "−"}${Math.abs(lyricsOffset).toFixed(2).replace(/\.?0+$/, "")}s`}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLyricsOffset(track.id, lyricsOffset + OFFSET_STEP_SEC);
-              }}
-              className="size-6 flex items-center justify-center rounded-full hover:bg-white/20 active:scale-90 text-white transition-all cursor-pointer select-none font-bold"
-              aria-label="Advance lyrics by 0.25s"
-            >
-              +
-            </button>
-          </div>
-        ) : (
-          <div className="w-9" />
-        )}
+      {/* Right Action: Balance spacer matching Left Back button width to keep Media Switcher centered */}
+      <div className="flex items-center justify-end min-w-[100px]">
+        <div className="w-8" />
       </div>
     </header>
 
@@ -708,8 +639,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                               for (let j = 0; j < lyrics.lines.length; j++) {
                                 const el = lyricsLineRefs.current[j];
                                 if (!el) continue;
-                                if (j < i) el.style.setProperty("--sweep", "100%");
-                                else if (j > i) el.style.setProperty("--sweep", "0%");
+                                if (j < i) setLineSweepState(el, "sung");
+                                else if (j > i) setLineSweepState(el, "unsung");
                               }
 
                               const container = lyricsScrollerRef.current;

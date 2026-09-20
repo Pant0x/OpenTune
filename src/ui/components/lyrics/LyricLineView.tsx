@@ -64,6 +64,86 @@ const ADLIB_TOKEN_CLASS: Record<LyricLineSize, string> = {
   mini: "text-[0.82em] font-medium italic opacity-60",
 };
 
+export interface CachedLyricWord {
+  el: HTMLElement;
+  start: number;
+  end: number;
+  state?: "sung" | "unsung" | "active";
+}
+
+/**
+ * Sweeps words sequentially across the active line at 60fps (snake karaoke).
+ * Avoids React re-renders by writing directly to word element datasets and style properties.
+ */
+export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): void {
+  const progress = Math.min(1, Math.max(0, rawProgress));
+  lineEl.style.setProperty("--sweep", `${(progress * 100).toFixed(2)}%`);
+
+  const el = lineEl as HTMLElement & { __lyricWords?: CachedLyricWord[] };
+  let words = el.__lyricWords;
+  if (!words) {
+    const wordNodes = lineEl.querySelectorAll<HTMLElement>(".lyric-word");
+    words = [];
+    for (let i = 0; i < wordNodes.length; i++) {
+      const wEl = wordNodes[i]!;
+      const start = parseFloat(wEl.dataset.start || "0");
+      const end = parseFloat(wEl.dataset.end || "1");
+      words.push({ el: wEl, start, end, state: (wEl.dataset.state as any) || undefined });
+    }
+    el.__lyricWords = words;
+  }
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    if (progress >= w.end) {
+      if (w.state !== "sung") {
+        w.state = "sung";
+        w.el.dataset.state = "sung";
+        w.el.style.setProperty("--w-sweep", "100%");
+      }
+    } else if (progress <= w.start) {
+      if (w.state !== "unsung") {
+        w.state = "unsung";
+        w.el.dataset.state = "unsung";
+        w.el.style.setProperty("--w-sweep", "0%");
+      }
+    } else {
+      const frac = (progress - w.start) / Math.max(0.0001, w.end - w.start);
+      w.state = "active";
+      w.el.dataset.state = "active";
+      w.el.style.setProperty("--w-sweep", `${(frac * 100).toFixed(1)}%`);
+    }
+  }
+}
+
+/**
+ * Sets all words in a line to sung (100%) or unsung (0%) state.
+ */
+export function setLineSweepState(lineEl: HTMLElement, state: "sung" | "unsung"): void {
+  lineEl.style.setProperty("--sweep", state === "sung" ? "100%" : "0%");
+  const el = lineEl as HTMLElement & { __lyricWords?: CachedLyricWord[] };
+  let words = el.__lyricWords;
+  if (!words) {
+    const wordNodes = lineEl.querySelectorAll<HTMLElement>(".lyric-word");
+    words = [];
+    for (let i = 0; i < wordNodes.length; i++) {
+      const wEl = wordNodes[i]!;
+      const start = parseFloat(wEl.dataset.start || "0");
+      const end = parseFloat(wEl.dataset.end || "1");
+      words.push({ el: wEl, start, end });
+    }
+    el.__lyricWords = words;
+  }
+
+  const sweepVal = state === "sung" ? "100%" : "0%";
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    w.state = state;
+    w.el.dataset.state = state;
+    w.el.style.setProperty("--w-sweep", sweepVal);
+  }
+}
+
 export const LyricLineView = memo(function LyricLineView({
   index,
   text,
@@ -113,6 +193,53 @@ export const LyricLineView = memo(function LyricLineView({
     (!alignment || alignment === "left") && "self-start text-start origin-left",
   );
 
+  // Split tokens into snake-wipe word items with proportional durations
+  const wordTokens = useMemo(() => {
+    if (!text.trim()) return [];
+
+    let totalChars = 0;
+    for (const token of tokens) {
+      const matches = token.text.match(/\S+/g);
+      if (matches) {
+        for (const m of matches) {
+          totalChars += m.length;
+        }
+      }
+    }
+    if (totalChars === 0) totalChars = 1;
+
+    let accumulatedChars = 0;
+    return tokens.map((token, tIdx) => {
+      const parts = token.text.match(/(\S+|\s+)/g) || [token.text];
+      const items = parts.map((part, pIdx) => {
+        const isWord = /\S/.test(part);
+        if (!isWord) {
+          return {
+            id: `${tIdx}-${pIdx}`,
+            text: part,
+            isWord: false,
+            start: 0,
+            end: 0,
+          };
+        }
+        const start = accumulatedChars / totalChars;
+        accumulatedChars += part.length;
+        const end = accumulatedChars / totalChars;
+        return {
+          id: `${tIdx}-${pIdx}`,
+          text: part,
+          isWord: true,
+          start,
+          end,
+        };
+      });
+      return {
+        type: token.type,
+        items,
+      };
+    });
+  }, [text, tokens]);
+
   // An empty LRC line is a real instrumental beat, not junk.
   if (!text.trim()) {
     if (emptyStyle === "dots") {
@@ -148,16 +275,53 @@ export const LyricLineView = memo(function LyricLineView({
     );
   }
 
-  const tokenNodes = tokens.length > 0 ? (
-    tokens.map((token, i) =>
-      token.type === "adlib" ? (
-        <span key={i} className={ADLIB_TOKEN_CLASS[size]}>
-          {token.text}
-        </span>
-      ) : (
-        <span key={i}>{token.text}</span>
-      ),
-    )
+  const tokenNodes = wordTokens.length > 0 ? (
+    wordTokens.map((group, gIdx) => {
+      const content = group.items.map((item) => {
+        if (!item.isWord) {
+          return <span key={item.id}>{item.text}</span>;
+        }
+
+        let state: "sung" | "unsung" | "active" = "unsung";
+        let wordSweepStyle: CSSProperties | undefined;
+
+        if (sweep01 !== undefined && sweeps) {
+          if (sweep01 >= item.end) {
+            state = "sung";
+            wordSweepStyle = { "--w-sweep": "100%" } as CSSProperties;
+          } else if (sweep01 <= item.start) {
+            state = "unsung";
+            wordSweepStyle = { "--w-sweep": "0%" } as CSSProperties;
+          } else {
+            state = "active";
+            const frac = (sweep01 - item.start) / Math.max(0.0001, item.end - item.start);
+            wordSweepStyle = { "--w-sweep": `${(frac * 100).toFixed(1)}%` } as CSSProperties;
+          }
+        }
+
+        return (
+          <span
+            key={item.id}
+            className="lyric-word inline-block"
+            data-start={item.start.toFixed(4)}
+            data-end={item.end.toFixed(4)}
+            data-state={state}
+            style={wordSweepStyle}
+          >
+            {item.text}
+          </span>
+        );
+      });
+
+      if (group.type === "adlib") {
+        return (
+          <span key={gIdx} className={ADLIB_TOKEN_CLASS[size]}>
+            {content}
+          </span>
+        );
+      }
+      return <span key={gIdx}>{content}</span>;
+    })
   ) : (
     <span aria-hidden="true">♪</span>
   );

@@ -27,16 +27,17 @@ export function clampOffset(seconds: number): number {
   return Math.round(clamped / OFFSET_STEP_SEC) * OFFSET_STEP_SEC;
 }
 
+export const DEFAULT_OFFSET_SEC = -1.0;
+
 /**
  * Drops defaults and caps the table.
  *
- * Zeroes are the default, so storing them spends the budget on nothing. The cap keeps the
- * oldest entries out by relying on object key insertion order — which holds for the string
- * ids used here, but would not for keys that look like array indices.
+ * Default (-1.0s) offsets spend the budget on nothing, so omit them. The cap keeps the
+ * oldest entries out by relying on object key insertion order.
  */
 export function pruneOffsets(entries: Record<string, number>): Record<string, number> {
   const kept: Record<string, number> = {};
-  const ids = Object.keys(entries).filter((id) => entries[id] !== 0);
+  const ids = Object.keys(entries).filter((id) => entries[id] !== DEFAULT_OFFSET_SEC);
   for (const id of ids.slice(Math.max(0, ids.length - MAX_ENTRIES))) {
     kept[id] = entries[id];
   }
@@ -60,15 +61,15 @@ function readAll(): Record<string, number> {
 }
 
 export function getLyricsOffset(trackId: string | undefined): number {
-  if (!trackId) return 0;
+  if (!trackId) return DEFAULT_OFFSET_SEC;
   const value = readAll()[trackId];
-  return typeof value === "number" ? value : 0;
+  return typeof value === "number" ? value : DEFAULT_OFFSET_SEC;
 }
 
 export function setLyricsOffset(trackId: string, seconds: number): void {
   const next = { ...readAll() };
   const value = clampOffset(seconds);
-  if (value === 0) delete next[trackId];
+  if (value === DEFAULT_OFFSET_SEC) delete next[trackId];
   else next[trackId] = value;
 
   cache = pruneOffsets(next);
@@ -98,6 +99,6 @@ export function useLyricsOffset(trackId: string | undefined): number {
   return useSyncExternalStore(
     subscribe,
     () => getLyricsOffset(trackId),
-    () => 0,
+    () => DEFAULT_OFFSET_SEC,
   );
 }

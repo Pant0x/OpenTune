@@ -34,7 +34,11 @@ import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
 import { useLyricsDuetMode, useLyricsAdlibsMode } from "../settings/lyricsEnhancements";
 import { translateLines } from "../../datasource/translate";
-import { LyricLineView } from "../components/lyrics/LyricLineView";
+import {
+  LyricLineView,
+  setLineSweepState,
+  updateLineWordsSweep,
+} from "../components/lyrics/LyricLineView";
 import {
   findActiveLineIndex,
   getLineProgress,
@@ -350,7 +354,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
          value that flips a few times a minute. Only the flip is worth a render. */
       if (next !== current) {
         if (current >= 0 && lineRefs.current[current]) {
-          lineRefs.current[current]?.style.setProperty("--sweep", "100%");
+          setLineSweepState(lineRefs.current[current]!, "sung");
         }
         current = next;
         setActiveIndex(next);
@@ -359,8 +363,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       if (reduce || next < 0) return;
       /* The sweep is written straight onto the node. It changes every frame by definition,
          so routing it through state would undo the optimisation directly above. */
-      const progress = getLineProgress(currentLines, next, time, durationRef.current);
-      lineRefs.current[next]?.style.setProperty("--sweep", `${(progress * 100).toFixed(1)}%`);
+      const rawProgress = getLineProgress(currentLines, next, time, durationRef.current);
+      const vocalProgress = Math.min(1, rawProgress * 1.18);
+      if (lineRefs.current[next]) {
+        updateLineWordsSweep(lineRefs.current[next]!, vocalProgress);
+      }
     };
 
     sample();

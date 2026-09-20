@@ -4,6 +4,7 @@ import { CloseIcon } from "@/ui/icons";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { SpotifyService, type SpotifyTrackCredits } from "../../../services/SpotifyService";
 import type { Track } from "../../../datasource/types";
+import { useArtistNavigation } from "../ArtistLinks";
 
 interface SpotifyCreditsModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export function SpotifyCreditsModal({
 }: SpotifyCreditsModalProps) {
   const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const navigateArtist = useArtistNavigation();
 
   useEffect(() => {
     if (!isOpen || !track) return;
@@ -43,7 +45,7 @@ export function SpotifyCreditsModal({
               avatarUrl: track.artworkUrl,
             },
           ],
-          writers: [{ name: track.artist, role: "Composer, Lyricist" }],
+          writers: [{ name: track.artist, role: "Composer, Lyricist", avatarUrl: track.artworkUrl }],
           producers: [],
           label: track.album ? `Released by ${track.album}` : undefined,
         });
@@ -57,6 +59,12 @@ export function SpotifyCreditsModal({
   }, [isOpen, track?.title, track?.artist]);
 
   if (!isOpen) return null;
+
+  const handleOpenArtist = (person: { name: string; uri?: string }) => {
+    onClose();
+    const artistId = person.uri?.replace("spotify:artist:", "") || "";
+    navigateArtist?.({ id: artistId, name: person.name }, false);
+  };
 
   return (
     <div
@@ -101,27 +109,28 @@ export function SpotifyCreditsModal({
                   Performed by
                 </span>
 
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
                   {credits?.artists.map((artist, i) => (
                     <div
                       key={artist.name + i}
-                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors"
+                      onClick={() => handleOpenArtist(artist)}
+                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {artist.avatarUrl ? (
                           <img
                             src={artist.avatarUrl}
                             alt={artist.name}
-                            className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0"
+                            className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
                           />
                         ) : (
-                          <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0">
+                          <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
                             {artist.name[0]?.toUpperCase() || "A"}
                           </div>
                         )}
 
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold text-white truncate">
+                          <span className="text-sm font-bold text-white truncate group-hover:underline">
                             {artist.name}
                           </span>
                           <span className="text-xs text-white/60 font-medium">
@@ -134,7 +143,10 @@ export function SpotifyCreditsModal({
                       {i === 0 && (
                         <button
                           type="button"
-                          onClick={onToggleFollowArtist}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFollowArtist();
+                          }}
                           className={cn(
                             "rounded-full px-4 py-1.5 text-xs font-bold border transition-all cursor-pointer shrink-0",
                             isFollowingArtist
@@ -156,11 +168,35 @@ export function SpotifyCreditsModal({
                   Written by
                 </span>
 
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col gap-1.5">
                   {credits?.writers.map((w, i) => (
-                    <div key={w.name + i} className="flex flex-col">
-                      <span className="text-sm font-semibold text-white/90">{w.name}</span>
-                      <span className="text-xs text-white/60">{w.role}</span>
+                    <div
+                      key={w.name + i}
+                      onClick={() => handleOpenArtist(w)}
+                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {w.avatarUrl ? (
+                          <img
+                            src={w.avatarUrl}
+                            alt={w.name}
+                            className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                          />
+                        ) : (
+                          <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                            {w.name[0]?.toUpperCase() || "W"}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-sm font-bold text-white truncate group-hover:underline">
+                            {w.name}
+                          </span>
+                          <span className="text-xs text-white/60 font-medium">
+                            {w.role}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -173,11 +209,35 @@ export function SpotifyCreditsModal({
                     Produced by
                   </span>
 
-                  <div className="flex flex-col gap-2.5">
+                  <div className="flex flex-col gap-1.5">
                     {credits?.producers.map((p, i) => (
-                      <div key={p.name + i} className="flex flex-col">
-                        <span className="text-sm font-semibold text-white/90">{p.name}</span>
-                        <span className="text-xs text-white/60">{p.role}</span>
+                      <div
+                        key={p.name + i}
+                        onClick={() => handleOpenArtist(p)}
+                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {p.avatarUrl ? (
+                            <img
+                              src={p.avatarUrl}
+                              alt={p.name}
+                              className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                            />
+                          ) : (
+                            <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                              {p.name[0]?.toUpperCase() || "P"}
+                            </div>
+                          )}
+
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-white truncate group-hover:underline">
+                              {p.name}
+                            </span>
+                            <span className="text-xs text-white/60 font-medium">
+                              {p.role}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

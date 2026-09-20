@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MotionConfig } from "motion/react";
+import { cn } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
 import type { Album, Artist, Playlist, SearchResults, Track } from "../datasource/types";
 import { looksLikeYouTubeLink } from "../datasource/youtube/links";
@@ -1248,7 +1249,7 @@ export default function App() {
     <VolumeSyncBridge />
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
-        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
+        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsOpen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
       }`}
@@ -1472,7 +1473,12 @@ export default function App() {
         fade-in), so nesting them here doesn't make PlayerBar's hover styling fire early.
       */}
       {!(playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen) && (
-        <div className="group/immersive-playerbar px-2 pb-2 pt-2">
+        <div
+          className={cn(
+            "group/immersive-playerbar",
+            playerUIState.isLyricsOpen ? "px-0 pb-0 pt-0" : "px-2 pb-2 pt-2",
+          )}
+        >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —
               audio keeps playing but nothing can pause or skip it. */}
           <ErrorBoundary label="Playback controls">

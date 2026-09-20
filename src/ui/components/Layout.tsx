@@ -346,7 +346,12 @@ export function Layout({
   useEffect(() => () => clearScrollHideTimer(), [clearScrollHideTimer]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 overflow-hidden px-2 pt-2">
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 overflow-hidden",
+        fullBleedContent ? "p-0 m-0" : "px-2 pt-2",
+      )}
+    >
       <div
         className={cn(
           "relative flex min-h-0 min-w-0 flex-1",
@@ -406,8 +411,8 @@ export function Layout({
             composited layer and a blur pass to render something nothing can see through. */}
         <div
           className={cn(
-            "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-background",
-            fullBleedContent ? "p-0 gap-0" : "gap-3 px-4 pt-2",
+            "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
+            fullBleedContent ? "p-0 gap-0 rounded-none bg-black" : "gap-3 px-4 pt-2 rounded-2xl bg-background",
           )}
         >
           {/*

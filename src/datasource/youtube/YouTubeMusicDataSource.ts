@@ -6111,6 +6111,11 @@ export class YouTubeMusicDataSource extends DataSource {
       const text = rawLine.replace(timestampPattern, "").trim();
       if (!text) continue;
 
+      // Filter out non-vocal metadata and contributor credits commonly embedded in NetEase / QQ / LRC headers
+      if (/^(?:作\s*词|作\s*曲|词\s*曲|编\s*曲|制\s*作(?:人)?|混\s*音(?:师|室)?|母\s*带(?:师|室|处理)?|录\s*音(?:师|棚|室)?|和\s*声(?:编写)?|吉\s*他(?:手)?|贝\s*斯(?:手)?|鼓(?:手)?|键\s*盘(?:手)?|弦\s*乐|企\s*划|统\s*筹|监\s*制|发\s*行(?:人|公司)?|出\s*品(?:人)?|演\s*唱(?:者)?|原\s*唱|翻\s*唱|版\s*权|题\s*字|美\s*工|PV|OP|SP|Written\s+by|Composed\s+by|Lyrics(?:\s+by)?|Produced\s+by|Mixed\s+by|Mastered\s+by|Arranged\s+by)\s*[:：]/i.test(text)) {
+        continue;
+      }
+
       const timestamps = [...rawLine.matchAll(timestampPattern)];
       for (const timestamp of timestamps) {
         const minutes = Number(timestamp[1]);

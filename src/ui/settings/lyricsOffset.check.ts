@@ -27,7 +27,7 @@ function equal(actual: unknown, expected: unknown, message: string): void {
   check(actual === expected, `${message}: expected ${String(expected)}, got ${String(actual)}`);
 }
 
-const { OFFSET_STEP_SEC, clampOffset, getLyricsOffset, pruneOffsets, setLyricsOffset } =
+const { DEFAULT_OFFSET_SEC, OFFSET_STEP_SEC, clampOffset, getLyricsOffset, pruneOffsets, setLyricsOffset } =
   await import("./lyricsOffset");
 
 equal(clampOffset(0), 0, "zero stays zero");
@@ -47,9 +47,9 @@ for (let i = 0; i < 3; i += 1) drift = clampOffset(drift - OFFSET_STEP_SEC);
 equal(drift, 0, "and three back return exactly to zero");
 
 equal(
-  Object.keys(pruneOffsets({ a: 0.5, b: 0, c: -0.25 })).length,
+  Object.keys(pruneOffsets({ a: 0.5, b: DEFAULT_OFFSET_SEC, c: -0.25 })).length,
   2,
-  "a zero offset is the default and is not stored",
+  "a default offset is not stored",
 );
 
 const overflowing: Record<string, number> = {};
@@ -61,11 +61,11 @@ equal(pruned["track-249"], 0.5, "the newest entry is kept");
 
 setLyricsOffset("song-1", 0.5);
 equal(getLyricsOffset("song-1"), 0.5, "an offset round-trips through storage");
-equal(getLyricsOffset("song-2"), 0, "an untouched track has no offset");
-equal(getLyricsOffset(undefined), 0, "and neither does no track at all");
+equal(getLyricsOffset("song-2"), DEFAULT_OFFSET_SEC, "an untouched track has default offset");
+equal(getLyricsOffset(undefined), DEFAULT_OFFSET_SEC, "and neither does no track at all");
 
-setLyricsOffset("song-1", 0);
-equal(getLyricsOffset("song-1"), 0, "resetting to zero clears the entry");
+setLyricsOffset("song-1", DEFAULT_OFFSET_SEC);
+equal(getLyricsOffset("song-1"), DEFAULT_OFFSET_SEC, "resetting to default clears the entry");
 check(!JSON.parse(store.get("lyrics-offset") ?? "{}")["song-1"], "and removes it from storage");
 
 console.log("lyricsOffset self-check passed");

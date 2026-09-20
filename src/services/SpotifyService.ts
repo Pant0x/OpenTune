@@ -1291,23 +1291,47 @@ class SpotifyServiceManager {
       }
 
       // 2. Writers
-      let writers: Array<{ name: string; role: string }> = [];
+      let writers: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = [];
       if (Array.isArray(writersSection?.artists) && writersSection.artists.length > 0) {
-        writers = writersSection.artists.map((w: any) => ({
-          name: w.name || cleanArtist,
-          role: w.subroles?.join(", ") || "Composer, Lyricist",
-        }));
+        writers = await Promise.all(
+          writersSection.artists.map(async (w: any) => {
+            const name = w.name || cleanArtist;
+            const existingArtist = artists.find((a) => a.name.toLowerCase() === name.toLowerCase());
+            let avatar = w.imageUri || existingArtist?.avatarUrl;
+            if (!avatar) {
+              avatar = (await this.getArtistAvatar(name)) || undefined;
+            }
+            return {
+              name,
+              role: w.subroles?.join(", ") || "Composer, Lyricist",
+              avatarUrl: avatar,
+              uri: w.uri,
+            };
+          }),
+        );
       } else {
-        writers = [{ name: cleanArtist, role: "Composer, Lyricist" }];
+        writers = [{ name: cleanArtist, role: "Composer, Lyricist", avatarUrl: artists[0]?.avatarUrl }];
       }
 
       // 3. Producers
-      let producers: Array<{ name: string; role: string }> = [];
+      let producers: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = [];
       if (Array.isArray(producersSection?.artists) && producersSection.artists.length > 0) {
-        producers = producersSection.artists.map((p: any) => ({
-          name: p.name,
-          role: p.subroles?.join(", ") || "Producer",
-        }));
+        producers = await Promise.all(
+          producersSection.artists.map(async (p: any) => {
+            const name = p.name;
+            const existingArtist = artists.find((a) => a.name.toLowerCase() === name.toLowerCase());
+            let avatar = p.imageUri || existingArtist?.avatarUrl;
+            if (!avatar) {
+              avatar = (await this.getArtistAvatar(name)) || undefined;
+            }
+            return {
+              name,
+              role: p.subroles?.join(", ") || "Producer",
+              avatarUrl: avatar,
+              uri: p.uri,
+            };
+          }),
+        );
       }
 
       // 4. Source & Label
@@ -1345,8 +1369,8 @@ class SpotifyServiceManager {
 export interface SpotifyTrackCredits {
   trackTitle: string;
   artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }>;
-  writers: Array<{ name: string; role: string }>;
-  producers: Array<{ name: string; role: string }>;
+  writers: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }>;
+  producers: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }>;
   label?: string;
   releaseDate?: string;
 }
