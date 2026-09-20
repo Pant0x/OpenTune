@@ -338,15 +338,20 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       const next = findActiveLineIndex(lines, effectiveTime);
 
       if (next !== prevActiveIndexRef.current) {
-        const prev = prevActiveIndexRef.current;
-        if (prev >= 0 && lyricsLineRefs.current[prev]) {
-          lyricsLineRefs.current[prev]?.style.setProperty("--sweep", "100%");
-        }
-        if (next >= 0 && lyricsLineRefs.current[next]) {
-          lyricsLineRefs.current[next]?.style.setProperty("--sweep", "0%");
-        }
         prevActiveIndexRef.current = next;
         setActiveLyricIndex(next);
+
+        // Keep past lines at 100% and future lines at 0%
+        const lineCount = lines.length;
+        for (let i = 0; i < lineCount; i++) {
+          const el = lyricsLineRefs.current[i];
+          if (!el) continue;
+          if (i < next) {
+            el.style.setProperty("--sweep", "100%");
+          } else if (i > next) {
+            el.style.setProperty("--sweep", "0%");
+          }
+        }
 
         if (isLyricsSyncLockedRef.current && !isDetailsInViewRef.current && next >= 0) {
           const container = lyricsScrollerRef.current;
@@ -354,7 +359,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           if (container && lineEl) {
             const targetTop = Math.max(
               0,
-              lineEl.offsetTop - container.clientHeight / 2 + lineEl.offsetHeight / 2,
+              lineEl.offsetTop - container.clientHeight * 0.40,
             );
             smoothScrollToTarget(targetTop);
           }
@@ -472,7 +477,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       if (lineEl) {
         const targetTop = Math.max(
           0,
-          lineEl.offsetTop - container.clientHeight / 2 + lineEl.offsetHeight / 2,
+          lineEl.offsetTop - container.clientHeight * 0.40,
         );
         smoothScrollToTarget(targetTop);
       }
@@ -644,9 +649,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           {/* Screen 1: Synced Lyrics */}
           <div className="relative min-h-[calc(100vh-180px)] w-full flex flex-col justify-center items-center p-6 sm:p-10 pt-6 pb-12">
             <main className="relative my-auto flex-1 flex items-center justify-center py-4 w-full">
-              <div className="relative w-full max-w-3xl h-[60vh] flex items-center justify-center px-4">
+              <div className="relative w-full max-w-3xl h-[66vh] flex items-center justify-center px-4">
                 <div
-                  className="relative h-full w-full overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="relative h-full w-full overflow-y-auto px-6 text-center [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_10%,black_90%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_10%,black_90%,transparent_100%)]"
                   ref={lyricsScrollerRef}
                   onWheel={handleLyricsWheel}
                 >
@@ -677,7 +682,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-6 py-28">
+                    <div className="flex flex-col gap-7 py-36">
                       {lyrics.lines.map((line, idx) => (
                         <LyricLineView
                           key={`${idx}:${line.text}`}
@@ -696,12 +701,21 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                               prevActiveIndexRef.current = i;
                               setIsLyricsSyncLocked(true);
                               isLyricsSyncLockedRef.current = true;
+
+                              // Instantly update past and future sweep properties
+                              for (let j = 0; j < lyrics.lines.length; j++) {
+                                const el = lyricsLineRefs.current[j];
+                                if (!el) continue;
+                                if (j < i) el.style.setProperty("--sweep", "100%");
+                                else if (j > i) el.style.setProperty("--sweep", "0%");
+                              }
+
                               const container = lyricsScrollerRef.current;
                               const lineEl = lyricsLineRefs.current[i];
                               if (container && lineEl) {
                                 const targetTop = Math.max(
                                   0,
-                                  lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2),
+                                  lineEl.offsetTop - container.clientHeight * 0.40,
                                 );
                                 smoothScrollToTarget(targetTop);
                               }
