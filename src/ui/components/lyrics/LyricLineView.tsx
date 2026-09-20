@@ -192,7 +192,10 @@ export const LyricLineView = memo(function LyricLineView({
           filter: isActive ? "none" : depthStyle?.filter,
           transform: isActive ? "scale(1.035) translateZ(0)" : "scale(0.985) translateZ(0)",
         }}
-        onClick={() => onSeek?.(index)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSeek?.(index);
+        }}
       >
         {tokenNodes}
         {translationNode}
@@ -206,15 +209,19 @@ export const LyricLineView = memo(function LyricLineView({
         ref={attach}
         type="button"
         dir={isArabic ? "rtl" : "ltr"}
-        onClick={() => onSeek?.(index)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSeek?.(index);
+        }}
         style={sweepStyle}
         className={cn(
-          "cursor-pointer font-bold leading-tight tracking-tight transition-all duration-300 select-text",
+          "cursor-pointer font-bold leading-tight tracking-tight select-text text-2xl sm:text-3xl lg:text-3xl origin-center",
+          "transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           isArabic && "font-sans font-medium leading-relaxed",
-          isActive && !adlibLine && "lyric-sweep text-2xl sm:text-3xl lg:text-4xl scale-105",
-          isActive && adlibLine && "text-white text-xl sm:text-2xl italic scale-105",
-          !isActive && !adlibLine && "text-white/40 text-lg sm:text-xl lg:text-2xl hover:text-white/80",
-          !isActive && adlibLine && "text-white/35 text-base sm:text-lg italic font-medium hover:text-white/60",
+          isActive && !adlibLine && "lyric-sweep text-white scale-[1.08] opacity-100 filter drop-shadow-[0_0_24px_rgba(255,255,255,0.45)]",
+          isActive && adlibLine && "text-white italic scale-[1.06] opacity-100",
+          !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:opacity-90 hover:scale-[1.02]",
+          !isActive && adlibLine && "text-white/35 italic font-medium scale-100 opacity-45 hover:opacity-75",
         )}
       >
         {tokenNodes}

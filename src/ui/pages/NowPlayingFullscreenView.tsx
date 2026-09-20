@@ -197,48 +197,94 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     }, 2800);
   }, []);
 
+  const handlePointerEnter = useCallback(() => {
+    resetIdleTimer();
+  }, [resetIdleTimer]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    setIsIdle(true);
+  }, []);
+
   useEffect(() => {
-    const handlePointerMove = () => resetIdleTimer();
-    const handlePointerDown = () => resetIdleTimer();
     const handleKeyDown = () => resetIdleTimer();
-    const handleMouseLeave = () => {
-      // Mouse is away from the app: hide dock, title, and cards immediately
+    const handleWindowBlur = () => {
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
       setIsIdle(true);
     };
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("mouseleave", handleMouseLeave);
-    window.addEventListener("blur", handleMouseLeave);
-
-    resetIdleTimer();
+    window.addEventListener("blur", handleWindowBlur);
 
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("mouseleave", handleMouseLeave);
-      window.removeEventListener("blur", handleMouseLeave);
+      window.removeEventListener("blur", handleWindowBlur);
       if (idleTimerRef.current !== null) {
         window.clearTimeout(idleTimerRef.current);
       }
     };
   }, [resetIdleTimer]);
 
-  // Sync playback time. In video mode the interval is parked: nothing here consumes the time
-  // (lyrics only render in song mode, and the video reports its own time to the dock), and a
-  // 250ms re-render of the whole view while a video plays is pure churn.
+  const pendingSeekRef = useRef<{ target: number; at: number } | null>(null);
+  const prevActiveIndexRef = useRef(-1);
+
+  const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSpotifyCover(null);
+    if (!track || track.source === "local" || !track.title) return;
+    let active = true;
+    void SpotifyService.getTrackCoverUrl(track.title, track.artist, track.album)
+      .then((url) => {
+        if (active && url) setSpotifyCover(url);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [track?.id, track?.title, track?.artist, track?.album]);
+
+  const effectiveArtworkUrl = spotifyCover ?? track?.artworkUrl;
+
+  // Sync playback time with smooth requestAnimationFrame loop during playback
   const isVideoMode = mediaMode === "video";
   useEffect(() => {
-    const updateTime = () => {
-      setCurrentTime(playerController.getCurrentTime());
-    };
-    updateTime();
     if (isVideoMode) return;
-    const interval = window.setInterval(updateTime, 250);
-    return () => window.clearInterval(interval);
-  }, [isVideoMode]);
+
+    const sampleTime = () => {
+      const engineTime = playerController.getCurrentTime();
+      const pending = pendingSeekRef.current;
+      if (pending) {
+        if (performance.now() - pending.at < 800 && Math.abs(engineTime - pending.target) > 0.75) {
+          setCurrentTime(pending.target);
+          return;
+        }
+        pendingSeekRef.current = null;
+      }
+      setCurrentTime(engineTime);
+    };
+
+    sampleTime();
+
+    if (!isPlaying) {
+      const interval = window.setInterval(sampleTime, 250);
+      return () => window.clearInterval(interval);
+    }
+
+    let animFrame = 0;
+    const tick = () => {
+      sampleTime();
+      animFrame = requestAnimationFrame(tick);
+    };
+    animFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animFrame);
+  }, [isVideoMode, isPlaying]);
 
   // Fetch Artist Overview
   useEffect(() => {
@@ -320,18 +366,19 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     const index = findActiveLineIndex(lines, currentTime);
     setActiveLyricIndex(index);
 
-    // Only auto-scroll when user has not manually scrolled away and not viewing details
-    if (isLyricsSyncLocked && !isDetailsInView && index >= 0 && lyricsScrollerRef.current) {
-      const container = lyricsScrollerRef.current;
-      const lineEl = lyricsLineRefs.current[index];
-      if (lineEl) {
-        const containerRect = container.getBoundingClientRect();
-        const lineRect = lineEl.getBoundingClientRect();
-        const offset = lineRect.top - containerRect.top - (containerRect.height / 2) + (lineRect.height / 2);
-        container.scrollBy({
-          top: offset,
-          behavior: "smooth",
-        });
+    // Only auto-scroll when active line actually changed and user has not manually scrolled away and not viewing details
+    if (index !== prevActiveIndexRef.current) {
+      prevActiveIndexRef.current = index;
+      if (isLyricsSyncLocked && !isDetailsInView && index >= 0 && lyricsScrollerRef.current) {
+        const container = lyricsScrollerRef.current;
+        const lineEl = lyricsLineRefs.current[index];
+        if (lineEl) {
+          const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
+          container.scrollTo({
+            top: Math.max(0, targetTop),
+            behavior: "smooth",
+          });
+        }
       }
     }
   }, [lyrics, currentTime, isLyricsSyncLocked, isDetailsInView]);
@@ -339,14 +386,13 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const handleResyncLyrics = () => {
     setIsLyricsSyncLocked(true);
     if (activeLyricIndex >= 0 && lyricsScrollerRef.current) {
+      prevActiveIndexRef.current = activeLyricIndex;
       const container = lyricsScrollerRef.current;
       const lineEl = lyricsLineRefs.current[activeLyricIndex];
       if (lineEl) {
-        const containerRect = container.getBoundingClientRect();
-        const lineRect = lineEl.getBoundingClientRect();
-        const offset = lineRect.top - containerRect.top - (containerRect.height / 2) + (lineRect.height / 2);
-        container.scrollBy({
-          top: offset,
+        const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
+        container.scrollTo({
+          top: Math.max(0, targetTop),
           behavior: "smooth",
         });
       }
@@ -356,6 +402,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   return (
     <div
       ref={containerRef}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
@@ -364,7 +412,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       )}
     >
       {/* Dynamic moving ambient background ("Cover Ambience") */}
-      <CoverAmbienceCanvas artworkUrl={track?.artworkUrl} />
+      <CoverAmbienceCanvas artworkUrl={effectiveArtworkUrl} />
 
       {/* Top Header Bar */}
       <header
@@ -491,6 +539,20 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                           onSeek={(i) => {
                             const start = lyrics.lines[i]?.startTimeSec;
                             if (start !== undefined) {
+                              pendingSeekRef.current = { target: start, at: performance.now() };
+                              setCurrentTime(start);
+                              setActiveLyricIndex(i);
+                              setIsLyricsSyncLocked(true);
+                              prevActiveIndexRef.current = i;
+                              const container = lyricsScrollerRef.current;
+                              const lineEl = lyricsLineRefs.current[i];
+                              if (container && lineEl) {
+                                const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
+                                container.scrollTo({
+                                  top: Math.max(0, targetTop),
+                                  behavior: "smooth",
+                                });
+                              }
                               void playerController.seekTo(start);
                             }
                           }}

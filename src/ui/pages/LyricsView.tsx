@@ -10,7 +10,6 @@ import { useReduceMotion } from "../settings/renderEffects";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
   CloseIcon,
-  FullScreenIcon,
   LyricsIcon,
   PauseActiveIcon,
   PlayActiveIcon,
@@ -28,6 +27,8 @@ import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
+import { SpotifyService } from "../../services/SpotifyService";
+import { getVideoArtworkFallback } from "../../datasource/youtube/artwork";
 import { OFFSET_STEP_SEC, setLyricsOffset, useLyricsOffset } from "../settings/lyricsOffset";
 import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
@@ -130,6 +131,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       return next;
     });
   };
+  void toggleSplitMode;
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [showRemainingTime, setShowRemainingTime] = useState(true);
 
@@ -139,14 +141,45 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     onClose();
   };
 
-  const activeBackgroundUrl = track?.artworkUrl;
+  const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSpotifyCover(null);
+    if (!track || track.source === "local" || !track.title) return;
+    let active = true;
+    void SpotifyService.getTrackCoverUrl(track.title, track.artist, track.album)
+      .then((url: string | null) => {
+        if (active && url) setSpotifyCover(url);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [track?.id, track?.title, track?.artist, track?.album]);
+
+  const effectiveArtworkUrl = spotifyCover
+    ?? (track?.artworkUrl
+      || (track?.id ? getVideoArtworkFallback(track.id) : undefined));
+
+  const activeBackgroundUrl = effectiveArtworkUrl;
+
+  const pendingSeekRef = useRef<{ target: number; at: number } | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
-      setCurrentPlaybackTime(playerController.getCurrentTime());
+      const engineTime = playerController.getCurrentTime();
+      const pending = pendingSeekRef.current;
+      if (pending) {
+        if (performance.now() - pending.at < 800 && Math.abs(engineTime - pending.target) > 0.75) {
+          setCurrentPlaybackTime(pending.target);
+          return;
+        }
+        pendingSeekRef.current = null;
+      }
+      setCurrentPlaybackTime(engineTime);
     };
     updateTime();
-    const interval = window.setInterval(updateTime, 250);
+    const interval = window.setInterval(updateTime, 100);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -297,7 +330,18 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
     let current = -1;
     const sample = () => {
-      const time = playerController.getCurrentTime() + offset;
+      const rawEngineTime = playerController.getCurrentTime();
+      const pending = pendingSeekRef.current;
+      let engineTime = rawEngineTime;
+      if (pending) {
+        if (performance.now() - pending.at < 800 && Math.abs(rawEngineTime - pending.target) > 0.75) {
+          engineTime = pending.target;
+        } else {
+          pendingSeekRef.current = null;
+        }
+      }
+      setCurrentPlaybackTime(engineTime);
+      const time = engineTime + offset;
       const currentLines = linesRef.current;
       const next = findActiveLineIndex(currentLines, time);
 
@@ -408,7 +452,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     resumeFollow();
     // Lines are matched against `currentTime + offset`, so the audio for this line sits that
     // far back. Seeking to the raw start time would land a whole offset away from the words.
-    void playerController.seekTo(Math.max(0, start - offset));
+    const target = Math.max(0, start - offset);
+    pendingSeekRef.current = { target, at: performance.now() };
+    setCurrentPlaybackTime(target);
+    setActiveIndex(index);
+    void playerController.seekTo(target);
   };
 
   /*
@@ -470,7 +518,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 z-50 bg-black",
+        isFullscreen && "fixed inset-0 h-screen w-screen min-h-screen z-50 bg-black/95 overflow-hidden",
       )}
       aria-label="Lyrics"
     >
@@ -503,36 +551,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       </p>
 
       <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
-        {/* Split Mode Toggle Button */}
-        {isFullscreen && (
-          <button
-            type="button"
-            onClick={toggleSplitMode}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold backdrop-blur-md transition-all cursor-pointer shadow-md",
-              showPlaybackCard
-                ? "bg-white/25 text-white font-bold border border-white/30"
-                : "bg-black/50 text-white/75 hover:text-white border border-white/10 hover:bg-white/15",
-            )}
-            title={showPlaybackCard ? "Hide split mode" : "Show split mode"}
-          >
-            <span>Split</span>
-          </button>
-        )}
-
-        {/* Fullscreen Now Playing Toggle */}
-        <button
-          type="button"
-          className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
-          onClick={() => {
-            playerUIStore.openNowPlayingFromLyrics();
-          }}
-          aria-label="Now Playing full screen"
-          title="Now Playing full screen"
-        >
-          <FullScreenIcon size={18} />
-        </button>
-
         {/* Close Button */}
         <button
           type="button"
@@ -557,7 +575,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               <div className="lg:col-span-5 flex flex-col items-center justify-center">
                 <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
                   <TrackArtwork
-                    artworkUrl={track?.artworkUrl}
+                    artworkUrl={effectiveArtworkUrl}
                     size={420}
                     className="size-full object-cover"
                     iconSize={64}
@@ -598,6 +616,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       value={currentPlaybackTime}
                       onChange={(e) => {
                         const t = parseFloat(e.target.value);
+                        pendingSeekRef.current = { target: t, at: performance.now() };
                         setCurrentPlaybackTime(t);
                         void playerController.seekTo(t);
                       }}

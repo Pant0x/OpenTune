@@ -48,7 +48,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
         <div
           key={artworkUrl}
           className={cn(
-            "absolute -inset-[20%] opacity-75 blur-[65px] saturate-[2] scale-125 transition-all duration-1000",
+            "absolute -inset-[35%] opacity-85 blur-[70px] saturate-[2.2] scale-135 transition-all duration-1000",
             shouldAnimate && "lyrics-drift",
           )}
         >
