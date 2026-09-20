@@ -285,3 +285,62 @@ export function processDuetLyrics(
   return result;
 }
 
+/**
+ * Calculates a dynamic vocal sweep multiplier based on syllable / delivery speed and tempo.
+ *
+ * Fast flows (rap, high syllables/characters per second):
+ * Vocals are delivered tightly in bursts, finishing earlier before the end of the line bar -> multiplier up to ~1.35x.
+ *
+ * Slow ballads (long vowels, sustained notes, low cps):
+ * Singer holds notes across the line duration -> multiplier drops to ~1.06x so words don't finish before the artist does.
+ *
+ * Standard pop / rock:
+ * Balances naturally around ~1.15x - 1.20x.
+ */
+export function getDynamicVocalMultiplier(
+  line: LyricLine | undefined,
+  nextLine?: LyricLine,
+  trackDurationSec?: number,
+): number {
+  if (!line || !line.text) return 1.18;
+  const text = line.text.trim();
+  if (!text) return 1.18;
+
+  const start = line.startTimeSec ?? 0;
+  const end = line.endTimeSec
+    ?? nextLine?.startTimeSec
+    ?? (trackDurationSec ? Math.min(start + 6, trackDurationSec) : start + 4);
+  const duration = Math.max(0.6, end - start);
+
+  const charCount = text.replace(/\s+/g, "").length;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+  // Characters per second and words per second
+  const cps = charCount / duration;
+  const wps = wordCount / duration;
+
+  // Rap / high tempo: cps >= 18 or wps >= 4.5
+  // Slow / ballad: cps <= 8 or wps <= 2.0
+  if (cps >= 22 || wps >= 5.0) {
+    // Very fast delivery (e.g. Eminem, fast rap bars)
+    return 1.35;
+  }
+  if (cps >= 16 || wps >= 3.8) {
+    // Fast delivery
+    return 1.28;
+  }
+  if (cps <= 7 || wps <= 1.8) {
+    // Slow sustained vocal (ballad / slow song)
+    return 1.06;
+  }
+  if (cps <= 10 || wps <= 2.4) {
+    // Moderate slow
+    return 1.12;
+  }
+
+  // Linear interpolation for intermediate speeds
+  // Range from cps = 10 (multiplier 1.12) to cps = 16 (multiplier 1.28)
+  const factor = (cps - 10) / (16 - 10);
+  return Math.max(1.05, Math.min(1.35, 1.12 + factor * (1.28 - 1.12)));
+}
+

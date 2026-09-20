@@ -810,45 +810,41 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
  */
 @keyframes lyrics-drift {
   0% {
-    transform: scale(1.3) translate3d(-4%, -2%, 0);
+    transform: scale(1.25) translate3d(-4%, -2%, 0);
+  }
+  50% {
+    transform: scale(1.4) translate3d(3%, 4%, 0);
   }
   100% {
-    transform: scale(1.5) translate3d(4%, 3%, 0);
+    transform: scale(1.3) translate3d(-3%, 3%, 0);
   }
 }
 
 .lyrics-drift {
-  animation: lyrics-drift 24s ease-in-out infinite alternate;
+  animation: lyrics-drift 11s ease-in-out infinite alternate;
   will-change: transform;
 }
 
 /*
- * Side-panel lyric rows easing in as the sung line advances (Spicy Lyrics style): each new
- * row slides up and fades in while the rows it pushes keep their place. Rows are keyed by
- * their absolute line index so only the entering row replays the animation.
- */
-@keyframes lyric-preview-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.lyric-preview-in {
-  animation: lyric-preview-in 320ms cubic-bezier(0.25, 1, 0.5, 1);
-  will-change: transform, opacity;
-}
-
-/*
  * Dynamic Moving Ambient Background ("Cover Ambience")
- * 4 drifting, morphing, and rotating organic mesh gradient color blobs. Timings are staggered
- * (14-24s) so the field never moves in lockstep — the colors chase each other around the
- * canvas the way Beautiful Lyrics' background does.
+ * 4 drifting, morphing, and rotating organic mesh gradient color blobs.
+ * Fast, responsive 60fps drift with audio breathing pulse.
  */
+@keyframes ambience-beat {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.045);
+    opacity: 1;
+  }
+}
+
+.ambience-pulse-active {
+  animation: ambience-beat 3.2s ease-in-out infinite;
+}
+
 @keyframes ambience-drift-1 {
   0% {
     transform: translate3d(0%, 0%, 0) scale(1) rotate(0deg);
@@ -898,19 +894,19 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 .ambience-blob-1 {
-  animation: ambience-drift-1 14s ease-in-out infinite alternate;
+  animation: ambience-drift-1 7.5s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-2 {
-  animation: ambience-drift-2 18s ease-in-out infinite alternate;
+  animation: ambience-drift-2 9.5s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-3 {
-  animation: ambience-drift-3 22s ease-in-out infinite alternate;
+  animation: ambience-drift-3 11s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-4 {
-  animation: ambience-drift-4 16s ease-in-out infinite alternate;
+  animation: ambience-drift-4 8.5s ease-in-out infinite alternate;
   will-change: transform;
 }
 

@@ -41,6 +41,7 @@ import {
 } from "../components/lyrics/LyricLineView";
 import {
   findActiveLineIndex,
+  getDynamicVocalMultiplier,
   getLineProgress,
   isRtlText,
   isSyncedLyrics,
@@ -364,7 +365,12 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       /* The sweep is written straight onto the node. It changes every frame by definition,
          so routing it through state would undo the optimisation directly above. */
       const rawProgress = getLineProgress(currentLines, next, time, durationRef.current);
-      const vocalProgress = Math.min(1, rawProgress * 1.18);
+      const multiplier = getDynamicVocalMultiplier(
+        currentLines[next],
+        currentLines[next + 1],
+        durationRef.current,
+      );
+      const vocalProgress = Math.min(1, rawProgress * multiplier);
       if (lineRefs.current[next]) {
         updateLineWordsSweep(lineRefs.current[next]!, vocalProgress);
       }
@@ -527,7 +533,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 h-screen w-screen min-h-screen z-50 bg-black/95 overflow-hidden",
+        isFullscreen && "fixed inset-0 h-full w-full z-50 bg-black/95 overflow-hidden",
       )}
       aria-label="Lyrics"
     >
@@ -629,7 +635,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         setCurrentPlaybackTime(t);
                         void playerController.seekTo(t);
                       }}
-                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 accent-white hover:accent-primary transition-all"
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 focus-visible:outline-none transition-all [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,#ffffff_var(--slider-progress),rgba(255,255,255,0.25)_var(--slider-progress))] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(255,255,255,0.9)]"
+                      style={{
+                        "--slider-progress": `${(track.durationSec && track.durationSec > 0) ? (currentPlaybackTime / track.durationSec) * 100 : 0}%`,
+                      } as React.CSSProperties}
                       aria-label="Seek track"
                     />
 

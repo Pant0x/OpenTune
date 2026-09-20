@@ -13,6 +13,7 @@ export interface PlayerUIState {
   rightPanelTab: RightPanelTab;
   returnToLyricsOnFullscreenClose: boolean;
   isWaveMiniPlayerOpen: boolean;
+  initialMediaMode?: "song" | "video";
 }
 
 type Listener = () => void;
@@ -29,6 +30,7 @@ class PlayerUIStore {
     rightPanelTab: "nowplaying",
     returnToLyricsOnFullscreenClose: false,
     isWaveMiniPlayerOpen: false,
+    initialMediaMode: undefined,
   };
   private listeners = new Set<Listener>();
 
@@ -95,6 +97,17 @@ class PlayerUIStore {
       isNowPlayingFullscreen: true,
       returnToLyricsOnFullscreenClose: true,
     });
+  }
+
+  openVideoMode() {
+    this.setState({
+      isNowPlayingFullscreen: true,
+      initialMediaMode: "video",
+    });
+  }
+
+  clearInitialMediaMode() {
+    this.setState({ initialMediaMode: undefined });
   }
 
   toggleNowPlayingFullscreen() {

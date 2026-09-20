@@ -13,7 +13,6 @@ import {
   ShuffleIcon,
   TrashIcon,
   MenuDotsIcon,
-  FullScreenIcon,
 } from "@/ui/icons";
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
 import { libraryController, useLibraryState } from "../../../player/playerStore";
@@ -1047,6 +1046,21 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                  {/* Video button */}
+                  <Tooltip content="Watch video">
+                    <button
+                      type="button"
+                      onClick={() => playerUIStore.openVideoMode()}
+                      className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      aria-label="Watch video"
+                    >
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="23 7 16 12 23 17 23 7" fill="currentColor" stroke="none" />
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                      </svg>
+                    </button>
+                  </Tooltip>
+
                   {/* Share button */}
                   <Tooltip content="Share">
                     <button
@@ -1087,7 +1101,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 </div>
               </div>
 
-              {/* Lyrics Preview Card (Spotify 1:1 Style with 3 icons & glowing active line) */}
+              {/* Lyrics Preview Card (Spotify 1:1 Style with glowing active line) */}
               <div
                 className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 transition-all hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
                 onClick={() => playerUIStore.setLyricsOpen(true)}
@@ -1096,60 +1110,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   <span className="text-base font-bold text-white tracking-tight">
                     Lyrics
                   </span>
-                  <div className="flex items-center gap-1 text-[#b3b3b3]">
-                    {/* 1. Miniplayer Mode */}
-                    <Tooltip content="Miniplayer lyrics">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          playerUIStore.setWaveMiniPlayerOpen(true);
-                        }}
-                        className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Open miniplayer lyrics"
-                      >
-                        <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="2" y="3" width="20" height="14" rx="2" />
-                          <rect x="12" y="9" width="8" height="6" rx="1" fill="currentColor" />
-                        </svg>
-                      </button>
-                    </Tooltip>
-
-                    {/* 2. Fullscreen Button */}
-                    <Tooltip content="Open full lyrics">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          playerUIStore.setLyricsOpen(true);
-                          playerUIStore.setLyricsFullscreen(true);
-                        }}
-                        className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Fullscreen lyrics"
-                      >
-                        <FullScreenIcon size={14} />
-                      </button>
-                    </Tooltip>
-
-                    {/* 3. Pop-out button */}
-                    <Tooltip content="Open lyrics page">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          playerUIStore.setLyricsOpen(true);
-                        }}
-                        className="flex size-7 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Open lyrics page"
-                      >
-                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                          <polyline points="15 3 21 3 21 9" />
-                          <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                      </button>
-                    </Tooltip>
-                  </div>
                 </div>
 
                 {lyricsStatus === "loading" || lyricsStatus === "idle" ? (

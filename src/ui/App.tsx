@@ -1476,7 +1476,7 @@ export default function App() {
         <div
           className={cn(
             "group/immersive-playerbar",
-            playerUIState.isLyricsOpen ? "px-0 pb-0 pt-0" : "px-2 pb-2 pt-2",
+            playerUIState.isLyricsOpen ? "px-2 pb-2 pt-2.5" : "px-2 pb-2 pt-2",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

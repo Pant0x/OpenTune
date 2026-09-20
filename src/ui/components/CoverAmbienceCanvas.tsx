@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useArtworkDominantColor } from "../hooks/useArtworkDominantColor";
 import { useCoverAmbienceEnabled } from "../settings/coverAmbience";
 import { usePotatoPcMode, useReduceMotion } from "../settings/renderEffects";
+import { usePlayerSelector } from "../../player/playerStore";
 
 interface CoverAmbienceCanvasProps {
   artworkUrl?: string | null;
@@ -19,6 +20,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
   const reduceMotion = useReduceMotion();
   const potatoMode = usePotatoPcMode();
   const dominant = useArtworkDominantColor(artworkUrl);
+  const isPlaying = usePlayerSelector((player) => player.status === "playing");
 
   const colors = useMemo(() => {
     const rgb = dominant.rgb || { r: 50, g: 30, b: 65 };
@@ -64,7 +66,12 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
 
       {/* Dynamic Ambient Mesh Blobs (Cover Ambience) */}
       {isEnabled && (
-        <div className="absolute inset-0 filter blur-[90px] saturate-[2.4] opacity-100">
+        <div
+          className={cn(
+            "absolute inset-0 filter blur-[90px] saturate-[2.4] opacity-100 transition-transform duration-700 ease-out",
+            isPlaying && shouldAnimate && "ambience-pulse-active",
+          )}
+        >
           {/* Top-Left Orb */}
           <div
             className={cn(

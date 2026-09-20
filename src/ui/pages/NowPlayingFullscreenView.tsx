@@ -13,13 +13,14 @@ import {
 } from "../../player/playerStore";
 import type { PlayerSession } from "../../player/PlayerController";
 import type { Track } from "../../datasource/types";
-import { playerUIStore } from "../stores/playerUIStore";
+import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
 import { SpotifyService, type SpotifyArtistOverview, type SpotifyTrackCredits } from "../../services/SpotifyService";
 import { SpotifyCreditsModal } from "../components/player/SpotifyCreditsModal";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { useArtistNavigation } from "../components/ArtistLinks";
 import {
   findActiveLineIndex,
+  getDynamicVocalMultiplier,
   getLineProgress,
   isAdlibLine,
   isSyncedLyrics,
@@ -73,9 +74,22 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const nextTrack: Track | undefined =
     queueIndex >= 0 && queueIndex + 1 < queue.length ? queue[queueIndex + 1] : undefined;
 
-  const [mediaMode, setMediaMode] = useState<"song" | "video">(() => (track?.isVideo ? "video" : "song"));
+  const uiState = usePlayerUIState();
+  const [mediaMode, setMediaMode] = useState<"song" | "video">(
+    () => uiState.initialMediaMode || (track?.isVideo ? "video" : "song"),
+  );
   const [videoCounterpart, setVideoCounterpart] = useState<Track | null>(null);
   const [songCounterpart, setSongCounterpart] = useState<Track | null>(null);
+
+  useEffect(() => {
+    if (uiState.initialMediaMode) {
+      setMediaMode(uiState.initialMediaMode);
+      if (uiState.initialMediaMode === "video") {
+        playerController.silenceAudioEngine();
+      }
+      playerUIStore.clearInitialMediaMode();
+    }
+  }, [uiState.initialMediaMode]);
 
   const isPodcast = useMemo(() => {
     if (!track) return false;
@@ -94,7 +108,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     if (!track) return;
     setVideoCounterpart(null);
     setSongCounterpart(null);
-    setMediaMode(track.isVideo ? "video" : "song");
+    if (!playerUIStore.getState().initialMediaMode) {
+      setMediaMode(track.isVideo ? "video" : "song");
+    }
     let active = true;
     if (track.isVideo) {
       void getMediaCounterpart(track, "song").then((res) => {
@@ -371,7 +387,12 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
       if (next >= 0 && lyricsLineRefs.current[next]) {
         const rawProgress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current);
-        const vocalProgress = Math.min(1, rawProgress * 1.18);
+        const multiplier = getDynamicVocalMultiplier(
+          lines[next],
+          lines[next + 1],
+          trackDurationRef.current,
+        );
+        const vocalProgress = Math.min(1, rawProgress * multiplier);
         updateLineWordsSweep(lyricsLineRefs.current[next]!, vocalProgress);
       }
     };
