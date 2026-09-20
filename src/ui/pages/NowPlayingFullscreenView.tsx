@@ -333,7 +333,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
         return;
       }
 
-      const effectiveTime = engineTime + lyricsOffsetRef.current;
+      const autoIntro = currentLyrics.autoIntroOffsetSec ?? 0;
+      const effectiveTime = engineTime - autoIntro + lyricsOffsetRef.current;
       const lines = currentLyrics.lines;
       const next = findActiveLineIndex(lines, effectiveTime);
 
@@ -695,7 +696,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                           onSeek={(i) => {
                             const start = lyrics.lines[i]?.startTimeSec;
                             if (start !== undefined) {
-                              const targetSeek = Math.max(0, start - lyricsOffsetRef.current);
+                              const autoIntro = lyrics.autoIntroOffsetSec ?? 0;
+                              const targetSeek = Math.max(0, start + autoIntro - lyricsOffsetRef.current);
                               pendingSeekRef.current = { target: targetSeek, at: performance.now() };
                               setActiveLyricIndex(i);
                               prevActiveIndexRef.current = i;

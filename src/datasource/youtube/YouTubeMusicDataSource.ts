@@ -5543,6 +5543,7 @@ export class YouTubeMusicDataSource extends DataSource {
     const runners: Record<string, () => Promise<Lyrics | null>> = {
       "lrclib-exact": () => this.fetchLrcLibExactLyrics(track),
       betterlyrics: () => this.fetchBetterLyrics(track),
+      netease: () => this.fetchNetEaseLyrics(track),
       "lrclib-search": () => this.fetchLrcLibSearchLyrics(track),
       "youtube-transcript": () => this.fetchYouTubeTranscriptLyrics(track),
       "youtube-music": () => this.fetchYouTubeMusicLyrics(track),
@@ -5864,6 +5865,87 @@ export class YouTubeMusicDataSource extends DataSource {
     return null;
   }
 
+  private async fetchNetEaseLyrics(track: Track): Promise<LyricsProviderResult | null> {
+    const defaultCookie =
+      "NMTID=00OAVK3xqDG726ITU6jopU6jF2yMk0AAAGCO8l1BA; JSESSIONID-WYYY=8KQo11YK2GZP45RMlz8Kn80vHZ9%2FGvwzRKQXXy0iQoFKycWdBlQjbfT0MJrFa6hwRfmpfBYKeHliUPH287JC3hNW99WQjrh9b9RmKT%2Fg1Exc2VwHZcsqi7ITxQgfEiee50po28x5xTTZXKoP%2FRMctN2jpDeg57kdZrXz%2FD%2FWghb%5C4DuZ%3A1659124633932; _iuqxldmzr_=32; _ntes_nnid=0db6667097883aa9596ecfe7f188c3ec,1659122833973; _ntes_nuid=0db6667097883aa9596ecfe7f188c3ec; WNMCID=xygast.1659122837568.01.0; WEVNSM=1.0.0; WM_NI=CwbjWAFbcIzPX3dsLP%2F52VB%2Bxr572gmqAYwvN9KU5X5f1nRzBYl0SNf%2BV9FTmmYZy%2FoJLADaZS0Q8TrKfNSBNOt0HLB8rRJh9DsvMOT7%2BCGCQLbvlWAcJBJeXb1P8yZ3RHA%3D; WM_NIKE=9ca17ae2e6ffcda170e2e6ee90c65b85ae87b9aa5483ef8ab3d14a939e9a83c459959caeadce47e991fbaee82af0fea7c3b92a81a9ae8bd64b86beadaaf95c9cedac94cf5cedebfeb7c121bcaefbd8b16dafaf8fbaf67e8ee785b6b854f7baff8fd1728287a4d1d246a6f59adac560afb397bbfc25ad9684a2c76b9a8d00b2bb60b295aaafd24a8e91bcd1cb4882e8beb3c964fb9cbd97d04598e9e5a4c6499394ae97ef5d83bd86a3c96f9cbeffb1bb739aed9ea9c437e2a3; WM_TID=AAkRFnl03RdABEBEQFOBWHCPOeMra4IL; playerid=94262567";
+
+    for (const query of this.getLyricsQueries(track)) {
+      try {
+        const searchUrl = `https://music.163.com/api/search/pc?limit=5&type=1&offset=0&s=${encodeURIComponent(`${query.title} ${query.artist}`)}`;
+        const searchResponse = await tauriFetch(searchUrl, {
+          headers: {
+            cookie: defaultCookie,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Referer: "https://music.163.com",
+            Accept: "application/json",
+          },
+          timeoutMs: 3_500,
+        });
+        if (!searchResponse.ok) continue;
+
+        const searchData = (await searchResponse.json()) as {
+          result?: { songs?: Array<{ id: number; name: string; dt?: number; artists?: Array<{ name: string }> }> };
+        };
+        const candidateSongs = searchData.result?.songs || [];
+        if (candidateSongs.length === 0) continue;
+
+        const bestSong = candidateSongs[0];
+        if (!bestSong?.id) continue;
+
+        const lyricUrl = `https://music.163.com/api/song/lyric?id=${bestSong.id}&lv=1`;
+        const lyricResponse = await tauriFetch(lyricUrl, {
+          headers: {
+            cookie: defaultCookie,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Referer: "https://music.163.com",
+            Accept: "application/json",
+          },
+          timeoutMs: 3_500,
+        });
+        if (!lyricResponse.ok) continue;
+
+        const lyricData = (await lyricResponse.json()) as {
+          lrc?: { lyric?: string };
+        };
+        const rawLrc = lyricData.lrc?.lyric;
+        if (!rawLrc) continue;
+
+        const lines = this.parseSyncedLyrics(rawLrc);
+        if (lines.length === 0) continue;
+
+        const providerDuration = bestSong.dt ? Math.round(bestSong.dt / 1000) : undefined;
+        let autoIntroOffsetSec: number | undefined;
+        if (track.durationSec && providerDuration && track.durationSec > providerDuration) {
+          const introDiff = track.durationSec - providerDuration;
+          if (introDiff >= 1.0 && introDiff <= 20.0) {
+            autoIntroOffsetSec = Number(introDiff.toFixed(2));
+          }
+        }
+
+        logInternalInfo("YouTubeMusicDataSource.getLyrics NetEase success", {
+          trackId: track.id,
+          songId: bestSong.id,
+          lineCount: lines.length,
+          autoIntroOffsetSec,
+        });
+
+        return {
+          lines,
+          timing: "synced",
+          sourceLabel: "NetEase Cloud Music",
+          autoIntroOffsetSec,
+        };
+      } catch (error) {
+        logInternalWarn("YouTubeMusicDataSource.getLyrics NetEase failed", {
+          trackId: track.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return null;
+  }
+
   private toLrcLibLyrics(
     track: Track,
     match: LrcLibTrack,
@@ -5877,16 +5959,26 @@ export class YouTubeMusicDataSource extends DataSource {
     const lines = this.parseSyncedLyrics(match.syncedLyrics);
     if (lines.length === 0) return null;
 
+    let autoIntroOffsetSec: number | undefined;
+    if (track.durationSec && match.duration && track.durationSec > match.duration) {
+      const introDiff = track.durationSec - match.duration;
+      if (introDiff >= 1.0 && introDiff <= 20.0) {
+        autoIntroOffsetSec = Number(introDiff.toFixed(2));
+      }
+    }
+
     logInternalInfo("YouTubeMusicDataSource.getLyrics LRCLIB success", {
       trackId: track.id,
       lineCount: lines.length,
       durationDelta,
+      autoIntroOffsetSec,
       sourceLabel,
     });
     return {
       lines,
       timing: "synced",
       sourceLabel,
+      autoIntroOffsetSec,
     };
   }
 
@@ -6002,7 +6094,20 @@ export class YouTubeMusicDataSource extends DataSource {
     const lines: Lyrics["lines"] = [];
     const timestampPattern = /\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g;
 
+    let lrcOffsetSec = 0;
+    const offsetMatch = lrc.match(/\[offset:\s*([+-]?\d+)\s*\]/i);
+    if (offsetMatch) {
+      const parsedMs = Number(offsetMatch[1]);
+      if (Number.isFinite(parsedMs)) {
+        lrcOffsetSec = parsedMs / 1000;
+      }
+    }
+
     for (const rawLine of lrc.split(/\r?\n/)) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+      if (/^\[(ti|ar|al|by|offset|re|ve|length|creator):/i.test(trimmed)) continue;
+
       const text = rawLine.replace(timestampPattern, "").trim();
       if (!text) continue;
 
@@ -6014,7 +6119,7 @@ export class YouTubeMusicDataSource extends DataSource {
         const fractionSec = Number(fraction.padEnd(3, "0").slice(0, 3)) / 1000;
         lines.push({
           text,
-          startTimeSec: minutes * 60 + seconds + fractionSec,
+          startTimeSec: Math.max(0, minutes * 60 + seconds + fractionSec + lrcOffsetSec),
         });
       }
     }

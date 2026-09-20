@@ -341,7 +341,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         }
       }
       setCurrentPlaybackTime(engineTime);
-      const time = engineTime + offset;
+      const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
+      const time = engineTime - autoIntro + offset;
       const currentLines = linesRef.current;
       const next = findActiveLineIndex(currentLines, time);
 
@@ -450,9 +451,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     const start = lines[index]?.startTimeSec;
     if (start === undefined) return;
     resumeFollow();
-    // Lines are matched against `currentTime + offset`, so the audio for this line sits that
+    // Lines are matched against `currentTime - autoIntro + offset`, so the audio for this line sits that
     // far back. Seeking to the raw start time would land a whole offset away from the words.
-    const target = Math.max(0, start - offset);
+    const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
+    const target = Math.max(0, start + autoIntro - offset);
     pendingSeekRef.current = { target, at: performance.now() };
     setCurrentPlaybackTime(target);
     setActiveIndex(index);

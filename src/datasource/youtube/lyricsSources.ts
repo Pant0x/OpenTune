@@ -48,6 +48,14 @@ export const LYRICS_SOURCES: LyricsSource[] = [
     note: "Line-synced TTML with explicit end times, community curated.",
   },
   {
+    id: "netease",
+    label: "NetEase Cloud Music",
+    timeoutMs: 3_500,
+    wave: 1,
+    requiresDuration: false,
+    note: "Millisecond-precision synced lyrics from NetEase Cloud Music's global catalog.",
+  },
+  {
     id: "lrclib-search",
     label: "LRCLIB search",
     timeoutMs: 5_000,

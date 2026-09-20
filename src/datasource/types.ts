@@ -64,6 +64,8 @@ export interface Lyrics {
   sourceId?: string;
   /** What every source did on this lookup, in preference order. */
   attempts?: LyricsSourceAttempt[];
+  /** Calculated intro time difference between YouTube playback and studio master. */
+  autoIntroOffsetSec?: number;
 }
 
 export interface Album {

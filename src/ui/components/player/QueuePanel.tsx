@@ -52,6 +52,7 @@ import {
 } from "../../pages/lyricsTiming";
 import { LyricLineView } from "../lyrics/LyricLineView";
 import { useTrackLyrics } from "../../hooks/useTrackLyrics";
+import { getLyricsOffset } from "../../settings/lyricsOffset";
 
 interface QueuePanelProps {
   onClose: () => void;
@@ -532,7 +533,10 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   }, [activeTab]);
 
   const synced = isSyncedLyrics(lyrics);
-  const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, currentTime) : -1;
+  const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
+  const userOffset = getLyricsOffset(currentTrack?.id);
+  const effectiveCurrentTime = currentTime - autoIntro + userOffset;
+  const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, effectiveCurrentTime) : -1;
   /*
    * The whole song, not a 4-line window: the card is a Spotify-tall scrolling pane and the
    * active line glides through it. Rows are keyed by absolute index and memoised inside
@@ -588,10 +592,13 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     const tickSweep = () => {
       const row = activePreviewNodeRef.current;
       if (row && synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
+        const lineAutoIntro = lyrics.autoIntroOffsetSec ?? 0;
+        const lineUserOffset = getLyricsOffset(currentTrack?.id);
+        const effectiveTime = playerController.getCurrentTime() - lineAutoIntro + lineUserOffset;
         const progress = getLineProgress(
           lyrics.lines,
           activeLyricIndex,
-          playerController.getCurrentTime(),
+          effectiveTime,
           currentTrack?.durationSec,
         );
         row.style.setProperty("--sweep", `${Math.round(progress * 100)}%`);
@@ -600,7 +607,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     };
     raf = requestAnimationFrame(tickSweep);
     return () => cancelAnimationFrame(raf);
-  }, [activeTab, isPlaying, synced, lyrics, activeLyricIndex, currentTrack?.durationSec]);
+  }, [activeTab, isPlaying, synced, lyrics, activeLyricIndex, currentTrack?.id, currentTrack?.durationSec]);
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
