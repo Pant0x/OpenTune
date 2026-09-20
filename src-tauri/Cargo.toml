@@ -81,7 +81,7 @@ souvlaki = "0.7"
 
 [profile.release]
 opt-level = 2
-codegen-units = 16
+codegen-units = 2
 lto = false
 incremental = false
 strip = "debuginfo"
