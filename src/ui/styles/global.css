@@ -710,13 +710,14 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
     90deg,
     #ffffff 0%,
     #ffffff clamp(0%, var(--sweep, 100%), 100%),
-    rgba(255, 255, 255, 0.42) clamp(0%, calc(var(--sweep, 100%) + 5%), 100%)
+    rgba(255, 255, 255, 0.40) clamp(0%, calc(var(--sweep, 100%) + 6%), 100%),
+    rgba(255, 255, 255, 0.40) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.5));
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
   will-change: background-size, transform;
 }
 
@@ -728,13 +729,14 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
     270deg,
     #ffffff 0%,
     #ffffff clamp(0%, var(--sweep, 100%), 100%),
-    rgba(255, 255, 255, 0.42) clamp(0%, calc(var(--sweep, 100%) + 5%), 100%)
+    rgba(255, 255, 255, 0.40) clamp(0%, calc(var(--sweep, 100%) + 6%), 100%),
+    rgba(255, 255, 255, 0.40) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.5));
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
   will-change: background-size;
 }
 

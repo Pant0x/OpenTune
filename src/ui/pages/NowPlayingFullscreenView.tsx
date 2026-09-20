@@ -34,6 +34,11 @@ import {
   subscribeToFollowedArtists,
 } from "../../player/followedArtists";
 import { useTrackLyrics } from "../hooks/useTrackLyrics";
+import {
+  OFFSET_STEP_SEC,
+  setLyricsOffset,
+  useLyricsOffset,
+} from "../settings/lyricsOffset";
 
 interface NowPlayingFullscreenViewProps {
   onClose: () => void;
@@ -88,12 +93,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     setVideoCounterpart(null);
     setSongCounterpart(null);
     setMediaMode(track.isVideo ? "video" : "song");
-    /*
-     * A fresh track starts at zero. In video mode the time-sync interval is parked, so without
-     * this reset the next video would seek to the stale position of the track before it.
-     */
-    setCurrentTime(0);
-
     let active = true;
     if (track.isVideo) {
       void getMediaCounterpart(track, "song").then((res) => {
@@ -111,9 +110,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   const [isIdle, setIsIdle] = useState(false);
   const idleTimerRef = useRef<number | null>(null);
-
-  // Playback time for synced lyrics and initial video seek
-  const [currentTime, setCurrentTime] = useState(0);
 
   // Scroll container and details visibility
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -165,12 +161,68 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
   const { status: lyricsStatus, lyrics, reload: reloadLyrics } = useTrackLyrics(track ?? null);
   const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
   const [isLyricsSyncLocked, setIsLyricsSyncLocked] = useState(true);
+  const isLyricsSyncLockedRef = useRef(isLyricsSyncLocked);
+  isLyricsSyncLockedRef.current = isLyricsSyncLocked;
+
   const lyricsScrollerRef = useRef<HTMLDivElement>(null);
   const lyricsLineRefs = useRef<Array<HTMLElement | null>>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const lyricsOffset = useLyricsOffset(track?.id);
+  const lyricsOffsetRef = useRef(lyricsOffset);
+  lyricsOffsetRef.current = lyricsOffset;
+
+  const lyricsRef = useRef(lyrics);
+  lyricsRef.current = lyrics;
+
+  const trackDurationRef = useRef(track?.durationSec);
+  trackDurationRef.current = track?.durationSec;
+
+  const isDetailsInViewRef = useRef(isDetailsInView);
+  isDetailsInViewRef.current = isDetailsInView;
+
+  const scrollAnimRef = useRef<number | null>(null);
+
+  const smoothScrollToTarget = useCallback((targetTop: number, durationMs = 650) => {
+    const container = lyricsScrollerRef.current;
+    if (!container) return;
+
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
+
+    const startTop = container.scrollTop;
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) < 2) return;
+
+    const startTime = performance.now();
+    const easeOutQuartic = (t: number) => 1 - Math.pow(1 - t, 4);
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      const eased = easeOutQuartic(progress);
+
+      container.scrollTop = startTop + distance * eased;
+
+      if (progress < 1) {
+        scrollAnimRef.current = requestAnimationFrame(step);
+      } else {
+        scrollAnimRef.current = null;
+      }
+    };
+
+    scrollAnimRef.current = requestAnimationFrame(step);
+  }, []);
+
   const handleLyricsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
     setIsLyricsSyncLocked(false);
+    isLyricsSyncLockedRef.current = false;
     const el = lyricsScrollerRef.current;
     if (!el || !scrollContainerRef.current) return;
 
@@ -181,7 +233,14 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   useEffect(() => {
     setIsLyricsSyncLocked(true);
+    isLyricsSyncLockedRef.current = true;
     setActiveLyricIndex(-1);
+    prevActiveIndexRef.current = -1;
+    lyricsLineRefs.current = [];
+    if (scrollAnimRef.current !== null) {
+      cancelAnimationFrame(scrollAnimRef.current);
+      scrollAnimRef.current = null;
+    }
   }, [track?.id]);
 
 
@@ -252,39 +311,83 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
 
   const effectiveArtworkUrl = spotifyCover ?? track?.artworkUrl;
 
-  // Sync playback time with smooth requestAnimationFrame loop during playback
+  // Sync playback time & karaoke lyrics sweep with smooth 60/120/144fps rAF loop
   const isVideoMode = mediaMode === "video";
   useEffect(() => {
     if (isVideoMode) return;
 
-    const sampleTime = () => {
-      const engineTime = playerController.getCurrentTime();
+    const sample = () => {
+      const rawEngineTime = playerController.getCurrentTime();
       const pending = pendingSeekRef.current;
+      let engineTime = rawEngineTime;
       if (pending) {
-        if (performance.now() - pending.at < 800 && Math.abs(engineTime - pending.target) > 0.75) {
-          setCurrentTime(pending.target);
-          return;
+        if (performance.now() - pending.at < 800 && Math.abs(rawEngineTime - pending.target) > 0.75) {
+          engineTime = pending.target;
+        } else {
+          pendingSeekRef.current = null;
         }
-        pendingSeekRef.current = null;
       }
-      setCurrentTime(engineTime);
+
+      const currentLyrics = lyricsRef.current;
+      if (!currentLyrics || !isSyncedLyrics(currentLyrics)) {
+        return;
+      }
+
+      const effectiveTime = engineTime + lyricsOffsetRef.current;
+      const lines = currentLyrics.lines;
+      const next = findActiveLineIndex(lines, effectiveTime);
+
+      if (next !== prevActiveIndexRef.current) {
+        const prev = prevActiveIndexRef.current;
+        if (prev >= 0 && lyricsLineRefs.current[prev]) {
+          lyricsLineRefs.current[prev]?.style.setProperty("--sweep", "100%");
+        }
+        if (next >= 0 && lyricsLineRefs.current[next]) {
+          lyricsLineRefs.current[next]?.style.setProperty("--sweep", "0%");
+        }
+        prevActiveIndexRef.current = next;
+        setActiveLyricIndex(next);
+
+        if (isLyricsSyncLockedRef.current && !isDetailsInViewRef.current && next >= 0) {
+          const container = lyricsScrollerRef.current;
+          const lineEl = lyricsLineRefs.current[next];
+          if (container && lineEl) {
+            const targetTop = Math.max(
+              0,
+              lineEl.offsetTop - container.clientHeight / 2 + lineEl.offsetHeight / 2,
+            );
+            smoothScrollToTarget(targetTop);
+          }
+        }
+      }
+
+      if (next >= 0 && lyricsLineRefs.current[next]) {
+        const progress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current);
+        lyricsLineRefs.current[next]?.style.setProperty("--sweep", `${(progress * 100).toFixed(2)}%`);
+      }
     };
 
-    sampleTime();
+    sample();
 
     if (!isPlaying) {
-      const interval = window.setInterval(sampleTime, 250);
+      const interval = window.setInterval(sample, 200);
       return () => window.clearInterval(interval);
     }
 
     let animFrame = 0;
     const tick = () => {
-      sampleTime();
+      sample();
       animFrame = requestAnimationFrame(tick);
     };
     animFrame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animFrame);
-  }, [isVideoMode, isPlaying]);
+    return () => {
+      cancelAnimationFrame(animFrame);
+      if (scrollAnimRef.current !== null) {
+        cancelAnimationFrame(scrollAnimRef.current);
+        scrollAnimRef.current = null;
+      }
+    };
+  }, [isVideoMode, isPlaying, smoothScrollToTarget]);
 
   // Fetch Artist Overview
   useEffect(() => {
@@ -359,45 +462,46 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     }
   };
 
-  // Update active lyrics line
-  useEffect(() => {
-    if (!lyrics || !isSyncedLyrics(lyrics)) return;
-    const lines = lyrics.lines;
-    const index = findActiveLineIndex(lines, currentTime);
-    setActiveLyricIndex(index);
-
-    // Only auto-scroll when active line actually changed and user has not manually scrolled away and not viewing details
-    if (index !== prevActiveIndexRef.current) {
-      prevActiveIndexRef.current = index;
-      if (isLyricsSyncLocked && !isDetailsInView && index >= 0 && lyricsScrollerRef.current) {
-        const container = lyricsScrollerRef.current;
-        const lineEl = lyricsLineRefs.current[index];
-        if (lineEl) {
-          const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
-          container.scrollTo({
-            top: Math.max(0, targetTop),
-            behavior: "smooth",
-          });
-        }
-      }
-    }
-  }, [lyrics, currentTime, isLyricsSyncLocked, isDetailsInView]);
-
   const handleResyncLyrics = () => {
     setIsLyricsSyncLocked(true);
+    isLyricsSyncLockedRef.current = true;
     if (activeLyricIndex >= 0 && lyricsScrollerRef.current) {
       prevActiveIndexRef.current = activeLyricIndex;
       const container = lyricsScrollerRef.current;
       const lineEl = lyricsLineRefs.current[activeLyricIndex];
       if (lineEl) {
-        const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
-        container.scrollTo({
-          top: Math.max(0, targetTop),
-          behavior: "smooth",
-        });
+        const targetTop = Math.max(
+          0,
+          lineEl.offsetTop - container.clientHeight / 2 + lineEl.offsetHeight / 2,
+        );
+        smoothScrollToTarget(targetTop);
       }
     }
   };
+
+  // Keyboard shortcut: [ to delay lyrics, ] to advance lyrics
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "[" && track?.id && lyrics && isSyncedLyrics(lyrics)) {
+        e.preventDefault();
+        setLyricsOffset(track.id, lyricsOffsetRef.current - OFFSET_STEP_SEC);
+      } else if (e.key === "]" && track?.id && lyrics && isSyncedLyrics(lyrics)) {
+        e.preventDefault();
+        setLyricsOffset(track.id, lyricsOffsetRef.current + OFFSET_STEP_SEC);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [track?.id, lyrics]);
 
   return (
     <div
@@ -464,8 +568,58 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
         </button>
       </div>
 
-      {/* Right Action: Spacer to keep Song/Video switch centered */}
-      <div className="w-9" />
+      {/* Right Action: Lyrics Timing Offset Controls */}
+      <div className="flex items-center justify-end min-w-[130px]">
+        {lyrics && isSyncedLyrics(lyrics) && track?.id && mediaMode === "song" ? (
+          <div
+            className="flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md px-2 py-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg"
+            title="Adjust lyrics sync (Hotkey: [ to delay, ] to advance)"
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLyricsOffset(track.id, lyricsOffset - OFFSET_STEP_SEC);
+              }}
+              className="size-6 flex items-center justify-center rounded-full hover:bg-white/20 active:scale-90 text-white transition-all cursor-pointer select-none font-bold"
+              aria-label="Delay lyrics by 0.25s"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLyricsOffset(track.id, 0);
+              }}
+              className={cn(
+                "px-2 py-0.5 rounded-full text-[11px] tabular-nums transition-colors cursor-pointer select-none",
+                lyricsOffset === 0
+                  ? "text-white/60 hover:text-white"
+                  : "text-amber-300 font-bold bg-amber-400/20 hover:bg-amber-400/30",
+              )}
+              title={lyricsOffset === 0 ? "Lyrics in sync (Click to reset)" : "Reset timing offset"}
+            >
+              {lyricsOffset === 0
+                ? "Sync"
+                : `${lyricsOffset > 0 ? "+" : "−"}${Math.abs(lyricsOffset).toFixed(2).replace(/\.?0+$/, "")}s`}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLyricsOffset(track.id, lyricsOffset + OFFSET_STEP_SEC);
+              }}
+              className="size-6 flex items-center justify-center rounded-full hover:bg-white/20 active:scale-90 text-white transition-all cursor-pointer select-none font-bold"
+              aria-label="Advance lyrics by 0.25s"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          <div className="w-9" />
+        )}
+      </div>
     </header>
 
     {/* Main Scrollable Area containing Hero Screen and Details Section */}
@@ -480,7 +634,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
             <VideoPlayerView
               videoId={activeVideoId}
               track={track}
-              initialTime={currentTime}
+              initialTime={playerController.getCurrentTime()}
               initialPlaying={isPlaying}
             />
           )}
@@ -532,28 +686,26 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                           isActive={idx === activeLyricIndex}
                           size="song"
                           forceAdlibLine={isAdlibLine(line.text)}
-                          sweep01={idx === activeLyricIndex
-                            ? getLineProgress(lyrics.lines, idx, currentTime, track?.durationSec)
-                            : 1}
                           emptyStyle="note"
                           onSeek={(i) => {
                             const start = lyrics.lines[i]?.startTimeSec;
                             if (start !== undefined) {
-                              pendingSeekRef.current = { target: start, at: performance.now() };
-                              setCurrentTime(start);
+                              const targetSeek = Math.max(0, start - lyricsOffsetRef.current);
+                              pendingSeekRef.current = { target: targetSeek, at: performance.now() };
                               setActiveLyricIndex(i);
-                              setIsLyricsSyncLocked(true);
                               prevActiveIndexRef.current = i;
+                              setIsLyricsSyncLocked(true);
+                              isLyricsSyncLockedRef.current = true;
                               const container = lyricsScrollerRef.current;
                               const lineEl = lyricsLineRefs.current[i];
                               if (container && lineEl) {
-                                const targetTop = lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2);
-                                container.scrollTo({
-                                  top: Math.max(0, targetTop),
-                                  behavior: "smooth",
-                                });
+                                const targetTop = Math.max(
+                                  0,
+                                  lineEl.offsetTop - (container.clientHeight / 2) + (lineEl.offsetHeight / 2),
+                                );
+                                smoothScrollToTarget(targetTop);
                               }
-                              void playerController.seekTo(start);
+                              void playerController.seekTo(targetSeek);
                             }
                           }}
                           register={(i, el) => {

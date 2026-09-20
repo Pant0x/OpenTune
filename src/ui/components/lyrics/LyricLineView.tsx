@@ -104,7 +104,7 @@ export const LyricLineView = memo(function LyricLineView({
   const isArabic = isRtlText(text);
   const sweeps = sweepEnabled && isActive && !adlibLine && !reduceMotion;
   const sweepStyle = sweeps && sweep01 !== undefined
-    ? ({ "--sweep": `${Math.round(Math.min(1, Math.max(0, sweep01)) * 100)}%` } as CSSProperties)
+    ? ({ "--sweep": `${(Math.min(1, Math.max(0, sweep01)) * 100).toFixed(2)}%` } as CSSProperties)
     : undefined;
 
   const alignClass = cn(

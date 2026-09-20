@@ -29,6 +29,8 @@ type EndedEvent = { trackId: string };
 let positionSec = 0;
 let durationSec = 0;
 let positionTrackId: string | null = null;
+let lastPositionTime = 0;
+let isAudioPlaying = false;
 let endedListener: (() => void) | null = null;
 let unlisten: Promise<UnlistenFn[]> | null = null;
 
@@ -48,10 +50,14 @@ function ensureListening(): Promise<UnlistenFn[]> {
         positionTrackId = event.payload.trackId;
         positionSec = event.payload.positionSec;
         durationSec = event.payload.durationSec;
+        lastPositionTime = performance.now();
+        isAudioPlaying = true;
       }),
       listen<EndedEvent>("native-audio-ended", () => {
         // Zeroed after, not before: the listener needs the final position to tell a track that
         // finished from a stream that died.
+        isAudioPlaying = false;
+        lastPositionTime = 0;
         endedListener?.();
         positionSec = 0;
         positionTrackId = null;
@@ -93,14 +99,24 @@ export async function load(
 }
 
 export function play(): Promise<void> {
+  isAudioPlaying = true;
+  lastPositionTime = performance.now();
   return invoke("native_audio_play");
 }
 
 export function pause(): Promise<void> {
+  if (isAudioPlaying && lastPositionTime > 0) {
+    const elapsedSec = (performance.now() - lastPositionTime) / 1000;
+    positionSec += Math.min(0.35, elapsedSec);
+  }
+  isAudioPlaying = false;
+  lastPositionTime = 0;
   return invoke("native_audio_pause");
 }
 
 export async function stop(): Promise<void> {
+  isAudioPlaying = false;
+  lastPositionTime = 0;
   positionSec = 0;
   durationSec = 0;
   positionTrackId = null;
@@ -111,6 +127,7 @@ export async function seek(seconds: number): Promise<void> {
   // Written through immediately so the progress bar does not snap back to the old position for
   // the up-to-250 ms before Rust's next event confirms the move.
   positionSec = Math.max(0, seconds);
+  lastPositionTime = performance.now();
   await invoke("native_audio_seek", { positionSec: positionSec });
 }
 
@@ -152,6 +169,8 @@ export function dropStandby(): Promise<void> {
 
 /** Stops and clears the active deck only. See `Command::DropActive` on the Rust side. */
 export function dropActive(): Promise<void> {
+  isAudioPlaying = false;
+  lastPositionTime = 0;
   return invoke("native_audio_drop_active");
 }
 
@@ -170,6 +189,11 @@ export function releaseMediaServer(): Promise<number> {
 }
 
 export function getCurrentTime(): number {
+  if (isAudioPlaying && lastPositionTime > 0) {
+    const elapsedSec = (performance.now() - lastPositionTime) / 1000;
+    const extrapolated = positionSec + Math.min(0.35, elapsedSec);
+    return durationSec > 0 ? Math.min(durationSec, extrapolated) : extrapolated;
+  }
   return positionSec;
 }
 
@@ -186,6 +210,8 @@ export function getPositionTrackId(): string | null {
 export function adoptTransitioned(trackId: string, duration: number): void {
   positionTrackId = trackId;
   positionSec = 0;
+  lastPositionTime = performance.now();
+  isAudioPlaying = true;
   durationSec = duration;
 }
 

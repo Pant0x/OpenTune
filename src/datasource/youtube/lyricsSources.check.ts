@@ -186,16 +186,25 @@ equal(
   null,
   "sources that do not match on length are unaffected",
 );
+const durationRequiredSource = {
+  id: "test-source",
+  label: "Test Source",
+  timeoutMs: 1000,
+  wave: 1 as const,
+  requiresDuration: true,
+  note: "Test note",
+};
+
 check(
-  unmetPrecondition(byId("lrclib-exact"), {}) !== null,
-  "LRCLIB cannot be asked about a track with no duration",
+  unmetPrecondition(durationRequiredSource, {}) !== null,
+  "a source requiring duration cannot be asked about a track with no duration",
 );
 check(
-  unmetPrecondition(byId("lrclib-search"), { durationSec: 0 }) !== null,
+  unmetPrecondition(durationRequiredSource, { durationSec: 0 }) !== null,
   "a zero duration is no duration, not a zero-length song",
 );
 equal(
-  skippedAttempt(byId("lrclib-exact"), unmetPrecondition(byId("lrclib-exact"), {}) ?? "").detail,
+  skippedAttempt(durationRequiredSource, unmetPrecondition(durationRequiredSource, {}) ?? "").detail,
   "Needs a track duration to match on",
   "and the reason reaches the status list instead of a bare 'No match'",
 );
