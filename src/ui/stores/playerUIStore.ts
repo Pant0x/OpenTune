@@ -101,6 +101,7 @@ class PlayerUIStore {
 
   openVideoMode() {
     this.setState({
+      isLyricsOpen: true,
       isNowPlayingFullscreen: true,
       initialMediaMode: "video",
     });

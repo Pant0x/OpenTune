@@ -15,18 +15,17 @@ const SEEK_SLIDER = [
   "h-1 w-full cursor-pointer appearance-none rounded-full bg-transparent",
   "disabled:cursor-default disabled:opacity-50",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-  // Track: filled with glowing white to --slider-progress, muted beyond it.
+  // Track: filled to --slider-progress, muted beyond it.
   "[&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full",
-  "[&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,#ffffff_var(--slider-progress),rgba(255,255,255,0.22)_var(--slider-progress))]",
-  "[&::-webkit-slider-runnable-track]:shadow-[0_0_8px_rgba(255,255,255,0.6)]",
-  "[&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-white/20",
-  "[&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-full [&::-moz-range-progress]:bg-white [&::-moz-range-progress]:shadow-[0_0_8px_rgba(255,255,255,0.7)]",
-  // Thumb: white knob with luminous glow on hover/focus.
+  "[&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,var(--color-primary)_var(--slider-progress),var(--color-muted)_var(--slider-progress))]",
+  "[&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted",
+  "[&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-full [&::-moz-range-progress]:bg-primary",
+  // Thumb: hidden until hover/drag, matching the old bar's minimal resting state.
   "[&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
-  "[&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.9)] [&::-webkit-slider-thumb]:opacity-0",
+  "[&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:opacity-0",
   "[&::-webkit-slider-thumb]:transition-opacity hover:[&::-webkit-slider-thumb]:opacity-100",
   "focus-visible:[&::-webkit-slider-thumb]:opacity-100",
-  "[&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_0_10px_rgba(255,255,255,0.9)]",
+  "[&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-foreground",
 ].join(" ");
 
 /**

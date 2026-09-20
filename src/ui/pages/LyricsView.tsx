@@ -533,29 +533,28 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 h-full w-full z-50 bg-black/95 overflow-hidden",
+        isFullscreen && "fixed inset-0 !h-screen !w-screen z-[9999] bg-black/95 overflow-hidden flex flex-col justify-between m-0 p-0",
       )}
+      style={
+        isFullscreen
+          ? {
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: "100vw",
+              height: "100vh",
+              zIndex: 9999,
+              margin: 0,
+              padding: 0,
+            }
+          : undefined
+      }
       aria-label="Lyrics"
     >
-      {/*
-        The cover, oversized and blurred past recognition, is the only colour on the screen.
-        Sized at the smallest variant deliberately: nothing above 120px survives the blur, so a
-        larger source would cost texture memory and show nothing.
-
-        The radius is 32px, not 70px. This is the most expensive single element in the app: a
-        136%-of-window box, so ~2600x1470 on a 1080p display, which is a 15 MB layer before the
-        filter has done anything — and blur cost scales with radius, because Chromium runs more
-        downsample passes and allocates intermediates expanded by it.
-
-        70px was buying almost nothing. The source is a 120px image stretched roughly twenty
-        times, so one source pixel already covers ~20 display pixels and the upscale is doing
-        the softening; 70px of filter was ~3.5 source pixels of extra blur on top of that.
-        32px is the radius `Layout` settled on for the same trick at the same upscale, for the
-        same reason. Toggle Settings > Potato PC > Manage > "Blur and colour filters" to see
-        the whole class of effect on and off.
-      */}
       {/* Dynamic moving ambient background ("Cover Ambience") */}
-      <CoverAmbienceCanvas artworkUrl={activeBackgroundUrl} />
+      <CoverAmbienceCanvas artworkUrl={activeBackgroundUrl} className="!inset-0 !h-full !w-full" />
 
       {/*
         The buttons below are navigable but never announced as they light up, so a listener

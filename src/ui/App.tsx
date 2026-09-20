@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MotionConfig } from "motion/react";
 import { cn } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
@@ -1310,8 +1311,13 @@ export default function App() {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen ? (
-            <NowPlayingFullscreenView onClose={() => playerUIStore.setLyricsOpen(false)} />
+          {playerUIState.isLyricsOpen || playerUIState.isNowPlayingFullscreen ? (
+            <NowPlayingFullscreenView
+              onClose={() => {
+                playerUIStore.setLyricsOpen(false);
+                playerUIStore.setNowPlayingFullscreen(false);
+              }}
+            />
           ) : (
           <div key={activeViewKey} className="min-h-0 flex-1">
             {currentView.view === "home" && (
@@ -1527,7 +1533,15 @@ export default function App() {
 
       {playerUIState.isLyricsOpen && playerUIState.isLyricsFullscreen && (
         <Suspense fallback={null}>
-          <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
+          {createPortal(
+            <LyricsView
+              onClose={() => {
+                playerUIStore.setLyricsFullscreen(false);
+                playerUIStore.setLyricsOpen(false);
+              }}
+            />,
+            document.body,
+          )}
         </Suspense>
       )}
 
