@@ -15,14 +15,15 @@ import {
   MenuDotsIcon,
 } from "@/ui/icons";
 import { Loader, MusicVisualizer } from "@/components/motion/loader";
-import { libraryController, useLibraryState } from "../../../player/playerStore";
+import { useLibraryState } from "../../../player/playerStore";
 import { logInternalError } from "../../../internal/logging";
 import {
   setArtistFollowedLocally,
   useFollowedArtistLocally,
 } from "../../../player/followedArtists";
-import type { Track } from "../../../datasource/types";
+import type { BrowseShelf, Track } from "../../../datasource/types";
 import {
+  libraryController,
   playerController,
   shallowEqual,
   usePlayerSelector,
@@ -42,14 +43,15 @@ import { SquareAltArrowLeftIcon } from "@solar-icons/react/linear";
 import { usePlayHistory } from "../../../player/playHistory";
 import { SpotifyCreditsModal } from "./SpotifyCreditsModal";
 import { SpotifyScannableModal } from "./SpotifyScannableModal";
-import { SpotifyService, type SpotifyArtistOverview, type SpotifyTrackCredits } from "../../../services/SpotifyService";
+import { SpotifyService, type SpotifyTrackCredits } from "../../../services/SpotifyService";
 import {
   findActiveLineIndex,
+  getDynamicVocalMultiplier,
   getLineProgress,
   isAdlibLine,
   isSyncedLyrics,
 } from "../../pages/lyricsTiming";
-import { LyricLineView } from "../lyrics/LyricLineView";
+import { LyricLineView, setLineSweepState, updateLineWordsSweep } from "../lyrics/LyricLineView";
 import { useTrackLyrics } from "../../hooks/useTrackLyrics";
 import { getLyricsOffset } from "../../settings/lyricsOffset";
 
@@ -386,10 +388,20 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const navigateAlbum = useAlbumNavigation();
   const { toggleTrackLike, openTrackMenu } = useTrackContextMenu();
   const playHistory = usePlayHistory();
-  const recentlyPlayed = useMemo(
-    () => playHistory.map((item) => item.track),
-    [playHistory],
-  );
+  const recentlyPlayed = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Track[] = [];
+    for (const item of playHistory) {
+      if (item.track?.id && !seen.has(item.track.id)) {
+        seen.add(item.track.id);
+        result.push(item.track);
+      }
+    }
+    return result;
+  }, [playHistory]);
+
+  const [relatedShelves, setRelatedShelves] = useState<BrowseShelf[] | null>(null);
+  const [isRelatedLoading, setIsRelatedLoading] = useState(false);
 
   const { queue, queueIndex, manualQueueLength, stopAfterQueueIndex, queueWindowStart } =
     usePlayerSessionSelector(selectQueueSlice, queueSliceEqual);
@@ -418,7 +430,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const [showScannableModal, setShowScannableModal] = useState(false);
 
   // Spotify Now Playing sidebar states
-  const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
   const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
   // Shared per-track fetch (same data as the Now Playing screen): loading/error included,
   // so a failed fetch reads as a state instead of a blank card.
@@ -454,6 +465,35 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     };
   }, [currentTrack?.title, currentTrack?.artist]);
 
+  const previewLineRefs = useRef<(HTMLElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!currentTrack) {
+      setRelatedShelves(null);
+      return;
+    }
+    let active = true;
+    setIsRelatedLoading(true);
+    void libraryController.getRelated(currentTrack)
+      .then((shelves) => {
+        if (!active) return;
+        const filtered = (shelves || []).filter(
+          (s) => !s.title.toLowerCase().includes("about") && !s.title.toLowerCase().includes("bio"),
+        );
+        setRelatedShelves(filtered);
+      })
+      .catch(() => {
+        if (active) setRelatedShelves([]);
+      })
+      .finally(() => {
+        if (active) setIsRelatedLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentTrack?.id]);
+
   const effectiveArtwork = spotifyCover || currentTrack?.artworkUrl;
   const isFollowedLocally = useFollowedArtistLocally(
     currentTrack?.artist ?? null,
@@ -483,20 +523,6 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
       console.warn("Could not sync artist subscription:", err);
     }
   };
-
-  useEffect(() => {
-    if (!currentTrack?.artist) {
-      setArtistOverview(null);
-      return;
-    }
-    let active = true;
-    void SpotifyService.getArtistOverview(currentTrack.artist).then((data) => {
-      if (active) setArtistOverview(data);
-    });
-    return () => {
-      active = false;
-    };
-  }, [currentTrack?.artist]);
 
   useEffect(() => {
     if (!currentTrack) {
@@ -589,8 +615,7 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
     if (activeTab !== "nowplaying" || !isPlaying) return;
     let raf = 0;
     const tickSweep = () => {
-      const row = activePreviewNodeRef.current;
-      if (row && synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
+      if (synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
         const lineAutoIntro = lyrics.autoIntroOffsetSec ?? 0;
         const lineUserOffset = getLyricsOffset(currentTrack?.id);
         const effectiveTime = playerController.getCurrentTime() - lineAutoIntro + lineUserOffset;
@@ -600,7 +625,28 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           effectiveTime,
           currentTrack?.durationSec,
         );
-        row.style.setProperty("--sweep", `${Math.round(progress * 100)}%`);
+        const multiplier = getDynamicVocalMultiplier(
+          lyrics.lines[activeLyricIndex],
+          lyrics.lines[activeLyricIndex + 1],
+          currentTrack?.durationSec,
+        );
+        const vocalProgress = Math.min(1, progress * multiplier);
+        const row = previewLineRefs.current[activeLyricIndex] || activePreviewNodeRef.current;
+        if (row) {
+          row.style.setProperty("--sweep", `${Math.round(vocalProgress * 100)}%`);
+          updateLineWordsSweep(row, vocalProgress);
+        }
+
+        const count = lyrics.lines.length;
+        for (let i = 0; i < count; i++) {
+          const el = previewLineRefs.current[i];
+          if (!el) continue;
+          if (i < activeLyricIndex) {
+            setLineSweepState(el, "sung");
+          } else if (i > activeLyricIndex) {
+            setLineSweepState(el, "unsung");
+          }
+        }
       }
       raf = requestAnimationFrame(tickSweep);
     };
@@ -1157,6 +1203,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                             void playerController.seekTo(targetTime);
                           }
                         } : undefined}
+                        register={(i, el) => {
+                          previewLineRefs.current[i] = el;
+                        }}
                         elementRef={item.isCurrent ? setActivePreviewNode : undefined}
                       />
                     ))}
@@ -1164,74 +1213,132 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                 )}
               </div>
 
-              {/* About the artist Card (Spotify 1:1 Style) */}
-              <div
-                className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 transition-all hover:bg-[#282828] cursor-pointer group/artist flex flex-col shadow-md"
-                onClick={() => {
-                  if (navigateArtist && currentTrack.artist) {
-                    navigateArtist(
-                      {
-                        id: currentTrack.artists?.[0]?.id || "",
-                        name: currentTrack.artist,
-                      },
-                      false,
-                    );
-                  }
-                }}
-              >
-                {/* Artist Header Photo / Banner */}
-                <div className="relative h-60 w-full shrink-0 overflow-hidden bg-[#181818]">
-                  <img
-                    src={artistOverview?.galleryUrls?.[0] || artistOverview?.avatarUrl || artistOverview?.headerUrl || effectiveArtwork}
-                    alt={currentTrack.artist}
-                    className="size-full object-cover transition-transform duration-500 group-hover/artist:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#242424] via-[#242424]/30 to-black/30" />
-                  <span className="absolute top-4 left-4 text-xs font-bold uppercase tracking-wider text-white drop-shadow-md">
-                    About the artist
-                  </span>
+              {/* Related Section (Recommendations, Similar Artists, More from Artist) */}
+              {isRelatedLoading && !relatedShelves ? (
+                <div className="flex flex-col gap-2 p-4 rounded-2xl bg-[#242424] border border-white/5 animate-pulse">
+                  <div className="h-4 w-28 rounded bg-white/10" />
+                  <div className="flex flex-col gap-2 pt-2">
+                    <div className="h-10 w-full rounded-lg bg-white/5" />
+                    <div className="h-10 w-full rounded-lg bg-white/5" />
+                  </div>
                 </div>
+              ) : relatedShelves && relatedShelves.length > 0 ? (
+                relatedShelves.map((shelf, sIdx) => {
+                  const hasTracks = shelf.tracks && shelf.tracks.length > 0;
+                  const hasArtists = shelf.artists && shelf.artists.length > 0;
+                  const hasAlbums = shelf.albums && shelf.albums.length > 0;
+                  if (!hasTracks && !hasArtists && !hasAlbums) return null;
 
-                <div className="p-4 pt-2 flex flex-col gap-3 shrink-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-xl text-white leading-tight truncate">
-                        {currentTrack.artist}
-                      </span>
-                      {artistOverview?.monthlyListeners ? (
-                        <span className="text-xs text-[#b3b3b3] font-medium">
-                          {Number(artistOverview.monthlyListeners).toLocaleString()} monthly listeners
+                  return (
+                    <div
+                      key={`shelf-${sIdx}-${shelf.title}`}
+                      className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3 shadow-md"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-[#b3b3b3]">
+                          {shelf.title}
                         </span>
-                      ) : (
-                        <span className="text-xs text-[#b3b3b3] font-medium">Verified Artist</span>
+                      </div>
+
+                      {hasTracks && (
+                        <div className="flex flex-col gap-1.5">
+                          {shelf.tracks.slice(0, 5).map((track) => (
+                            <button
+                              key={track.id}
+                              type="button"
+                              onClick={() => void playerController.playTrackById(track.id)}
+                              className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10 cursor-pointer"
+                            >
+                              <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-black/40">
+                                <TrackArtwork
+                                  className="size-full object-cover rounded-lg"
+                                  size={40}
+                                  artworkUrl={track.artworkUrl}
+                                  iconSize={16}
+                                />
+                                <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                                  <PlayIcon size={16} fill="currentColor" className="text-white" />
+                                </span>
+                              </div>
+                              <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate text-xs font-semibold text-white group-hover:underline">
+                                  {track.title}
+                                </span>
+                                <span className="truncate text-[11px] text-[#b3b3b3]">
+                                  {track.artist}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {hasArtists && (
+                        <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                          {shelf.artists.slice(0, 6).map((artist) => (
+                            <button
+                              key={artist.id || artist.name}
+                              type="button"
+                              onClick={() => {
+                                if (navigateArtist) {
+                                  navigateArtist(artist, false);
+                                }
+                              }}
+                              className="group flex flex-col items-center gap-1.5 shrink-0 w-16 text-center cursor-pointer hover:scale-105 transition-transform"
+                            >
+                              <div className="size-12 rounded-full overflow-hidden bg-black/40 border border-white/10 ring-1 ring-white/10 group-hover:border-white/30">
+                                {artist.artworkUrl ? (
+                                  <img
+                                    src={artist.artworkUrl}
+                                    alt={artist.name}
+                                    className="size-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="size-full flex items-center justify-center text-xs font-bold text-white/50">
+                                    {artist.name[0]}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="truncate text-[11px] font-medium text-white/90 group-hover:text-white w-full">
+                                {artist.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {hasAlbums && (
+                        <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                          {shelf.albums.slice(0, 5).map((album) => (
+                            <button
+                              key={album.id}
+                              type="button"
+                              onClick={() => {
+                                if (navigateAlbum) {
+                                  navigateAlbum(album);
+                                }
+                              }}
+                              className="group flex flex-col items-center gap-1.5 shrink-0 w-20 text-left cursor-pointer hover:scale-105 transition-transform"
+                            >
+                              <div className="size-20 rounded-xl overflow-hidden bg-black/40 border border-white/10">
+                                <TrackArtwork
+                                  className="size-full object-cover rounded-xl"
+                                  size={80}
+                                  artworkUrl={album.artworkUrl}
+                                  iconSize={24}
+                                />
+                              </div>
+                              <span className="truncate text-[11px] font-semibold text-white/90 group-hover:text-white w-full text-center">
+                                {album.title}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
-
-                    {/* Spotify Follow Pill Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void toggleFollowingArtist();
-                      }}
-                      className={cn(
-                        "px-4 py-1 rounded-full border text-xs font-bold transition-all shrink-0 cursor-pointer",
-                        isFollowingArtist
-                          ? "border-white bg-white text-black hover:scale-105"
-                          : "border-[#b3b3b3] text-white hover:border-white hover:scale-105",
-                      )}
-                    >
-                      {isFollowingArtist ? "Following" : "Follow"}
-                    </button>
-                  </div>
-
-                  <p className="text-xs text-[#b3b3b3] line-clamp-3 leading-relaxed">
-                    {artistOverview?.bio
-                      ? artistOverview.bio.replace(/<[^>]*>?/gm, "")
-                      : `Click to explore top tracks, discography, and albums from ${currentTrack.artist}.`}
-                  </p>
-                </div>
-              </div>
+                  );
+                })
+              ) : null}
 
               {/* Credits Card (Spotify style) */}
               <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
@@ -1594,6 +1701,46 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {/* Recently Played Section in Queue */}
+          {recentlyPlayed.length > 0 && (
+            <div className="flex flex-col gap-1 px-2 pt-3 pb-6 border-t border-border/20">
+              <div className="flex items-center justify-between px-1 py-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                <span>Recently played</span>
+                <span className="text-[11px] font-medium lowercase tabular-nums">{recentlyPlayed.length} songs</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {recentlyPlayed.slice(0, 15).map((track, idx) => (
+                  <button
+                    key={`queue-recent-${track.id}-${idx}`}
+                    type="button"
+                    onClick={() => void playerController.loadTrack(track)}
+                    className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                  >
+                    <div className="relative size-9 shrink-0 overflow-hidden rounded-lg bg-card ring-1 ring-border/20">
+                      <TrackArtwork
+                        className="size-full object-cover"
+                        size={36}
+                        artworkUrl={track.artworkUrl}
+                        iconSize={16}
+                      />
+                      <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                        <PlayIcon size={14} className="text-white fill-white" />
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {track.title}
+                      </span>
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {track.artist}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

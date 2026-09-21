@@ -9,12 +9,6 @@ const STORAGE_KEY = "amber.play-history.v1";
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 2000;
 
-/**
- * Replaying the same track within this window updates the existing entry instead of adding a
- * new one, so a seek back to the start or a quick restart does not show up as two plays.
- */
-const DEDUPE_WINDOW_MS = 60_000;
-
 export interface PlayHistoryEntry {
   track: Track;
   /** Epoch ms. */
@@ -28,13 +22,23 @@ let cached: PlayHistoryEntry[] = [];
 function normalize(parsed: unknown): PlayHistoryEntry[] | null {
   if (!Array.isArray(parsed)) return null;
   const cutoff = Date.now() - THIRTY_DAYS_MS;
-  return parsed.filter((entry): entry is PlayHistoryEntry =>
+  const valid = parsed.filter((entry): entry is PlayHistoryEntry =>
     Boolean(entry)
     && typeof entry === "object"
     && typeof (entry as PlayHistoryEntry).playedAt === "number"
     && (entry as PlayHistoryEntry).playedAt >= cutoff
     && Boolean((entry as PlayHistoryEntry).track?.id),
   );
+  // Deduplicate by track.id, keeping only the most recent entry
+  const seen = new Set<string>();
+  const deduplicated: PlayHistoryEntry[] = [];
+  for (const entry of valid) {
+    if (!seen.has(entry.track.id)) {
+      seen.add(entry.track.id);
+      deduplicated.push(entry);
+    }
+  }
+  return deduplicated;
 }
 
 function read(): PlayHistoryEntry[] {
@@ -104,13 +108,9 @@ function write(entries: PlayHistoryEntry[]): void {
 export function recordPlay(track: Track): void {
   const entries = read();
   const now = Date.now();
-  const [newest] = entries;
-
-  if (newest && newest.track.id === track.id && now - newest.playedAt < DEDUPE_WINDOW_MS) {
-    write([{ track, playedAt: now }, ...entries.slice(1)]);
-    return;
-  }
-  write([{ track, playedAt: now }, ...entries]);
+  // Filter out any existing entry for this track so each song appears only once
+  const filtered = entries.filter((e) => e.track.id !== track.id);
+  write([{ track, playedAt: now }, ...filtered]);
 }
 
 export function clearPlayHistory(): void {

@@ -1,5 +1,5 @@
 import {
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -145,6 +145,22 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     playerUIStore.setLyricsOpen(false);
     onClose();
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isFullscreen) {
+          playerUIStore.setLyricsFullscreen(false);
+        } else {
+          handleClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [isFullscreen]);
 
   const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
 
@@ -497,7 +513,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const tabbableIndex = focusIndex
     ?? (seekableIndices.includes(activeIndex) ? activeIndex : seekableIndices[0] ?? -1);
 
-  const handleLineKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleLineKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!ARROW_KEYS.includes(event.key)) return;
     event.preventDefault();
 
@@ -533,7 +549,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 !h-screen !w-screen z-[9999] bg-black/95 overflow-hidden flex flex-col justify-between m-0 p-0",
+        isFullscreen && "fixed inset-0 !h-screen !w-screen z-[9999] bg-black text-white overflow-hidden flex flex-col m-0 p-0 rounded-none border-none",
       )}
       style={
         isFullscreen

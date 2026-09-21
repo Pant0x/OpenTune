@@ -1126,6 +1126,24 @@ export default function App() {
       const textEntry = isTextEntry(event.target);
       if (textEntry) return;
 
+      if (event.key === "Escape") {
+        if (playerUIState.isNowPlayingFullscreen) {
+          event.preventDefault();
+          playerUIStore.setNowPlayingFullscreen(false);
+          return;
+        }
+        if (playerUIState.isLyricsFullscreen) {
+          event.preventDefault();
+          playerUIStore.setLyricsFullscreen(false);
+          return;
+        }
+        if (playerUIState.isLyricsOpen) {
+          event.preventDefault();
+          playerUIStore.setLyricsOpen(false);
+          return;
+        }
+      }
+
       if (
         eventMatchesShortcut(event, keyboardShortcuts.search)
         && currentView.view !== "settings"
@@ -1296,10 +1314,12 @@ export default function App() {
           canGoForward={canNavigateForward}
           onNavigateBack={handleNavigateBack}
           onNavigateForward={handleNavigateForward}
-          fullBleedContent={playerUIState.isLyricsOpen}
-          hideSidebar={playerUIState.isLyricsFullscreen}
+          fullBleedContent={playerUIState.isLyricsOpen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen}
+          hideSidebar={playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsOpen}
           showTransientScrollbar={
             !playerUIState.isLyricsOpen
+            && !playerUIState.isNowPlayingFullscreen
+            && !playerUIState.isLyricsFullscreen
             && (currentView.view === "playlist" || currentView.view === "album")
           }
           rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} /> : undefined}
@@ -1481,11 +1501,11 @@ export default function App() {
         different name than PlayerBar's own `group/playerbar` (used internally for its icon
         fade-in), so nesting them here doesn't make PlayerBar's hover styling fire early.
       */}
-      {!(playerUIState.isLyricsFullscreen && playerUIState.isLyricsOpen) && (
+      {!(playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isLyricsOpen) && (
         <div
           className={cn(
             "group/immersive-playerbar",
-            playerUIState.isLyricsOpen ? "px-2 pb-2 pt-2.5" : "px-2 pb-2 pt-2",
+            "px-2 pb-2 pt-2",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

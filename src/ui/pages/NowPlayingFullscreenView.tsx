@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
   PlayActiveIcon,
@@ -509,7 +510,19 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     }
   };
 
-  return (
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
+  return createPortal(
     <div
       ref={containerRef}
       onPointerEnter={handlePointerEnter}
@@ -517,7 +530,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
-        "relative h-full w-full overflow-hidden bg-black/95 text-white selection:bg-white/20 select-none flex flex-col rounded-none border-none",
+        "fixed inset-0 !h-screen !w-screen z-[9999] bg-black/95 text-white selection:bg-white/20 select-none flex flex-col justify-between m-0 p-0 rounded-none border-none overflow-hidden",
         isIdle && "cursor-none",
       )}
     >
@@ -985,6 +998,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           onToggleFollowArtist={toggleFollowingArtist}
         />
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

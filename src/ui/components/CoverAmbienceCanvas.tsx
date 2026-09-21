@@ -68,7 +68,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
       {isEnabled && (
         <div
           className={cn(
-            "absolute inset-0 filter blur-[90px] saturate-[2.4] opacity-100 transition-transform duration-700 ease-out",
+            "absolute inset-0 filter blur-[65px] saturate-[2.8] opacity-100 transition-transform duration-700 ease-out",
             isPlaying && shouldAnimate && "ambience-pulse-active",
           )}
         >
@@ -119,7 +119,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
       )}
 
       {/* Scrim Overlay for optimal contrast & legibility */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/30 to-black/55 backdrop-brightness-[0.88]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/20 to-black/45 backdrop-brightness-[0.94]" />
     </div>
   );
 });
