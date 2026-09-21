@@ -19,6 +19,23 @@ const listeners = new Set<() => void>();
 let cachedRaw: string | null = null;
 let cached: PlayHistoryEntry[] = [];
 
+function getTrackFingerprint(track?: Track | null): string {
+  if (!track) return "";
+  const title = (track.title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\(.*?\)\s*/g, "")
+    .replace(/\s*\[.*?\]\s*/g, "")
+    .trim();
+  const artist = (track.artist || "")
+    .trim()
+    .toLowerCase();
+  if (title && artist) {
+    return `${title}:::${artist}`;
+  }
+  return track.id || "";
+}
+
 function normalize(parsed: unknown): PlayHistoryEntry[] | null {
   if (!Array.isArray(parsed)) return null;
   const cutoff = Date.now() - THIRTY_DAYS_MS;
@@ -29,12 +46,15 @@ function normalize(parsed: unknown): PlayHistoryEntry[] | null {
     && (entry as PlayHistoryEntry).playedAt >= cutoff
     && Boolean((entry as PlayHistoryEntry).track?.id),
   );
-  // Deduplicate by track.id, keeping only the most recent entry
-  const seen = new Set<string>();
+  // Deduplicate by track.id and normalized title/artist, keeping only the most recent entry
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
   const deduplicated: PlayHistoryEntry[] = [];
   for (const entry of valid) {
-    if (!seen.has(entry.track.id)) {
-      seen.add(entry.track.id);
+    const key = getTrackFingerprint(entry.track);
+    if (!seenIds.has(entry.track.id) && (!key || !seenKeys.has(key))) {
+      seenIds.add(entry.track.id);
+      if (key) seenKeys.add(key);
       deduplicated.push(entry);
     }
   }
@@ -108,8 +128,13 @@ function write(entries: PlayHistoryEntry[]): void {
 export function recordPlay(track: Track): void {
   const entries = read();
   const now = Date.now();
-  // Filter out any existing entry for this track so each song appears only once
-  const filtered = entries.filter((e) => e.track.id !== track.id);
+  const targetKey = getTrackFingerprint(track);
+  // Filter out any existing entry for this track so each song appears strictly once
+  const filtered = entries.filter((e) => {
+    if (e.track.id === track.id) return false;
+    if (targetKey && getTrackFingerprint(e.track) === targetKey) return false;
+    return true;
+  });
   write([{ track, playedAt: now }, ...filtered]);
 }
 

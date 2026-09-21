@@ -530,7 +530,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       onPointerMove={resetIdleTimer}
       onClick={resetIdleTimer}
       className={cn(
-        "fixed inset-0 !h-screen !w-screen z-[9999] bg-black/95 text-white selection:bg-white/20 select-none flex flex-col justify-between m-0 p-0 rounded-none border-none overflow-hidden",
+        "fixed inset-0 w-full h-full z-[9999] bg-black text-white selection:bg-white/20 select-none flex flex-col m-0 p-0 rounded-none border-none overflow-hidden",
         isIdle && "cursor-none",
       )}
     >

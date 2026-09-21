@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type RightPanelTab = "nowplaying" | "queue" | "recent";
+export type RightPanelTab = "nowplaying" | "queue" | "related" | "recent";
 
 export interface PlayerUIState {
   isSeeking: boolean;

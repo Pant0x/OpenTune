@@ -27,12 +27,12 @@ export function clampOffset(seconds: number): number {
   return Math.round(clamped / OFFSET_STEP_SEC) * OFFSET_STEP_SEC;
 }
 
-export const DEFAULT_OFFSET_SEC = -1.75;
+export const DEFAULT_OFFSET_SEC = 0;
 
 /**
  * Drops defaults and caps the table.
  *
- * Default (-1.75s) offsets spend the budget on nothing, so omit them. The cap keeps the
+ * Default (0s) offsets spend the budget on nothing, so omit them. The cap keeps the
  * oldest entries out by relying on object key insertion order.
  */
 export function pruneOffsets(entries: Record<string, number>): Record<string, number> {

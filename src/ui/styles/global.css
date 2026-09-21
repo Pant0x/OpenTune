@@ -821,7 +821,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 .lyrics-drift {
-  animation: lyrics-drift 6s ease-in-out infinite alternate;
+  animation: lyrics-drift 4.2s ease-in-out infinite alternate;
   will-change: transform;
 }
 
@@ -836,13 +836,13 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
     opacity: 0.88;
   }
   50% {
-    transform: scale(1.08);
+    transform: scale(1.10);
     opacity: 1;
   }
 }
 
 .ambience-pulse-active {
-  animation: ambience-beat 2s ease-in-out infinite;
+  animation: ambience-beat 1.6s ease-in-out infinite;
 }
 
 @keyframes ambience-drift-1 {
@@ -894,19 +894,19 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 }
 
 .ambience-blob-1 {
-  animation: ambience-drift-1 4.5s ease-in-out infinite alternate;
+  animation: ambience-drift-1 3.2s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-2 {
-  animation: ambience-drift-2 5.2s ease-in-out infinite alternate;
+  animation: ambience-drift-2 3.6s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-3 {
-  animation: ambience-drift-3 5.8s ease-in-out infinite alternate;
+  animation: ambience-drift-3 4.0s ease-in-out infinite alternate;
   will-change: transform;
 }
 .ambience-blob-4 {
-  animation: ambience-drift-4 4.8s ease-in-out infinite alternate;
+  animation: ambience-drift-4 3.4s ease-in-out infinite alternate;
   will-change: transform;
 }
 

@@ -537,6 +537,22 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     scrollToLine(nextIndex, !reduce);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isFullscreen) {
+          playerUIStore.setLyricsFullscreen(false);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isFullscreen, onClose]);
+
   // sourceLabel & timingLabel hidden per user request
   void lyrics?.sourceLabel;
   const emptyMessage = !isOnline
@@ -549,7 +565,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 !h-screen !w-screen z-[9999] bg-black text-white overflow-hidden flex flex-col m-0 p-0 rounded-none border-none",
+        isFullscreen && "fixed inset-0 w-full h-full z-[9999] bg-black text-white overflow-hidden flex flex-col m-0 p-0 rounded-none border-none",
       )}
       style={
         isFullscreen
@@ -559,8 +575,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               left: 0,
               right: 0,
               bottom: 0,
-              width: "100vw",
-              height: "100vh",
+              width: "100%",
+              height: "100%",
               zIndex: 9999,
               margin: 0,
               padding: 0,

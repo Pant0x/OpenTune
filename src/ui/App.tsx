@@ -260,16 +260,35 @@ export default function App() {
     };
   }, []);
 
+  const wasMaximizedBeforeFullscreenRef = useRef(false);
+
   // Full-screen lyrics is real OS fullscreen, not just a wider layout — the whole point is
   // the window chrome getting out of the way too.
   useEffect(() => {
-    void getCurrentWindow()
-      .setFullscreen(playerUIState.isLyricsFullscreen)
-      .catch((error) => {
+    const win = getCurrentWindow();
+    const syncFullscreen = async () => {
+      try {
+        if (playerUIState.isLyricsFullscreen) {
+          const isMax = await win.isMaximized().catch(() => false);
+          wasMaximizedBeforeFullscreenRef.current = isMax;
+          if (isMax) {
+            await win.unmaximize().catch(() => {});
+          }
+          await win.setFullscreen(true).catch(() => {});
+        } else {
+          await win.setFullscreen(false).catch(() => {});
+          if (wasMaximizedBeforeFullscreenRef.current) {
+            await win.maximize().catch(() => {});
+            wasMaximizedBeforeFullscreenRef.current = false;
+          }
+        }
+      } catch (error) {
         logInternalWarn("App.syncLyricsFullscreen failed", {
           error: error instanceof Error ? error.message : String(error),
         });
-      });
+      }
+    };
+    void syncFullscreen();
   }, [playerUIState.isLyricsFullscreen]);
 
   const [currentView, setCurrentView] = useState<AppViewState>({ view: "home" });
@@ -1315,7 +1334,7 @@ export default function App() {
           onNavigateBack={handleNavigateBack}
           onNavigateForward={handleNavigateForward}
           fullBleedContent={playerUIState.isLyricsOpen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen}
-          hideSidebar={playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsOpen}
+          hideSidebar={playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen}
           showTransientScrollbar={
             !playerUIState.isLyricsOpen
             && !playerUIState.isNowPlayingFullscreen
@@ -1334,10 +1353,11 @@ export default function App() {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen || playerUIState.isNowPlayingFullscreen ? (
+          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen ? (
+            <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
+          ) : playerUIState.isNowPlayingFullscreen ? (
             <NowPlayingFullscreenView
               onClose={() => {
-                playerUIStore.setLyricsOpen(false);
                 playerUIStore.setNowPlayingFullscreen(false);
               }}
             />
@@ -1501,11 +1521,11 @@ export default function App() {
         different name than PlayerBar's own `group/playerbar` (used internally for its icon
         fade-in), so nesting them here doesn't make PlayerBar's hover styling fire early.
       */}
-      {!(playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isLyricsOpen) && (
+      {!(playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen) && (
         <div
           className={cn(
             "group/immersive-playerbar",
-            "px-2 pb-2 pt-2",
+            playerUIState.isLyricsOpen ? "px-2 pb-2 pt-2.5" : "px-2 pb-2 pt-2",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

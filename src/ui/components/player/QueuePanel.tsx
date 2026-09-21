@@ -389,11 +389,22 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
   const { toggleTrackLike, openTrackMenu } = useTrackContextMenu();
   const playHistory = usePlayHistory();
   const recentlyPlayed = useMemo(() => {
-    const seen = new Set<string>();
+    const seenIds = new Set<string>();
+    const seenKeys = new Set<string>();
     const result: Track[] = [];
     for (const item of playHistory) {
-      if (item.track?.id && !seen.has(item.track.id)) {
-        seen.add(item.track.id);
+      if (!item.track?.id) continue;
+      const title = (item.track.title || "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s*\(.*?\)\s*/g, "")
+        .replace(/\s*\[.*?\]\s*/g, "")
+        .trim();
+      const artist = (item.track.artist || "").trim().toLowerCase();
+      const key = title && artist ? `${title}:::${artist}` : item.track.id;
+      if (!seenIds.has(item.track.id) && !seenKeys.has(key)) {
+        seenIds.add(item.track.id);
+        seenKeys.add(key);
         result.push(item.track);
       }
     }
@@ -1022,16 +1033,16 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === "recent"}
-            onClick={() => playerUIStore.setRightPanelTab("recent")}
+            aria-selected={activeTab === "related"}
+            onClick={() => playerUIStore.setRightPanelTab("related")}
             className={cn(
               "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
-              activeTab === "recent"
+              activeTab === "related"
                 ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
                 : "text-[#b3b3b3] hover:text-white",
             )}
           >
-            Recent
+            Related
           </button>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -1187,158 +1198,40 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                     ref={lyricsPreviewScrollRef}
                     className="relative flex flex-col gap-2 py-1 min-h-[140px] max-h-[220px] overflow-y-auto overscroll-contain select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
-                    {previewLyricsRows.map((item) => (
-                      <LyricLineView
-                        key={item.globalIndex}
-                        index={item.globalIndex}
-                        text={item.line.text}
-                        isActive={item.isCurrent}
-                        size="preview"
-                        forceAdlibLine={item.isAdlib}
-                        sweep01={item.isCurrent ? 1 : undefined}
-                        emptyStyle="note"
-                        onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
-                          const targetTime = lyrics?.lines[index]?.startTimeSec;
-                          if (targetTime !== undefined) {
+                    {previewLyricsRows.map((item) => {
+                      const dist = activeLyricIndex < 0 ? 1 : Math.abs(item.globalIndex - activeLyricIndex);
+                      return (
+                        <LyricLineView
+                          key={item.globalIndex}
+                          index={item.globalIndex}
+                          text={item.line.text}
+                          isActive={item.isCurrent}
+                          size="preview"
+                          forceAdlibLine={item.isAdlib}
+                          depthStyle={{
+                            opacity: item.isCurrent ? 1 : Math.max(0.28, 0.65 - dist * 0.12),
+                            filter: item.isCurrent ? "none" : `blur(${Math.min(2, 0.4 + dist * 0.4)}px)`,
+                            transform: item.isCurrent ? "scale(1.03) translateZ(0)" : "scale(0.98) translateZ(0)",
+                          }}
+                          emptyStyle="note"
+                          onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
+                            const autoIntroOffset = lyrics?.autoIntroOffsetSec ?? 0;
+                            const offset = getLyricsOffset(currentTrack?.id);
+                            const targetTime = Math.max(0, (lyrics?.lines[index]?.startTimeSec ?? 0) + autoIntroOffset - offset);
                             void playerController.seekTo(targetTime);
-                          }
-                        } : undefined}
-                        register={(i, el) => {
-                          previewLineRefs.current[i] = el;
-                        }}
-                        elementRef={item.isCurrent ? setActivePreviewNode : undefined}
-                      />
-                    ))}
+                          } : undefined}
+                          register={(i, el) => {
+                            previewLineRefs.current[i] = el;
+                          }}
+                          elementRef={item.isCurrent ? setActivePreviewNode : undefined}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Related Section (Recommendations, Similar Artists, More from Artist) */}
-              {isRelatedLoading && !relatedShelves ? (
-                <div className="flex flex-col gap-2 p-4 rounded-2xl bg-[#242424] border border-white/5 animate-pulse">
-                  <div className="h-4 w-28 rounded bg-white/10" />
-                  <div className="flex flex-col gap-2 pt-2">
-                    <div className="h-10 w-full rounded-lg bg-white/5" />
-                    <div className="h-10 w-full rounded-lg bg-white/5" />
-                  </div>
-                </div>
-              ) : relatedShelves && relatedShelves.length > 0 ? (
-                relatedShelves.map((shelf, sIdx) => {
-                  const hasTracks = shelf.tracks && shelf.tracks.length > 0;
-                  const hasArtists = shelf.artists && shelf.artists.length > 0;
-                  const hasAlbums = shelf.albums && shelf.albums.length > 0;
-                  if (!hasTracks && !hasArtists && !hasAlbums) return null;
 
-                  return (
-                    <div
-                      key={`shelf-${sIdx}-${shelf.title}`}
-                      className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3 shadow-md"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase tracking-wider text-[#b3b3b3]">
-                          {shelf.title}
-                        </span>
-                      </div>
-
-                      {hasTracks && (
-                        <div className="flex flex-col gap-1.5">
-                          {shelf.tracks.slice(0, 5).map((track) => (
-                            <button
-                              key={track.id}
-                              type="button"
-                              onClick={() => void playerController.playTrackById(track.id)}
-                              className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10 cursor-pointer"
-                            >
-                              <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-black/40">
-                                <TrackArtwork
-                                  className="size-full object-cover rounded-lg"
-                                  size={40}
-                                  artworkUrl={track.artworkUrl}
-                                  iconSize={16}
-                                />
-                                <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                                  <PlayIcon size={16} fill="currentColor" className="text-white" />
-                                </span>
-                              </div>
-                              <div className="flex min-w-0 flex-1 flex-col">
-                                <span className="truncate text-xs font-semibold text-white group-hover:underline">
-                                  {track.title}
-                                </span>
-                                <span className="truncate text-[11px] text-[#b3b3b3]">
-                                  {track.artist}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {hasArtists && (
-                        <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                          {shelf.artists.slice(0, 6).map((artist) => (
-                            <button
-                              key={artist.id || artist.name}
-                              type="button"
-                              onClick={() => {
-                                if (navigateArtist) {
-                                  navigateArtist(artist, false);
-                                }
-                              }}
-                              className="group flex flex-col items-center gap-1.5 shrink-0 w-16 text-center cursor-pointer hover:scale-105 transition-transform"
-                            >
-                              <div className="size-12 rounded-full overflow-hidden bg-black/40 border border-white/10 ring-1 ring-white/10 group-hover:border-white/30">
-                                {artist.artworkUrl ? (
-                                  <img
-                                    src={artist.artworkUrl}
-                                    alt={artist.name}
-                                    className="size-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="size-full flex items-center justify-center text-xs font-bold text-white/50">
-                                    {artist.name[0]}
-                                  </div>
-                                )}
-                              </div>
-                              <span className="truncate text-[11px] font-medium text-white/90 group-hover:text-white w-full">
-                                {artist.name}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {hasAlbums && (
-                        <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                          {shelf.albums.slice(0, 5).map((album) => (
-                            <button
-                              key={album.id}
-                              type="button"
-                              onClick={() => {
-                                if (navigateAlbum) {
-                                  navigateAlbum(album);
-                                }
-                              }}
-                              className="group flex flex-col items-center gap-1.5 shrink-0 w-20 text-left cursor-pointer hover:scale-105 transition-transform"
-                            >
-                              <div className="size-20 rounded-xl overflow-hidden bg-black/40 border border-white/10">
-                                <TrackArtwork
-                                  className="size-full object-cover rounded-xl"
-                                  size={80}
-                                  artworkUrl={album.artworkUrl}
-                                  iconSize={24}
-                                />
-                              </div>
-                              <span className="truncate text-[11px] font-semibold text-white/90 group-hover:text-white w-full text-center">
-                                {album.title}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : null}
 
               {/* Credits Card (Spotify style) */}
               <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
@@ -1746,44 +1639,142 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
         </div>
       )}
 
-      {/* ── Tab 3: Recently Played View (Spotify style) ── */}
-      {activeTab === "recent" && (
-        <div className="flex flex-1 flex-col overflow-y-auto px-2 py-2">
-          {recentlyPlayed.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              No recently played songs recorded yet.
+      {/* ── Tab 3: Related Section (You might also like, Similar artists, etc.) ── */}
+      {(activeTab === "related" || activeTab === "recent") && (
+        <div className="flex flex-1 flex-col overflow-y-auto p-3 gap-3 overscroll-contain">
+          {isRelatedLoading && !relatedShelves ? (
+            <div className="flex flex-col gap-2.5 p-4 rounded-2xl bg-[#242424] border border-white/5 animate-pulse">
+              <div className="h-4 w-28 rounded bg-white/10" />
+              <div className="flex flex-col gap-2 pt-2">
+                <div className="h-10 w-full rounded-lg bg-white/5" />
+                <div className="h-10 w-full rounded-lg bg-white/5" />
+                <div className="h-10 w-full rounded-lg bg-white/5" />
+              </div>
+            </div>
+          ) : !currentTrack ? (
+            <p className="px-4 py-12 text-center text-sm text-[#b3b3b3]">
+              Play a track to discover related songs and artists.
+            </p>
+          ) : !relatedShelves || relatedShelves.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-[#b3b3b3]">
+              No related songs or artists found for this track.
             </p>
           ) : (
-            <div className="flex flex-col gap-1">
-              {recentlyPlayed.map((track, idx) => (
-                <button
-                  key={`${track.id}-${idx}`}
-                  type="button"
-                  onClick={() => void playerController.loadTrack(track)}
-                  className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            relatedShelves.map((shelf, sIdx) => {
+              const hasTracks = shelf.tracks && shelf.tracks.length > 0;
+              const hasArtists = shelf.artists && shelf.artists.length > 0;
+              const hasAlbums = shelf.albums && shelf.albums.length > 0;
+              if (!hasTracks && !hasArtists && !hasAlbums) return null;
+
+              return (
+                <div
+                  key={`related-tab-shelf-${sIdx}-${shelf.title}`}
+                  className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3 shadow-md"
                 >
-                  <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-card ring-1 ring-border/20">
-                    <TrackArtwork
-                      className="size-full object-cover"
-                      size={40}
-                      artworkUrl={track.artworkUrl}
-                      iconSize={18}
-                    />
-                    <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                      <PlayIcon size={18} className="text-white fill-white" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#b3b3b3]">
+                      {shelf.title}
                     </span>
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                      {track.title}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {track.artist}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
+
+                  {hasTracks && (
+                    <div className="flex flex-col gap-1.5">
+                      {shelf.tracks.map((track) => (
+                        <button
+                          key={track.id}
+                          type="button"
+                          onClick={() => void playerController.playTrackById(track.id)}
+                          className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10 cursor-pointer"
+                        >
+                          <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-black/40">
+                            <TrackArtwork
+                              className="size-full object-cover rounded-lg"
+                              size={40}
+                              artworkUrl={track.artworkUrl}
+                              iconSize={16}
+                            />
+                            <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                              <PlayIcon size={16} fill="currentColor" className="text-white" />
+                            </span>
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-xs font-semibold text-white group-hover:underline">
+                              {track.title}
+                            </span>
+                            <span className="truncate text-[11px] text-[#b3b3b3]">
+                              {track.artist}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {hasArtists && (
+                    <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {shelf.artists.slice(0, 8).map((artist) => (
+                        <button
+                          key={artist.id || artist.name}
+                          type="button"
+                          onClick={() => {
+                            if (navigateArtist) {
+                              navigateArtist(artist, false);
+                            }
+                          }}
+                          className="group flex flex-col items-center gap-1.5 shrink-0 w-16 text-center cursor-pointer hover:scale-105 transition-transform"
+                        >
+                          <div className="size-12 rounded-full overflow-hidden bg-black/40 border border-white/10 ring-1 ring-white/10 group-hover:border-white/30">
+                            {artist.artworkUrl ? (
+                              <img
+                                src={artist.artworkUrl}
+                                alt={artist.name}
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <div className="size-full flex items-center justify-center text-xs font-bold text-white/50">
+                                {artist.name[0]}
+                              </div>
+                            )}
+                          </div>
+                          <span className="truncate text-[11px] font-medium text-white/90 group-hover:text-white w-full">
+                            {artist.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {hasAlbums && (
+                    <div className="flex items-center gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {shelf.albums.slice(0, 6).map((album) => (
+                        <button
+                          key={album.id}
+                          type="button"
+                          onClick={() => {
+                            if (navigateAlbum) {
+                              navigateAlbum(album);
+                            }
+                          }}
+                          className="group flex flex-col items-center gap-1.5 shrink-0 w-20 text-left cursor-pointer hover:scale-105 transition-transform"
+                        >
+                          <div className="size-20 rounded-xl overflow-hidden bg-black/40 border border-white/10">
+                            <TrackArtwork
+                              className="size-full object-cover rounded-xl"
+                              size={80}
+                              artworkUrl={album.artworkUrl}
+                              iconSize={24}
+                            />
+                          </div>
+                          <span className="truncate text-[11px] font-semibold text-white/90 group-hover:text-white w-full text-center">
+                            {album.title}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       )}

@@ -395,14 +395,20 @@ export const LyricLineView = memo(function LyricLineView({
 
   if (size === "preview") {
     const rowClass = cn(
-      "transition-all duration-300 leading-normal select-text text-left w-full",
+      "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter]",
       isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] scale-[1.03] origin-left",
       isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.02] origin-left",
-      !isActive && !adlibLine && "text-white/40 font-semibold text-xs sm:text-sm hover:text-white/80 transition-all",
-      !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold",
-      sweeps && "lyric-sweep",
+      !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
+      !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold hover:text-white/70 hover:!filter-none transition-all",
+      sweeps && "lyric-sweep font-bold",
       className,
     );
+    const previewStyle: CSSProperties = {
+      ...(sweepStyle ?? {}),
+      opacity: isActive ? 1 : depthStyle?.opacity,
+      filter: isActive ? "none" : depthStyle?.filter,
+      transform: isActive ? "scale(1.03) translateZ(0)" : depthStyle?.transform,
+    };
     if (onSeek) {
       return (
         <button
@@ -412,15 +418,15 @@ export const LyricLineView = memo(function LyricLineView({
             e.stopPropagation();
             onSeek(index);
           }}
-          style={sweepStyle}
-          className={cn(rowClass, "cursor-pointer block")}
+          style={previewStyle}
+          className={cn(rowClass, "cursor-pointer block focus-visible:outline-none")}
         >
           {tokenNodes}
         </button>
       );
     }
     return (
-      <p ref={attach} style={sweepStyle} className={rowClass}>
+      <p ref={attach} style={previewStyle} className={rowClass}>
         {tokenNodes}
       </p>
     );
