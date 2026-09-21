@@ -24,16 +24,34 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
 
   const colors = useMemo(() => {
     const rgb = dominant.rgb || { r: 50, g: 30, b: 65 };
+    const palette = dominant.palette;
     const { r, g, b } = rgb;
 
-    // Create 4 distinct harmonious colors for the mesh blobs
-    const c1 = `rgba(${r}, ${g}, ${b}, ${0.72 * intensity})`;
-    const c2 = `rgba(${Math.min(255, Math.round(b * 0.9 + 40))}, ${Math.min(255, Math.round(r * 0.85 + 20))}, ${Math.min(255, Math.round(g * 1.1 + 30))}, ${0.62 * intensity})`;
-    const c3 = `rgba(${Math.min(255, Math.round(g * 1.15 + 25))}, ${Math.min(255, Math.round(b * 0.8 + 45))}, ${Math.min(255, Math.round(r * 0.95 + 40))}, ${0.58 * intensity})`;
-    const c4 = `rgba(${Math.min(255, Math.round(r * 0.6 + 15))}, ${Math.min(255, Math.round(g * 0.5 + 15))}, ${Math.min(255, Math.round(b * 0.75 + 45))}, ${0.68 * intensity})`;
+    const pPrimary = palette?.primary || { r, g, b };
+    const pSecondary = palette?.secondary || {
+      r: Math.round(r * 0.82),
+      g: Math.round(g * 0.82),
+      b: Math.round(b * 0.88),
+    };
+    const pTertiary = palette?.tertiary || {
+      r: Math.round((r + pSecondary.r) / 2),
+      g: Math.round((g + pSecondary.g) / 2),
+      b: Math.round((b + pSecondary.b) / 2),
+    };
+    const pDark = palette?.dark || {
+      r: Math.max(10, Math.round(r * 0.35)),
+      g: Math.max(10, Math.round(g * 0.35)),
+      b: Math.max(15, Math.round(b * 0.4)),
+    };
+
+    // All orbs derive purely from the artwork's authentic color palette and tones
+    const c1 = `rgba(${pPrimary.r}, ${pPrimary.g}, ${pPrimary.b}, ${0.72 * intensity})`;
+    const c2 = `rgba(${pSecondary.r}, ${pSecondary.g}, ${pSecondary.b}, ${0.64 * intensity})`;
+    const c3 = `rgba(${pTertiary.r}, ${pTertiary.g}, ${pTertiary.b}, ${0.58 * intensity})`;
+    const c4 = `rgba(${pDark.r}, ${pDark.g}, ${pDark.b}, ${0.68 * intensity})`;
 
     return { c1, c2, c3, c4 };
-  }, [dominant.rgb, intensity]);
+  }, [dominant.rgb, dominant.palette, intensity]);
 
   const shouldAnimate = isEnabled && !reduceMotion && !potatoMode;
 

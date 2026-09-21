@@ -9,7 +9,6 @@ import {
 import { useReduceMotion } from "../settings/renderEffects";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
-  CloseIcon,
   LyricsIcon,
   PauseActiveIcon,
   PlayActiveIcon,
@@ -503,13 +502,31 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     };
   }, [lyrics, translationLang, track?.id]);
 
-  // A fresh song starts at the top, whether or not it turned out to be synced.
+  // When a track finishes, loops, or a fresh track is loaded, scroll smoothly back to the top
+  const hasFinishedRef = useRef(false);
   useEffect(() => {
-    scrollerRef.current?.scrollTo({ top: 0 });
-  }, [lyrics]);
+    hasFinishedRef.current = false;
+    scrollerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [track?.id, lyrics]);
 
   useEffect(() => {
-    if (activeIndex < 0 || isFollowPaused) return;
+    const duration = track?.durationSec || 0;
+    if (duration > 5 && currentPlaybackTime >= duration - 1.2 && !hasFinishedRef.current) {
+      hasFinishedRef.current = true;
+      scrollerRef.current?.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    } else if (currentPlaybackTime < 2) {
+      hasFinishedRef.current = false;
+    }
+  }, [currentPlaybackTime, track?.durationSec, reduce]);
+
+  useEffect(() => {
+    if (activeIndex < 0) {
+      if (!isFollowPaused) {
+        scrollerRef.current?.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+      }
+      return;
+    }
+    if (isFollowPaused) return;
     scrollToLine(activeIndex, !reduce);
   }, [activeIndex, isFollowPaused, reduce, scrollToLine]);
 
@@ -658,49 +675,35 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         {isSynced && activeIndex >= 0 ? lines[activeIndex]?.text ?? "" : ""}
       </p>
 
-      {/* Top Center Media Switcher: Song / Video */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg select-none">
-        <button
-          type="button"
-          onClick={() => void handleSwitchMediaMode("song")}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
-            mediaMode === "song"
-              ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-              : "hover:text-white text-white/70",
-          )}
-        >
-          <span>Song</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSwitchMediaMode("video")}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
-            mediaMode === "video"
-              ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-              : "hover:text-white text-white/70",
-          )}
-        >
-          <span>Video</span>
-        </button>
-      </div>
-
-      <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
-        {track && isSynced && mediaMode === "song" && (
-          <LyricsOffsetControl trackId={track.id} offset={offset} />
-        )}
-        {/* Close Button */}
-        <button
-          type="button"
-          className="flex size-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-md border border-white/10 transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer shadow-md"
-          onClick={() => void handleClose()}
-          aria-label="Close lyrics"
-          title="Close lyrics"
-        >
-          <CloseIcon size={19} />
-        </button>
-      </div>
+      {/* Top Header: Transparent Black Bar hosting the Song / Video Switcher */}
+      <header className="absolute top-0 inset-x-0 z-30 flex items-center justify-center py-2.5 bg-black/40 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto">
+        <div className="flex items-center rounded-full bg-black/50 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
+          <button
+            type="button"
+            onClick={() => void handleSwitchMediaMode("song")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+              mediaMode === "song"
+                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                : "hover:text-white text-white/70",
+            )}
+          >
+            <span>Song</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSwitchMediaMode("video")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+              mediaMode === "video"
+                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                : "hover:text-white text-white/70",
+            )}
+          >
+            <span>Video</span>
+          </button>
+        </div>
+      </header>
 
       {mediaMode === "video" ? (
         /* Video Mode View */
@@ -900,7 +903,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                               alignment === "right" && "self-end text-right",
                               alignment === "center" && "self-center text-center",
                               (!alignment || alignment === "left") && "self-start text-start",
-                              isRtlText(displayText) && "text-start font-sans font-medium",
+                              isRtlText(displayText) && "text-start font-arabic font-bold tracking-normal leading-snug",
                             )}
                           >
                             {(isAdlibsMode ? parseLyricTokens(displayText) : [{ type: "main" as const, text: displayText }]).map((tok, i) =>
@@ -1022,7 +1025,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         dir={isRtlText(line.text) ? "rtl" : "ltr"}
                         className={cn(
                           "text-pretty py-1 leading-relaxed text-foreground/85",
-                          isRtlText(line.text) && "text-start font-sans font-medium",
+                          isRtlText(line.text) && "text-start font-arabic font-bold tracking-normal leading-snug",
                         )}
                       >
                         {line.text}

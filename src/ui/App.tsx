@@ -271,9 +271,6 @@ export default function App() {
         if (playerUIState.isLyricsFullscreen) {
           const isMax = await win.isMaximized().catch(() => false);
           wasMaximizedBeforeFullscreenRef.current = isMax;
-          if (isMax) {
-            await win.unmaximize().catch(() => {});
-          }
           await win.setFullscreen(true).catch(() => {});
         } else {
           await win.setFullscreen(false).catch(() => {});

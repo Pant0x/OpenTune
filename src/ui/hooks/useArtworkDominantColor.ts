@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 
+export interface RGBColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
 export interface DominantColorResult {
-  rgb: { r: number; g: number; b: number } | null;
+  rgb: RGBColor | null;
+  palette?: {
+    primary: RGBColor;
+    secondary: RGBColor;
+    tertiary: RGBColor;
+    dark: RGBColor;
+  };
   backgroundGradient: string;
   borderColor: string;
   boxShadow: string;
@@ -62,6 +74,13 @@ export function useArtworkDominantColor(artworkUrl?: string | null): DominantCol
         let vibrantB = 0;
         let vibrantCount = 0;
 
+        let darkR = 0;
+        let darkG = 0;
+        let darkB = 0;
+        let darkCount = 0;
+
+        const saturatedPixels: Array<{ r: number; g: number; b: number; delta: number; brightness: number }> = [];
+
         for (let i = 0; i < imgData.length; i += 4) {
           const r = imgData[i];
           const g = imgData[i + 1];
@@ -80,18 +99,26 @@ export function useArtworkDominantColor(artworkUrl?: string | null): DominantCol
           const delta = max - min;
           const brightness = (r * 299 + g * 587 + b * 114) / 1000;
 
+          if (brightness < 60) {
+            darkR += r;
+            darkG += g;
+            darkB += b;
+            darkCount++;
+          }
+
           // Prefer colorful/saturated non-extreme pixels
-          if (delta > 28 && brightness > 30 && brightness < 220) {
+          if (delta > 24 && brightness > 25 && brightness < 225) {
             vibrantR += r;
             vibrantG += g;
             vibrantB += b;
             vibrantCount++;
+            saturatedPixels.push({ r, g, b, delta, brightness });
           }
         }
 
-        let r = 120;
-        let g = 120;
-        let b = 120;
+        let r = 50;
+        let g = 30;
+        let b = 65;
 
         if (vibrantCount > 0) {
           r = Math.round(vibrantR / vibrantCount);
@@ -99,7 +126,7 @@ export function useArtworkDominantColor(artworkUrl?: string | null): DominantCol
           b = Math.round(vibrantB / vibrantCount);
         } else if (count > 0) {
           r = Math.round(totalR / count);
-          g = Math.round(totalB / count);
+          g = Math.round(totalG / count);
           b = Math.round(totalB / count);
         }
 
@@ -112,8 +139,48 @@ export function useArtworkDominantColor(artworkUrl?: string | null): DominantCol
           b = Math.min(255, Math.round(b * boost));
         }
 
+        // Find a distinct secondary accent color from saturated pixels if present
+        let secR = Math.round(r * 0.82);
+        let secG = Math.round(g * 0.82);
+        let secB = Math.round(b * 0.88);
+        let bestDistance = 0;
+
+        for (const p of saturatedPixels) {
+          const dist = Math.abs(p.r - r) + Math.abs(p.g - g) + Math.abs(p.b - b);
+          if (dist > 70 && dist > bestDistance) {
+            bestDistance = dist;
+            secR = p.r;
+            secG = p.g;
+            secB = p.b;
+          }
+        }
+
+        const darkColor = darkCount > 0
+          ? {
+              r: Math.round(darkR / darkCount),
+              g: Math.round(darkG / darkCount),
+              b: Math.round(darkB / darkCount),
+            }
+          : {
+              r: Math.max(10, Math.round(r * 0.35)),
+              g: Math.max(10, Math.round(g * 0.35)),
+              b: Math.max(15, Math.round(b * 0.4)),
+            };
+
+        const palette = {
+          primary: { r, g, b },
+          secondary: { r: secR, g: secG, b: secB },
+          tertiary: {
+            r: Math.min(255, Math.round((r + secR) / 2)),
+            g: Math.min(255, Math.round((g + secG) / 2)),
+            b: Math.min(255, Math.round((b + secB) / 2)),
+          },
+          dark: darkColor,
+        };
+
         const res: DominantColorResult = {
           rgb: { r, g, b },
+          palette,
           backgroundGradient: `linear-gradient(90deg, rgba(${r}, ${g}, ${b}, 0.42) 0%, rgba(${r}, ${g}, ${b}, 0.16) 55%, rgba(${r}, ${g}, ${b}, 0.02) 100%)`,
           borderColor: `rgba(${r}, ${g}, ${b}, 0.28)`,
           boxShadow: `0 4px 20px -4px rgba(${r}, ${g}, ${b}, 0.22)`,

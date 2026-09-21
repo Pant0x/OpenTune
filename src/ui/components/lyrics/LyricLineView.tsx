@@ -344,6 +344,7 @@ export const LyricLineView = memo(function LyricLineView({
         className={cn(
           "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%] synced-line lyrics-lyricsContent-lyric",
           alignClass,
+          isArabic && "font-arabic tracking-normal font-black leading-snug",
           "transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
           isActive && "is-active lyrics-lyricsContent-active",
@@ -381,7 +382,7 @@ export const LyricLineView = memo(function LyricLineView({
         className={cn(
           "cursor-pointer font-bold leading-snug tracking-tight select-text text-2xl sm:text-3xl lg:text-[34px] origin-center max-w-[92%] mx-auto block",
           "transition-all duration-350 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
-          isArabic && "font-sans font-medium leading-relaxed",
+          isArabic && "font-arabic tracking-normal font-black leading-snug",
           isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
           isActive && adlibLine && "text-white italic scale-[1.03] opacity-100",
           !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:text-white/85 hover:opacity-90 hover:scale-[1.015]",
@@ -396,6 +397,7 @@ export const LyricLineView = memo(function LyricLineView({
   if (size === "preview") {
     const rowClass = cn(
       "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter] preview-lyric-row",
+      isArabic && "font-arabic tracking-normal font-bold",
       isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white scale-[1.02] origin-left",
       isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.01] origin-left",
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",

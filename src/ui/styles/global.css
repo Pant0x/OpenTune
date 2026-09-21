@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Kablammo&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Kablammo&family=Readex+Pro:wght@400;500;600;700;800;900&family=Cairo:wght@600;700;800;900&display=swap');
 /*
  * Tailwind v4, full import including preflight — the CSS Modules are gone.
  *
@@ -92,6 +92,13 @@ body,
 
 .font-kablammo {
   font-family: 'Kablammo', cursive, system-ui, sans-serif;
+}
+
+.font-arabic,
+[dir="rtl"],
+.lyrics-arabic {
+  font-family: 'Readex Pro', 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Dubai', Tahoma, sans-serif;
+  letter-spacing: normal !important;
 }
 
 /*
