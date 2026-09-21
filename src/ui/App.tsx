@@ -1289,7 +1289,7 @@ export default function App() {
     <PlaylistContextMenuProvider libraryController={libraryController}>
     <VolumeSyncBridge />
     <div
-      className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
+      className={`relative flex h-full w-full flex-col overflow-hidden ${playerUIState.isLyricsOpen ? "bg-black" : "bg-shell"} ${
         nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
@@ -1312,7 +1312,7 @@ export default function App() {
         />
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className={`flex min-h-0 flex-1 flex-col ${playerUIState.isLyricsOpen ? "bg-black" : ""}`}>
         <Layout
           sidebarWidth={sidebarWidth}
           onSidebarWidthChange={handleSidebarWidthChange}
@@ -1526,7 +1526,7 @@ export default function App() {
         <div
           className={cn(
             "group/immersive-playerbar",
-            playerUIState.isLyricsOpen ? "px-2 pb-2 pt-2.5" : "px-2 pb-2 pt-2",
+            "px-2 pb-2 pt-2",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

@@ -40,7 +40,7 @@ export const CoverAmbienceCanvas = memo(function CoverAmbienceCanvas({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-0 overflow-hidden select-none",
+        "pointer-events-none absolute inset-0 overflow-hidden select-none bg-black",
         className,
       )}
       aria-hidden="true"

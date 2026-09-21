@@ -5915,9 +5915,9 @@ export class YouTubeMusicDataSource extends DataSource {
 
         const providerDuration = bestSong.dt ? Math.round(bestSong.dt / 1000) : undefined;
         let autoIntroOffsetSec: number | undefined;
-        if (track.isVideo && track.durationSec && providerDuration && track.durationSec > providerDuration) {
+        if (track.durationSec && providerDuration && track.durationSec > providerDuration) {
           const introDiff = track.durationSec - providerDuration;
-          if (introDiff >= 2.0 && introDiff <= 30.0) {
+          if (introDiff >= 1.5 && introDiff <= 30.0) {
             autoIntroOffsetSec = Number(introDiff.toFixed(2));
           }
         }
@@ -5960,9 +5960,9 @@ export class YouTubeMusicDataSource extends DataSource {
     if (lines.length === 0) return null;
 
     let autoIntroOffsetSec: number | undefined;
-    if (track.isVideo && track.durationSec && match.duration && track.durationSec > match.duration) {
+    if (track.durationSec && match.duration && track.durationSec > match.duration) {
       const introDiff = track.durationSec - match.duration;
-      if (introDiff >= 2.0 && introDiff <= 30.0) {
+      if (introDiff >= 1.5 && introDiff <= 30.0) {
         autoIntroOffsetSec = Number(introDiff.toFixed(2));
       }
     }
@@ -8037,6 +8037,24 @@ export class YouTubeMusicDataSource extends DataSource {
       links,
     };
 
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      const descCandidate = obj.description ?? obj.content ?? obj.text ?? obj.paragraph ?? obj.bio;
+      if (typeof descCandidate === "string" && descCandidate.trim()) {
+        shelf.description = descCandidate.trim();
+      } else if (descCandidate && typeof descCandidate === "object") {
+        const candidateObj = descCandidate as Record<string, unknown>;
+        if (typeof candidateObj.text === "string" && candidateObj.text.trim()) {
+          shelf.description = candidateObj.text.trim();
+        } else if (Array.isArray(candidateObj.runs)) {
+          shelf.description = candidateObj.runs
+            .map((r: { text?: string }) => r.text || "")
+            .join("")
+            .trim();
+        }
+      }
+    }
+
     for (const item of this.collectMusicItems(node, BROWSE_ITEM_TYPES)) {
       switch (item.item_type) {
         case "song":
@@ -8165,7 +8183,6 @@ export class YouTubeMusicDataSource extends DataSource {
       const seenTitles = new Set<string>();
       for (const [index, section] of sections.entries()) {
         const title = section.title?.trim() || `Related ${index + 1}`;
-        if (title.toLowerCase().includes("about")) continue;
         if (seenTitles.has(title)) continue;
 
         const shelf = this.toBrowseShelf(
@@ -8174,7 +8191,8 @@ export class YouTubeMusicDataSource extends DataSource {
           this.collectBrowseLinks(section.node),
         );
         const total = shelf.tracks.length + shelf.albums.length
-          + shelf.playlists.length + shelf.artists.length;
+          + shelf.playlists.length + shelf.artists.length
+          + (shelf.description ? 1 : 0);
         if (total === 0) continue;
 
         seenTitles.add(title);

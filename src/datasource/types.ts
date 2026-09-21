@@ -188,6 +188,8 @@ export interface BrowseShelf {
   artists: Artist[];
   /** Mood and genre chips, which lead to further feeds rather than to content. */
   links: BrowseLink[];
+  /** Optional summary or bio text for descriptive shelves (e.g. "About the artist"). */
+  description?: string;
 }
 
 export interface BrowsePage {

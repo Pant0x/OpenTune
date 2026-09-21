@@ -395,9 +395,9 @@ export const LyricLineView = memo(function LyricLineView({
 
   if (size === "preview") {
     const rowClass = cn(
-      "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter]",
-      isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white [text-shadow:0_0_16px_rgba(255,255,255,0.7)] scale-[1.03] origin-left",
-      isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.02] origin-left",
+      "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter] preview-lyric-row",
+      isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white scale-[1.02] origin-left",
+      isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.01] origin-left",
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
       !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold hover:text-white/70 hover:!filter-none transition-all",
       sweeps && "lyric-sweep font-bold",

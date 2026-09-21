@@ -55,10 +55,13 @@ export function getLineProgress(
 
 export function findActiveLineIndex(lines: LyricLine[], timeSec: number): number {
   let active = -1;
+  // Vocal anticipation lead-in: Human vocal onset starts ~150ms before the recorded vowel center,
+  // making lines light up in sync with singer breath/consonant anticipation.
+  const leadInSec = 0.15;
   for (let index = 0; index < lines.length; index += 1) {
     const start = lines[index]?.startTimeSec;
     if (start === undefined) continue;
-    if (timeSec < start) break;
+    if (timeSec + leadInSec < start) break;
     active = index;
   }
   return active;

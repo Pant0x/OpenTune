@@ -803,6 +803,17 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
 }
 
+/* Sidebar preview lyrics: clean, crisp typography without rectangular light halo */
+.preview-lyric-row,
+.preview-lyric-row.is-active,
+.preview-lyric-row .lyric-word,
+.preview-lyric-row .lyric-word[data-state="sung"],
+.preview-lyric-row.is-active .lyric-word[data-state="sung"],
+.preview-lyric-row .lyric-word[data-state="active"],
+.preview-lyric-row.is-active .lyric-word[data-state="active"] {
+  text-shadow: none !important;
+}
+
 /*
  * Slow parallax on the blurred cover behind the lyrics. Long and asymmetric on purpose: it is
  * always drifting — visibly, like Beautiful Lyrics — but slowly enough that nothing ever snaps

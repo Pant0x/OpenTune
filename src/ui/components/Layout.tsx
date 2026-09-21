@@ -352,6 +352,7 @@ export function Layout({
       className={cn(
         "relative flex min-h-0 flex-1 overflow-hidden",
         fullBleedContent ? "p-0 m-0" : "px-2 pt-2",
+        isLyricsOpen && "bg-black",
       )}
     >
       <div
@@ -417,7 +418,7 @@ export function Layout({
             fullBleedContent
               ? "p-0 gap-0 rounded-none bg-black"
               : isLyricsOpen
-                ? "p-0 gap-0 rounded-2xl bg-black overflow-hidden"
+                ? "p-0 gap-0 rounded-2xl bg-black overflow-hidden border-0"
                 : "gap-3 px-4 pt-2 rounded-2xl bg-background",
           )}
         >
@@ -468,7 +469,7 @@ export function Layout({
                 className={cn(
                   "h-full overflow-y-auto overflow-x-hidden overscroll-contain [will-change:scroll-position] transform-gpu",
                   fullBleedContent || isLyricsOpen
-                    ? "p-0 pb-0 scroll-pb-0 rounded-2xl overflow-hidden"
+                    ? "p-0 pb-0 scroll-pb-0 rounded-2xl overflow-hidden bg-black"
                     : "rounded-xl px-4 pt-1 pb-28 scroll-pb-28",
                 )}
                 data-page-scroll-root
