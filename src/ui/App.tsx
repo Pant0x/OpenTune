@@ -324,7 +324,10 @@ export default function App() {
       void hydrateAppSessionAsync().then((diskSession) => {
         if (cancelled) return;
         if (diskSession?.player?.currentTrack && !playerController.getState().currentTrack) {
-          playerController.restoreSession(diskSession.player);
+          playerController.restoreSession({
+            ...diskSession.player,
+            status: "paused",
+          });
           return;
         }
         void hydrateLastPlayedTrackAsync().then((lastTrack) => {

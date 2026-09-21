@@ -379,7 +379,7 @@ export class PlayerController {
         }
       : null;
     this.state = {
-      status: restoredCurrentTrack ? session.status : "idle",
+      status: restoredCurrentTrack ? (session.status === "playing" ? "paused" : session.status) : "idle",
       currentTrack: restoredCurrentTrack,
       history: session.history,
       error: null,

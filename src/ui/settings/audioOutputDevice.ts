@@ -38,14 +38,9 @@ function read(): string | null {
 }
 
 /**
- * Pushes the choice down to Rust and, if the engine had a track loaded, reloads it — reopening
- * the stream drops both decks, the same loss `PlayerController.recoverFromPrematureEnd`
- * recovers from when a connection dies mid-track, reused here since a device switch empties the
- * decks the same way.
- *
- * ponytail: a paused track blips playing for an instant before pausing back down, rather than
- * teaching this a load-that-does-not-play path just for the one case where nothing was audible
- * anyway.
+ * Pushes the choice down to Rust and, if the engine was actively playing, reloads and resumes —
+ * reopening the stream drops both decks, so playback must be restarted only if it was already
+ * sounding.
  */
 async function push(id: string | null): Promise<void> {
   const session = usesRustAudioEngine() ? playerController.getPlayerSession() : null;
@@ -58,11 +53,10 @@ async function push(id: string | null): Promise<void> {
     return;
   }
 
-  if (!session?.currentTrack || session.status === "idle") return;
-  const wasPlaying = session.status === "playing";
+  // Only restart playback if audio was actively playing. If paused or idle, never blip playback.
+  if (!session?.currentTrack || session.status !== "playing") return;
   await playerController.playTrackById(session.currentTrack.id);
   if (session.positionSec > 0) await playerController.seekTo(session.positionSec);
-  if (!wasPlaying) await playerController.pause();
 }
 
 function subscribe(callback: () => void) {
@@ -87,9 +81,14 @@ export function setOutputDevice(id: string | null): void {
 export async function hydrateOutputDevice(): Promise<void> {
   await hydrateLocalJsonSetting(STORAGE_KEY, isDeviceId);
   // A fresh Rust process always opens the OS default until told otherwise, so the stored choice
-  // has to be pushed down once at startup — nothing is loaded this early, so `push` just forwards
-  // it.
-  void push(read());
+  // has to be pushed down once at startup — pushOutputDevice sets the device without touching playback.
+  try {
+    await pushOutputDevice(read());
+  } catch (error) {
+    logInternalWarn("Output device hydration failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
