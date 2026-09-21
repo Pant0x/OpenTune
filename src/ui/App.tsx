@@ -1290,7 +1290,7 @@ export default function App() {
     <VolumeSyncBridge />
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
-        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsOpen
+        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
       }`}
@@ -1333,7 +1333,8 @@ export default function App() {
           canGoForward={canNavigateForward}
           onNavigateBack={handleNavigateBack}
           onNavigateForward={handleNavigateForward}
-          fullBleedContent={playerUIState.isLyricsOpen || playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen}
+          fullBleedContent={playerUIState.isNowPlayingFullscreen || playerUIState.isLyricsFullscreen}
+          isLyricsOpen={playerUIState.isLyricsOpen}
           hideSidebar={playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen}
           showTransientScrollbar={
             !playerUIState.isLyricsOpen
@@ -1341,7 +1342,7 @@ export default function App() {
             && !playerUIState.isLyricsFullscreen
             && (currentView.view === "playlist" || currentView.view === "album")
           }
-          rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} /> : undefined}
+          rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} onOpenHistory={handleOpenHistory} /> : undefined}
           rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
           onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange}
           isQueuePanelCollapsed={isQueuePanelCollapsed}

@@ -9,6 +9,7 @@ import {
   PauseIcon,
   PlayIcon,
   PlaylistAddIcon,
+  PlusIcon,
   ShuffleActiveIcon,
   ShuffleIcon,
   TrashIcon,
@@ -57,6 +58,7 @@ import { getLyricsOffset } from "../../settings/lyricsOffset";
 
 interface QueuePanelProps {
   onClose: () => void;
+  onOpenHistory?: () => void;
 }
 
 /** Pointer travel before a press becomes a drag rather than a click. */
@@ -354,7 +356,7 @@ function ShowMoreQueueButton({
   );
 }
 
-export function QueuePanel({ onClose }: QueuePanelProps) {
+export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const draggedElementRef = useRef<HTMLElement | null>(null);
   const captureElementRef = useRef<HTMLElement | null>(null);
@@ -1600,38 +1602,70 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
           {/* Recently Played Section in Queue */}
           {recentlyPlayed.length > 0 && (
             <div className="flex flex-col gap-1 px-2 pt-3 pb-6 border-t border-border/20">
-              <div className="flex items-center justify-between px-1 py-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                <span>Recently played</span>
-                <span className="text-[11px] font-medium lowercase tabular-nums">{recentlyPlayed.length} songs</span>
+              <div className="flex items-center justify-between px-1 py-1">
+                <button
+                  type="button"
+                  onClick={() => onOpenHistory?.()}
+                  className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded"
+                  title="Open listening history"
+                >
+                  <span className="group-hover:underline">Recently played</span>
+                  <span className="text-xs opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">→</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenHistory?.()}
+                  className="text-[11px] font-medium lowercase tabular-nums text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  title="Open listening history"
+                >
+                  {recentlyPlayed.length} songs
+                </button>
               </div>
               <div className="flex flex-col gap-0.5">
                 {recentlyPlayed.slice(0, 15).map((track, idx) => (
-                  <button
+                  <div
                     key={`queue-recent-${track.id}-${idx}`}
-                    type="button"
-                    onClick={() => void playerController.loadTrack(track)}
-                    className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                    className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-secondary/40"
                   >
-                    <div className="relative size-9 shrink-0 overflow-hidden rounded-lg bg-card ring-1 ring-border/20">
-                      <TrackArtwork
-                        className="size-full object-cover"
-                        size={36}
-                        artworkUrl={track.artworkUrl}
-                        iconSize={16}
-                      />
-                      <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                        <PlayIcon size={14} className="text-white fill-white" />
-                      </span>
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
-                        {track.title}
-                      </span>
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {track.artist}
-                      </span>
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => void playerController.loadTrack(track)}
+                      className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none"
+                    >
+                      <div className="relative size-9 shrink-0 overflow-hidden rounded-lg bg-card ring-1 ring-border/20">
+                        <TrackArtwork
+                          className="size-full object-cover"
+                          size={36}
+                          artworkUrl={track.artworkUrl}
+                          iconSize={16}
+                        />
+                        <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                          <PlayIcon size={14} className="text-white fill-white" />
+                        </span>
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                          {track.title}
+                        </span>
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {track.artist}
+                        </span>
+                      </div>
+                    </button>
+                    <Tooltip content="Add to queue">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playerController.addToQueue(track);
+                        }}
+                        aria-label="Add to queue"
+                        className="size-7 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+                      >
+                        <PlusIcon size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1660,7 +1694,9 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
               No related songs or artists found for this track.
             </p>
           ) : (
-            relatedShelves.map((shelf, sIdx) => {
+            relatedShelves
+              .filter((shelf) => !shelf.title.toLowerCase().includes("about"))
+              .map((shelf, sIdx) => {
               const hasTracks = shelf.tracks && shelf.tracks.length > 0;
               const hasArtists = shelf.artists && shelf.artists.length > 0;
               const hasAlbums = shelf.albums && shelf.albums.length > 0;
@@ -1680,32 +1716,49 @@ export function QueuePanel({ onClose }: QueuePanelProps) {
                   {hasTracks && (
                     <div className="flex flex-col gap-1.5">
                       {shelf.tracks.map((track) => (
-                        <button
+                        <div
                           key={track.id}
-                          type="button"
-                          onClick={() => void playerController.playTrackById(track.id)}
-                          className="group flex items-center gap-3 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10 cursor-pointer"
+                          className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10"
                         >
-                          <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-black/40">
-                            <TrackArtwork
-                              className="size-full object-cover rounded-lg"
-                              size={40}
-                              artworkUrl={track.artworkUrl}
-                              iconSize={16}
-                            />
-                            <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                              <PlayIcon size={16} fill="currentColor" className="text-white" />
-                            </span>
-                          </div>
-                          <div className="flex min-w-0 flex-1 flex-col">
-                            <span className="truncate text-xs font-semibold text-white group-hover:underline">
-                              {track.title}
-                            </span>
-                            <span className="truncate text-[11px] text-[#b3b3b3]">
-                              {track.artist}
-                            </span>
-                          </div>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => void playerController.playTrackById(track.id)}
+                            className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none"
+                          >
+                            <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-black/40">
+                              <TrackArtwork
+                                className="size-full object-cover rounded-lg"
+                                size={40}
+                                artworkUrl={track.artworkUrl}
+                                iconSize={16}
+                              />
+                              <span className="absolute inset-0 grid place-items-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                                <PlayIcon size={16} fill="currentColor" className="text-white" />
+                              </span>
+                            </div>
+                            <div className="flex min-w-0 flex-1 flex-col">
+                              <span className="truncate text-xs font-semibold text-white group-hover:underline">
+                                {track.title}
+                              </span>
+                              <span className="truncate text-[11px] text-[#b3b3b3]">
+                                {track.artist}
+                              </span>
+                            </div>
+                          </button>
+                          <Tooltip content="Add to queue">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playerController.addToQueue(track);
+                              }}
+                              aria-label="Add to queue"
+                              className="size-7 shrink-0 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+                            >
+                              <PlusIcon size={14} />
+                            </button>
+                          </Tooltip>
+                        </div>
                       ))}
                     </div>
                   )}

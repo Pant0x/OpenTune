@@ -5915,9 +5915,9 @@ export class YouTubeMusicDataSource extends DataSource {
 
         const providerDuration = bestSong.dt ? Math.round(bestSong.dt / 1000) : undefined;
         let autoIntroOffsetSec: number | undefined;
-        if (track.durationSec && providerDuration && track.durationSec > providerDuration) {
+        if (track.isVideo && track.durationSec && providerDuration && track.durationSec > providerDuration) {
           const introDiff = track.durationSec - providerDuration;
-          if (introDiff >= 1.0 && introDiff <= 20.0) {
+          if (introDiff >= 2.0 && introDiff <= 30.0) {
             autoIntroOffsetSec = Number(introDiff.toFixed(2));
           }
         }
@@ -5960,9 +5960,9 @@ export class YouTubeMusicDataSource extends DataSource {
     if (lines.length === 0) return null;
 
     let autoIntroOffsetSec: number | undefined;
-    if (track.durationSec && match.duration && track.durationSec > match.duration) {
+    if (track.isVideo && track.durationSec && match.duration && track.durationSec > match.duration) {
       const introDiff = track.durationSec - match.duration;
-      if (introDiff >= 1.0 && introDiff <= 20.0) {
+      if (introDiff >= 2.0 && introDiff <= 30.0) {
         autoIntroOffsetSec = Number(introDiff.toFixed(2));
       }
     }
@@ -8136,19 +8136,36 @@ export class YouTubeMusicDataSource extends DataSource {
    * plus a browse call to fetch.
    */
   async getRelated(track: Track): Promise<BrowseShelf[]> {
-    const cacheKey = `youtube-music:related:v1:${track.id}`;
+    let targetVideoId = track.id;
+    if (track.source !== "youtube" || targetVideoId.length !== 11) {
+      try {
+        const searchQuery = `${track.title} ${track.artist}`.trim();
+        const results = await this.searchCategory(searchQuery, "song").catch(() => null);
+        const matched = results?.tracks?.[0];
+        if (matched && matched.id && matched.id.length === 11) {
+          targetVideoId = matched.id;
+        } else {
+          return [];
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    const cacheKey = `youtube-music:related:v1:${targetVideoId}`;
     const cached = await getCachedJson<BrowseShelf[]>(cacheKey);
     if (cached?.length) return cached;
 
     try {
       const client = await this.getMusicClient();
-      const page = await client.music.getRelated(track.id);
+      const page = await client.music.getRelated(targetVideoId);
       const sections = this.collectBrowseSections(page);
 
       const shelves: BrowseShelf[] = [];
       const seenTitles = new Set<string>();
       for (const [index, section] of sections.entries()) {
         const title = section.title?.trim() || `Related ${index + 1}`;
+        if (title.toLowerCase().includes("about")) continue;
         if (seenTitles.has(title)) continue;
 
         const shelf = this.toBrowseShelf(
@@ -8169,6 +8186,7 @@ export class YouTubeMusicDataSource extends DataSource {
       if (shelves.length > 0) await setCachedJson(cacheKey, shelves);
       logInternalInfo("YouTubeMusicDataSource.getRelated", {
         trackId: track.id,
+        targetVideoId,
         shelfCount: shelves.length,
       });
       return shelves;

@@ -40,6 +40,7 @@ interface LayoutProps {
   onNavigateBack: () => void;
   onNavigateForward: () => void;
   fullBleedContent?: boolean;
+  isLyricsOpen?: boolean;
   hideSidebar?: boolean;
   showTransientScrollbar?: boolean;
   rightPanel?: ReactNode;
@@ -82,6 +83,7 @@ export function Layout({
   onNavigateBack: _onNavigateBack,
   onNavigateForward: _onNavigateForward,
   fullBleedContent = false,
+  isLyricsOpen = false,
   hideSidebar = false,
   showTransientScrollbar = false,
   rightPanel,
@@ -412,7 +414,11 @@ export function Layout({
         <div
           className={cn(
             "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-            fullBleedContent ? "p-0 gap-0 rounded-none bg-black" : "gap-3 px-4 pt-2 rounded-2xl bg-background",
+            fullBleedContent
+              ? "p-0 gap-0 rounded-none bg-black"
+              : isLyricsOpen
+                ? "p-0 gap-0 rounded-2xl bg-black overflow-hidden"
+                : "gap-3 px-4 pt-2 rounded-2xl bg-background",
           )}
         >
           {/*
@@ -423,7 +429,7 @@ export function Layout({
             Everything after this is positioned, so DOM order alone puts the chrome above it;
             no z-index juggling, and no stacking context that would trap the blur.
           */}
-          {ambientArtwork ? (
+          {!fullBleedContent && !isLyricsOpen && ambientArtwork ? (
             <span
               key={ambientArtwork}
               className="pointer-events-none absolute inset-x-0 top-0 h-[22rem] overflow-hidden [mask-image:linear-gradient(to_bottom,background_25%,transparent)] [transform:translateZ(0)] will-change-transform"
@@ -455,14 +461,14 @@ export function Layout({
             </span>
           ) : null}
 
-          <div className={cn("relative flex min-h-0 min-w-0 flex-1", fullBleedContent ? "p-0 pb-0 gap-0" : "gap-3 pb-3")}>
+          <div className={cn("relative flex min-h-0 min-w-0 flex-1", fullBleedContent || isLyricsOpen ? "p-0 pb-0 gap-0" : "gap-3 pb-3")}>
             <div className="relative min-h-0 min-w-0 flex-1">
               <div
                 ref={pageContentRef}
                 className={cn(
                   "h-full overflow-y-auto overflow-x-hidden overscroll-contain [will-change:scroll-position] transform-gpu",
-                  fullBleedContent
-                    ? "p-0 pb-0 scroll-pb-0 rounded-2xl"
+                  fullBleedContent || isLyricsOpen
+                    ? "p-0 pb-0 scroll-pb-0 rounded-2xl overflow-hidden"
                     : "rounded-xl px-4 pt-1 pb-28 scroll-pb-28",
                 )}
                 data-page-scroll-root

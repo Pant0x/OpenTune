@@ -723,7 +723,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
   will-change: background-size, transform;
 }
 
@@ -742,7 +742,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
   will-change: background-size;
 }
 
@@ -759,14 +759,14 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
 .is-active .lyric-word[data-state="sung"] {
   color: #ffffff;
   -webkit-text-fill-color: #ffffff;
-  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.65));
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.65);
 }
 
 .lyric-sweep .lyric-word[data-state="unsung"],
 .is-active .lyric-word[data-state="unsung"] {
   color: rgba(255, 255, 255, 0.40);
   -webkit-text-fill-color: rgba(255, 255, 255, 0.40);
-  filter: none;
+  text-shadow: none;
 }
 
 .lyric-sweep .lyric-word[data-state="active"],
@@ -782,7 +782,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
 }
 
 [dir="rtl"] .lyric-sweep .lyric-word[data-state="active"],
@@ -800,7 +800,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   background-clip: text;
   color: #ffffff;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
 }
 
 /*

@@ -17,7 +17,7 @@ import {
   SkipNextIcon,
   SkipPreviousIcon,
 } from "@/ui/icons";
-import type { Lyrics, LyricsSourceAttempt, LyricsSourceStatus } from "../../datasource/types";
+import type { Lyrics, LyricsSourceAttempt, LyricsSourceStatus, Track } from "../../datasource/types";
 import { LYRICS_SOURCES } from "../../datasource/youtube/lyricsSources";
 import { FloatingPanel } from "../components/FloatingPanel";
 import { logInternalWarn } from "../../internal/logging";
@@ -34,6 +34,8 @@ import { useLyricsFontScale } from "../settings/lyricsFontScale";
 import { TRANSLATION_OFF, useLyricsTranslationLang } from "../settings/lyricsTranslation";
 import { useLyricsDuetMode, useLyricsAdlibsMode } from "../settings/lyricsEnhancements";
 import { translateLines } from "../../datasource/translate";
+import { VideoPlayerView } from "../components/player/VideoPlayerView";
+import { getMediaCounterpart } from "../../datasource/youtube/videoService";
 import {
   LyricLineView,
   setLineSweepState,
@@ -103,13 +105,63 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const track = playerState.currentTrack;
   const isPlaying = playerState.status === "playing";
   const reduce = useReduceMotion();
-  const isFullscreen = usePlayerUIState().isLyricsFullscreen;
+  const playerUIState = usePlayerUIState();
+  const isFullscreen = playerUIState.isLyricsFullscreen;
+  const mediaMode = playerUIState.lyricsMediaMode ?? "song";
   const isDuetMode = useLyricsDuetMode();
   const isAdlibsMode = useLyricsAdlibsMode();
   const offset = useLyricsOffset(track?.id);
   const fontScale = useLyricsFontScale();
   const translationLang = useLyricsTranslationLang();
   const [translations, setTranslations] = useState<string[] | null>(null);
+
+  const [videoCounterpart, setVideoCounterpart] = useState<Track | null>(null);
+  const [songCounterpart, setSongCounterpart] = useState<Track | null>(null);
+
+  const activeVideoId = useMemo(() => {
+    if (!track) return "";
+    if (track.isVideo) return track.id;
+    if (videoCounterpart?.id) return videoCounterpart.id;
+    return track.id;
+  }, [track, videoCounterpart]);
+
+  useEffect(() => {
+    if (!track) return;
+    setVideoCounterpart(null);
+    setSongCounterpart(null);
+    let active = true;
+    if (track.isVideo) {
+      void getMediaCounterpart(track, "song").then((res) => {
+        if (active && res) setSongCounterpart(res);
+      });
+    } else {
+      void getMediaCounterpart(track, "video").then((res) => {
+        if (active && res) setVideoCounterpart(res);
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [track?.id]);
+
+  const handleSwitchMediaMode = useCallback(async (mode: "song" | "video") => {
+    if (!track || mode === mediaMode) return;
+    if (mode === "video") {
+      playerController.silenceAudioEngine();
+      playerUIStore.setLyricsMediaMode("video");
+    } else {
+      playerUIStore.setLyricsMediaMode("song");
+      const videoTime = playerController.getCurrentTime();
+      if (track.isVideo && songCounterpart) {
+        void playerController.playTrackById(songCounterpart.id, [songCounterpart], true);
+      } else if (isPlaying) {
+        void playerController.play();
+      }
+      if (videoTime > 0) {
+        void playerController.seekTo(videoTime);
+      }
+    }
+  }, [track, mediaMode, songCounterpart, isPlaying]);
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -156,11 +208,21 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         } else {
           handleClose();
         }
+      } else if (e.key === "[" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (track) {
+          e.preventDefault();
+          setLyricsOffset(track.id, offset - OFFSET_STEP_SEC);
+        }
+      } else if (e.key === "]" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (track) {
+          e.preventDefault();
+          setLyricsOffset(track.id, offset + OFFSET_STEP_SEC);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [isFullscreen]);
+  }, [isFullscreen, track?.id, offset]);
 
   const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
 
@@ -596,7 +658,38 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         {isSynced && activeIndex >= 0 ? lines[activeIndex]?.text ?? "" : ""}
       </p>
 
+      {/* Top Center Media Switcher: Song / Video */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg select-none">
+        <button
+          type="button"
+          onClick={() => void handleSwitchMediaMode("song")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+            mediaMode === "song"
+              ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+              : "hover:text-white text-white/70",
+          )}
+        >
+          <span>Song</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSwitchMediaMode("video")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+            mediaMode === "video"
+              ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+              : "hover:text-white text-white/70",
+          )}
+        >
+          <span>Video</span>
+        </button>
+      </div>
+
       <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
+        {track && isSynced && mediaMode === "song" && (
+          <LyricsOffsetControl trackId={track.id} offset={offset} />
+        )}
         {/* Close Button */}
         <button
           type="button"
@@ -609,7 +702,19 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         </button>
       </div>
 
-      {isFullscreen ? (
+      {mediaMode === "video" ? (
+        /* Video Mode View */
+        <div className="relative min-h-0 flex-1 w-full flex flex-col justify-start items-center p-4 sm:p-8 pt-16 pb-16 max-w-5xl mx-auto overflow-y-auto">
+          {track && (
+            <VideoPlayerView
+              videoId={activeVideoId}
+              track={track}
+              initialTime={playerController.getCurrentTime()}
+              initialPlaying={isPlaying}
+            />
+          )}
+        </div>
+      ) : isFullscreen ? (
         /* Split Screen Fullscreen View (Matches media_1788521601006.png) */
         <div className="relative min-h-0 flex-1 flex flex-col justify-center">
           <div className={cn(
@@ -932,45 +1037,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                 </div>
               )}
 
-              {/* Inline Details Section — scroll down past lyrics to see */}
-              {track && !isLoading && (
-                <div className="mx-auto max-w-xl mt-16 mb-12 flex flex-col gap-3 text-sm text-white/80">
-                  <div className="h-px w-full bg-white/10 mb-2" />
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-1">Track Details</h3>
-                  {track.album && (
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/50">Album</span>
-                      <span className="font-semibold text-white/90 truncate text-right">{track.album}</span>
-                    </div>
-                  )}
-                  {track.durationSec ? (
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/50">Duration</span>
-                      <span className="font-semibold text-white/90 tabular-nums">{formatMinutesSeconds(track.durationSec)}</span>
-                    </div>
-                  ) : null}
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-white/50">Lyrics</span>
-                    <span className="font-semibold text-white/90 truncate text-right">
-                      {lyrics?.sourceLabel ? `Provided by ${lyrics.sourceLabel}` : isSynced ? "Synchronized lyrics" : "Standard lyrics"}
-                    </span>
-                  </div>
-                  {(track.viewCount || track.viewCountText) && (
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/50">Plays</span>
-                      <span className="font-semibold text-white/90 tabular-nums">
-                        {track.viewCount ? Number(track.viewCount).toLocaleString() : track.viewCountText}
-                      </span>
-                    </div>
-                  )}
-                  {track.artist && (
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-white/50">Artist</span>
-                      <span className="font-semibold text-white/90 truncate text-right">{track.artist}</span>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -1098,9 +1164,10 @@ function LyricsOffsetControl({ trackId, offset }: { trackId: string; offset: num
 
   return (
     <div
-      className="flex shrink-0 items-center gap-0.5 rounded-full bg-card/70 p-0.5"
+      className="flex shrink-0 items-center gap-1 rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg select-none"
       role="group"
       aria-label="Lyric timing"
+      title="Adjust lyric synchronization (or press [ and ] keys)"
     >
       <OffsetButton
         label="−"
@@ -1109,11 +1176,11 @@ function LyricsOffsetControl({ trackId, offset }: { trackId: string; offset: num
       />
       <button
         type="button"
-        className="min-w-[4.25rem] rounded-full px-1 py-0.5 text-center tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:hover:text-muted-foreground"
+        className="min-w-[3.8rem] rounded-full px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-white/90 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-75 cursor-pointer"
         onClick={() => setLyricsOffset(trackId, 0)}
         disabled={offset === 0}
         aria-label={offset === 0 ? "Lyrics are in sync" : "Reset lyric timing"}
-        title={offset === 0 ? undefined : "Reset"}
+        title={offset === 0 ? "Lyrics in sync (use -/+ to nudge)" : "Click to reset timing to 0s"}
       >
         {formatOffset(offset)}
       </button>
@@ -1138,7 +1205,7 @@ function OffsetButton({
   return (
     <button
       type="button"
-      className="flex size-6 items-center justify-center rounded-full text-sm leading-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex size-6 items-center justify-center rounded-full text-xs font-bold transition-all text-white/80 hover:text-white hover:bg-white/20 active:scale-95 cursor-pointer focus-visible:outline-none"
       onClick={onClick}
       aria-label={ariaLabel}
     >

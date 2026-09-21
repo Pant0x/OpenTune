@@ -382,7 +382,7 @@ export const LyricLineView = memo(function LyricLineView({
           "cursor-pointer font-bold leading-snug tracking-tight select-text text-2xl sm:text-3xl lg:text-[34px] origin-center max-w-[92%] mx-auto block",
           "transition-all duration-350 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           isArabic && "font-sans font-medium leading-relaxed",
-          isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 filter drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]",
+          isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
           isActive && adlibLine && "text-white italic scale-[1.03] opacity-100",
           !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:text-white/85 hover:opacity-90 hover:scale-[1.015]",
           !isActive && adlibLine && "text-white/30 italic font-medium scale-100 opacity-45 hover:text-white/60 hover:opacity-75",
@@ -396,7 +396,7 @@ export const LyricLineView = memo(function LyricLineView({
   if (size === "preview") {
     const rowClass = cn(
       "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter]",
-      isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.7)] scale-[1.03] origin-left",
+      isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white [text-shadow:0_0_16px_rgba(255,255,255,0.7)] scale-[1.03] origin-left",
       isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.02] origin-left",
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
       !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold hover:text-white/70 hover:!filter-none transition-all",
@@ -440,7 +440,7 @@ export const LyricLineView = memo(function LyricLineView({
       onClick={() => onSeek?.(index)}
       className={cn(
         "cursor-pointer rounded-lg px-2 py-1 text-sm font-semibold transition-all duration-300",
-        isActive && !adlibLine && "scale-105 font-bold text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.7)]",
+        isActive && !adlibLine && "scale-105 font-bold text-white [text-shadow:0_0_12px_rgba(255,255,255,0.7)]",
         isActive && adlibLine && "scale-105 font-bold italic text-white",
         !isActive && !adlibLine && "text-muted-foreground/45 hover:text-white/80",
         !isActive && adlibLine && "text-[13px] font-medium italic text-white/35",
