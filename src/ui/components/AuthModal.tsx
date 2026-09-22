@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "../../lib/supabaseClient";
 import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { libraryController } from "../../player/playerStore";
-import { MailIcon, LockIcon, UserIcon, GoogleIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
+import { MailIcon, LockIcon, UserIcon, DiscordIcon, CloseIcon } from "@/ui/icons";
 import loadingVideo from "../../../assets/img/Loading.mp4";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
@@ -127,18 +127,13 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
           throw new Error("This email is already registered.");
         }
 
-        // Automatically connect to YouTube Music so all accounts use YT Music data and storage
-        try {
-          await libraryController.signIn();
-        } catch {
-          // If user cancels or defers, account was still created
-        }
-
-        setSuccessMessage("Account created and YouTube Music connected!");
         onAuthSuccess?.();
-        setTimeout(() => {
-          onClose();
-        }, 1500);
+        onClose();
+
+        // Automatically connect to YouTube Music so all accounts use YT Music data and storage
+        if (libraryController.getState().status !== "ready") {
+          void libraryController.signIn().catch(() => {});
+        }
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -146,17 +141,13 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
         });
         if (signInError) throw signInError;
 
-        // Automatically connect to YouTube Music if not already active
-        if (libraryController.getState().status !== "ready") {
-          try {
-            await libraryController.signIn();
-          } catch {
-            // Continue with signed-in session
-          }
-        }
-
         onAuthSuccess?.();
         onClose();
+
+        // Automatically connect to YouTube Music if not already active
+        if (libraryController.getState().status !== "ready") {
+          void libraryController.signIn().catch(() => {});
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed.");
@@ -165,30 +156,10 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     }
   };
 
-  const handleOAuth = async (provider: "google" | "discord") => {
+  const handleOAuth = async (provider: "discord") => {
     setBusy(true);
     setError(null);
     setSuccessMessage(null);
-
-    if (provider === "google") {
-      try {
-        if (supabase) {
-          try {
-            await signInWithOAuthPopup("google");
-          } catch {}
-        }
-        await libraryController.signIn();
-        if (libraryController.getState().status === "ready") {
-          onAuthSuccess?.();
-          onClose();
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Google sign-in failed.");
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
 
     if (provider === "discord") {
       if (!supabase) {
@@ -514,24 +485,14 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <span className="flex-1 h-px bg-border/40" />
           </div>
 
-          {/* OAuth Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              size="md"
-              disabled={busy}
-              onClick={() => void handleOAuth("google")}
-              className="flex items-center justify-center gap-2 rounded-xl text-xs"
-            >
-              <GoogleIcon size={16} className="text-primary" />
-              Google
-            </Button>
+          {/* OAuth Button - Discord only */}
+          <div className="flex justify-center">
             <Button
               variant="outline"
               size="md"
               disabled={busy}
               onClick={() => void handleOAuth("discord")}
-              className="flex items-center justify-center gap-2 rounded-xl text-xs"
+              className="w-full flex items-center justify-center gap-2 rounded-xl text-xs"
             >
               <DiscordIcon size={16} className="text-[#5865F2]" />
               Discord
