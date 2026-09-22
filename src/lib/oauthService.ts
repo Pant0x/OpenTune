@@ -1,46 +1,68 @@
-﻿import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { supabase } from "./supabaseClient";
 
 export const OAUTH_POPUP_LABEL = "amber_oauth_popup";
+const OAUTH_BROADCAST_CHANNEL = "amber_oauth_channel";
 
 export function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 }
 
 export function isOAuthPopup(): boolean {
-  if (!isTauriEnvironment()) return false;
-  try {
-    const currentWin = getCurrentWebviewWindow();
-    return currentWin.label === OAUTH_POPUP_LABEL;
-  } catch {
-    return false;
+  if (typeof window === "undefined") return false;
+  if (window.name === OAUTH_POPUP_LABEL) return true;
+  if (isTauriEnvironment()) {
+    try {
+      const currentWin = getCurrentWebviewWindow();
+      if (currentWin.label === OAUTH_POPUP_LABEL) return true;
+    } catch {}
   }
+  return false;
 }
 
 /**
  * Checks if the current window is an OAuth popup and handles closing after receiving tokens.
  */
 export async function handleOAuthPopupRedirect(): Promise<boolean> {
-  if (!isOAuthPopup()) return false;
+  const isPopup = isOAuthPopup();
+  if (!isPopup) return false;
+
   try {
-    const currentWin = getCurrentWebviewWindow();
     const hash = window.location.hash;
     const search = window.location.search;
-    if (
+
+    // Broadcast completion to the main window
+    try {
+      const bc = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
+      bc.postMessage({ type: "OAUTH_SUCCESS", hash, search });
+      bc.close();
+    } catch {}
+
+    const hasTokensOrCode =
       hash.includes("access_token=") ||
       search.includes("code=") ||
       hash.includes("error=") ||
-      search.includes("error=")
-    ) {
-      setTimeout(async () => {
+      search.includes("error=");
+
+    setTimeout(async () => {
+      try {
+        const currentWin = getCurrentWebviewWindow();
+        await currentWin.destroy();
+      } catch {
         try {
+          const currentWin = getCurrentWebviewWindow();
           await currentWin.close();
-        } catch {}
-      }, 300);
-      return true;
-    }
-  } catch {}
-  return false;
+        } catch {
+          window.close();
+        }
+      }
+    }, hasTokensOrCode ? 350 : 600);
+
+    return true;
+  } catch {
+    window.close();
+    return true;
+  }
 }
 
 /**
@@ -91,27 +113,57 @@ export async function signInWithOAuthPopup(provider: "google" | "discord"): Prom
     await new Promise<void>((resolve) => {
       let resolved = false;
 
+      const finish = async () => {
+        if (resolved) return;
+        resolved = true;
+        try {
+          await popup.destroy();
+        } catch {
+          try {
+            await popup.close();
+          } catch {}
+        }
+        if (supabase) {
+          try {
+            await supabase.auth.getSession();
+          } catch {}
+        }
+        resolve();
+      };
+
+      // 1. Listen via BroadcastChannel from the popup window
+      let bc: BroadcastChannel | null = null;
+      try {
+        bc = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
+        bc.onmessage = (event) => {
+          if (event.data?.type === "OAUTH_SUCCESS") {
+            void finish();
+          }
+        };
+      } catch {}
+
+      // 2. Listen to Supabase auth state change in main window
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_IN" && session) {
-          resolved = true;
           subscription.unsubscribe();
-          try {
-            void popup.close();
-          } catch {}
-          resolve();
+          void finish();
         }
       });
 
+      // 3. Fallback when popup is closed or destroyed by user
       void popup.once("tauri://destroyed", () => {
         subscription.unsubscribe();
+        if (bc) try { bc.close(); } catch {}
         if (!resolved) {
           resolve();
         }
       });
 
+      // 4. Timeout after 5 minutes
       setTimeout(() => {
+        subscription.unsubscribe();
+        if (bc) try { bc.close(); } catch {}
         if (!resolved) {
-          subscription.unsubscribe();
           resolve();
         }
       }, 300_000);
@@ -120,3 +172,4 @@ export async function signInWithOAuthPopup(provider: "google" | "discord"): Prom
     window.open(data.url, OAUTH_POPUP_LABEL, "width=520,height=720,status=no,toolbar=no,menubar=no");
   }
 }
+
