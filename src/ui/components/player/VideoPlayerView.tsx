@@ -254,7 +254,15 @@ export function VideoPlayerView({
     playerController.setVideoDelegate(delegate);
 
     return () => {
+      const wasPlaying = isPlayingRef.current;
+      const finalTime = currentTimeRef.current;
       playerController.setVideoDelegate(null);
+
+      // If user navigates away while video is playing, keep music playing seamlessly
+      if (wasPlaying && finalTime > 0) {
+        void playerController.seekTo(finalTime);
+        void playerController.play();
+      }
     };
   }, [postToIframe]);
 

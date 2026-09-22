@@ -675,50 +675,40 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         {isSynced && activeIndex >= 0 ? lines[activeIndex]?.text ?? "" : ""}
       </p>
 
-      {/* Top Header: Transparent Black Bar hosting the Song / Video Switcher */}
-      <header className="absolute top-0 inset-x-0 z-30 flex items-center justify-center py-2.5 bg-black/40 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto">
-        <div className="flex items-center rounded-full bg-black/50 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
-          <button
-            type="button"
-            onClick={() => void handleSwitchMediaMode("song")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              mediaMode === "song"
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white text-white/70",
-            )}
-          >
-            <span>Song</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSwitchMediaMode("video")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
-              mediaMode === "video"
-                ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
-                : "hover:text-white text-white/70",
-            )}
-          >
-            <span>Video</span>
-          </button>
-        </div>
-      </header>
+      {/* Top Header: Transparent Black Bar hosting Song / Video Switcher - Hidden in Fullscreen Mode */}
+      {!isFullscreen && (
+        <header className="shrink-0 z-30 flex items-center justify-center py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full">
+          <div className="flex items-center rounded-full bg-black/60 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
+            <button
+              type="button"
+              onClick={() => void handleSwitchMediaMode("song")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                mediaMode === "song"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white text-white/70",
+              )}
+            >
+              <span>Song</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSwitchMediaMode("video")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-4 py-1.5 transition-all cursor-pointer",
+                mediaMode === "video"
+                  ? "bg-white/25 text-white shadow-sm font-bold border border-white/20"
+                  : "hover:text-white text-white/70",
+              )}
+            >
+              <span>Video</span>
+            </button>
+          </div>
+        </header>
+      )}
 
-      {mediaMode === "video" ? (
-        /* Video Mode View */
-        <div className="relative min-h-0 flex-1 w-full flex flex-col justify-start items-center p-4 sm:p-8 pt-16 pb-16 max-w-5xl mx-auto overflow-y-auto">
-          {track && (
-            <VideoPlayerView
-              videoId={activeVideoId}
-              track={track}
-              initialTime={playerController.getCurrentTime()}
-              initialPlaying={isPlaying}
-            />
-          )}
-        </div>
-      ) : isFullscreen ? (
-        /* Split Screen Fullscreen View (Matches media_1788521601006.png) */
+      {isFullscreen ? (
+        /* Split Screen Fullscreen View (Pure lyrics, no video section) */
         <div className="relative min-h-0 flex-1 flex flex-col justify-center">
           <div className={cn(
             "grid gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden",
@@ -944,6 +934,18 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               )}
             </div>
           </div>
+        </div>
+      ) : mediaMode === "video" ? (
+        /* Video Mode View: positioned cleanly under the top header with proper padding */
+        <div className="relative min-h-0 flex-1 w-full flex flex-col justify-start items-center p-4 sm:p-8 pt-4 pb-16 max-w-5xl mx-auto overflow-y-auto">
+          {track && (
+            <VideoPlayerView
+              videoId={activeVideoId}
+              track={track}
+              initialTime={playerController.getCurrentTime()}
+              initialPlaying={isPlaying}
+            />
+          )}
         </div>
       ) : (
         /* Normal Mode: Lyrics ONLY — scroll down past lyrics to see details */

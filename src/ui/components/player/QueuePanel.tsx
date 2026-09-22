@@ -22,7 +22,7 @@ import {
   setArtistFollowedLocally,
   useFollowedArtistLocally,
 } from "../../../player/followedArtists";
-import type { BrowseShelf, Track } from "../../../datasource/types";
+import type { Artist, BrowseShelf, Track } from "../../../datasource/types";
 import {
   libraryController,
   playerController,
@@ -59,6 +59,127 @@ import { getLyricsOffset } from "../../settings/lyricsOffset";
 interface QueuePanelProps {
   onClose: () => void;
   onOpenHistory?: () => void;
+}
+
+interface SpotifyAboutArtistCardProps {
+  artistName: string;
+  artistOverview: SpotifyArtistOverview | null;
+  fallbackArtwork?: string;
+  descriptionFallback?: string;
+  isFollowing: boolean;
+  onToggleFollow: () => void;
+  onNavigateArtist?: ((artist: Artist, openInNewTab: boolean) => void) | null;
+  artistId?: string;
+}
+
+function SpotifyAboutArtistCard({
+  artistName,
+  artistOverview,
+  fallbackArtwork,
+  descriptionFallback,
+  isFollowing,
+  onToggleFollow,
+  onNavigateArtist,
+  artistId,
+}: SpotifyAboutArtistCardProps) {
+  const bio = artistOverview?.cleanBio || artistOverview?.bio || descriptionFallback;
+  const image = artistOverview?.headerUrl || artistOverview?.avatarUrl || fallbackArtwork;
+  const monthly = artistOverview?.monthlyListeners;
+  const worldRank = artistOverview?.worldRank;
+
+  return (
+    <div
+      onClick={() => {
+        if (onNavigateArtist) {
+          onNavigateArtist(
+            {
+              id: artistId || artistOverview?.spotifyId || artistName,
+              name: artistName,
+              artworkUrl: artistOverview?.avatarUrl || fallbackArtwork,
+            },
+            false,
+          );
+        }
+      }}
+      className="group relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 cursor-pointer transition-all duration-300 hover:bg-[#282828] shadow-lg flex flex-col"
+    >
+      {/* Top Banner / Hero */}
+      <div className="relative h-44 sm:h-52 w-full overflow-hidden bg-black/40">
+        {image ? (
+          <img
+            src={image}
+            alt={artistName}
+            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="size-full bg-gradient-to-br from-neutral-800 to-neutral-900 flex items-center justify-center">
+            <span className="text-3xl font-bold text-white/30">{artistName[0]}</span>
+          </div>
+        )}
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#242424] via-[#242424]/40 to-black/30" />
+
+        {/* Top Badges */}
+        <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-white drop-shadow-md">
+            About the artist
+          </span>
+          {worldRank ? (
+            <span className="px-2.5 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-bold text-white shadow-sm">
+              #{worldRank} in the world
+            </span>
+          ) : null}
+        </div>
+
+        {/* Bottom Details overlay inside image */}
+        <div className="absolute bottom-3 left-3 right-3 flex flex-col gap-0.5">
+          <h3 className="text-lg font-bold text-white tracking-tight leading-tight group-hover:underline">
+            {artistName}
+          </h3>
+          {monthly ? (
+            <span className="text-xs font-medium text-[#b3b3b3]">
+              {monthly.toLocaleString()} monthly listeners
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Card Body */}
+      <div className="p-4 flex flex-col gap-3">
+        {/* Action row with Follow Button */}
+        <div className="flex items-center justify-between gap-2">
+          {monthly && !image ? (
+            <span className="text-xs text-[#b3b3b3]">
+              {monthly.toLocaleString()} monthly listeners
+            </span>
+          ) : <div />}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFollow();
+            }}
+            className={cn(
+              "px-4 py-1 rounded-full border text-xs font-bold transition-all shrink-0 cursor-pointer shadow-sm",
+              isFollowing
+                ? "border-white bg-white text-black"
+                : "border-[#b3b3b3] text-white hover:border-white hover:scale-105",
+            )}
+          >
+            {isFollowing ? "Following" : "Follow"}
+          </button>
+        </div>
+
+        {/* Biography */}
+        {bio ? (
+          <p className="text-xs text-[#b3b3b3] group-hover:text-white/90 leading-relaxed line-clamp-4 transition-colors">
+            {bio}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /** Pointer travel before a press becomes a drag rather than a click. */
@@ -489,12 +610,108 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
     let active = true;
     setIsRelatedLoading(true);
     void libraryController.getRelated(currentTrack)
-      .then((shelves) => {
+      .then(async (shelves) => {
         if (!active) return;
-        setRelatedShelves(shelves || []);
+        if (shelves && shelves.length > 0) {
+          setRelatedShelves(shelves);
+          return;
+        }
+
+        // Build fallback shelves so Related tab is never blank (e.g. Odysseus or tracks lacking YT related data)
+        const fallbackShelves: BrowseShelf[] = [];
+
+        // 1. You might also like
+        try {
+          const recTracks = await libraryController.getRecommendations(currentTrack);
+          if (recTracks && recTracks.length > 0) {
+            fallbackShelves.push({
+              title: "You might also like",
+              tracks: recTracks.slice(0, 10),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        } catch {}
+
+        // 2. Similar artists
+        try {
+          const artistId = currentTrack.artists?.[0]?.id;
+          if (artistId) {
+            const artistPage = await libraryController.getArtist(artistId).catch(() => null);
+            if (artistPage?.fansAlsoLike && artistPage.fansAlsoLike.length > 0) {
+              fallbackShelves.push({
+                title: "Similar artists",
+                tracks: [],
+                albums: [],
+                playlists: [],
+                artists: artistPage.fansAlsoLike.slice(0, 8),
+                links: [],
+              });
+            }
+          }
+        } catch {}
+
+        // 3. More from [Artist]
+        try {
+          const discography = await SpotifyService.getArtistDiscography(currentTrack.artist);
+          if (discography && discography.length > 0) {
+            fallbackShelves.push({
+              title: `More from ${currentTrack.artist}`,
+              tracks: [],
+              albums: discography.slice(0, 8).map((d) => ({
+                id: d.id,
+                title: d.name,
+                artist: currentTrack.artist,
+                artworkUrl: d.coverUrl,
+              })),
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        } catch {}
+
+        if (active) {
+          setRelatedShelves(fallbackShelves);
+        }
       })
-      .catch(() => {
-        if (active) setRelatedShelves([]);
+      .catch(async () => {
+        if (!active) return;
+        const fallbackShelves: BrowseShelf[] = [];
+        try {
+          const recTracks = await libraryController.getRecommendations(currentTrack);
+          if (recTracks && recTracks.length > 0) {
+            fallbackShelves.push({
+              title: "You might also like",
+              tracks: recTracks.slice(0, 10),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        } catch {}
+        try {
+          const discography = await SpotifyService.getArtistDiscography(currentTrack.artist);
+          if (discography && discography.length > 0) {
+            fallbackShelves.push({
+              title: `More from ${currentTrack.artist}`,
+              tracks: [],
+              albums: discography.slice(0, 8).map((d) => ({
+                id: d.id,
+                title: d.name,
+                artist: currentTrack.artist,
+                artworkUrl: d.coverUrl,
+              })),
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        } catch {}
+        if (active) setRelatedShelves(fallbackShelves);
       })
       .finally(() => {
         if (active) setIsRelatedLoading(false);
@@ -1396,6 +1613,17 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 </div>
               )}
 
+              {/* About the artist Card (Spotify-style) */}
+              <SpotifyAboutArtistCard
+                artistName={currentTrack.artist}
+                artistOverview={artistOverview}
+                fallbackArtwork={effectiveArtwork}
+                isFollowing={isFollowingArtist}
+                onToggleFollow={() => void toggleFollowingArtist()}
+                onNavigateArtist={navigateArtist}
+                artistId={currentTrack.artists?.[0]?.id}
+              />
+
               {/* Next in Queue Preview Card */}
               {(manual.length > 0 || automatic.length > 0) && (
                 <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-3.5 flex items-center justify-between gap-3 shadow-md">
@@ -1713,7 +1941,26 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 const hasArtists = shelf.artists && shelf.artists.length > 0;
                 const hasAlbums = shelf.albums && shelf.albums.length > 0;
                 const hasDesc = Boolean(shelf.description);
-                if (!hasTracks && !hasArtists && !hasAlbums && !hasDesc) return null;
+                const isAboutShelf = shelf.title.toLowerCase().includes("about");
+
+                if (!hasTracks && !hasArtists && !hasAlbums && !hasDesc && !isAboutShelf) return null;
+
+                // When YouTube returns an "About the artist" shelf, render Spotify-style About card!
+                if (isAboutShelf || (!hasTracks && !hasArtists && !hasAlbums && hasDesc)) {
+                  return (
+                    <SpotifyAboutArtistCard
+                      key={`related-tab-about-${sIdx}`}
+                      artistName={currentTrack.artist}
+                      artistOverview={artistOverview}
+                      fallbackArtwork={effectiveArtwork}
+                      descriptionFallback={shelf.description}
+                      isFollowing={isFollowingArtist}
+                      onToggleFollow={() => void toggleFollowingArtist()}
+                      onNavigateArtist={navigateArtist}
+                      artistId={currentTrack.artists?.[0]?.id}
+                    />
+                  );
+                }
 
                 return (
                   <div
@@ -1762,7 +2009,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                               <button
                                 type="button"
                                 onClick={(e) => {
-                                  e.stopPropagation();
+                                   e.stopPropagation();
                                   playerController.addToQueue(track);
                                 }}
                                 aria-label="Add to queue"
@@ -1848,37 +2095,17 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 );
               })}
 
-              {/* About the artist card (matching Image 5 if not provided in shelf) */}
-              {!relatedShelves.some((s) => s.title.toLowerCase().includes("about") || s.description) &&
-                (artistOverview?.cleanBio || artistOverview?.bio) && (
-                  <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3 shadow-md">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-white">
-                        About the artist
-                      </span>
-                      {artistOverview.monthlyListeners ? (
-                        <span className="text-[11px] text-[#b3b3b3] tabular-nums">
-                          {artistOverview.monthlyListeners.toLocaleString()} monthly listeners
-                        </span>
-                      ) : null}
-                    </div>
-                    {artistOverview.headerUrl || artistOverview.avatarUrl ? (
-                      <div className="relative h-28 w-full overflow-hidden rounded-xl bg-black/40">
-                        <img
-                          src={artistOverview.headerUrl || artistOverview.avatarUrl || ""}
-                          alt={currentTrack.artist}
-                          className="size-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                        <span className="absolute bottom-2 left-3 text-sm font-bold text-white">
-                          {currentTrack.artist}
-                        </span>
-                      </div>
-                    ) : null}
-                    <p className="text-xs text-white/80 leading-relaxed line-clamp-6">
-                      {artistOverview.cleanBio || artistOverview.bio}
-                    </p>
-                  </div>
+              {/* About the artist card if not already rendered by an about shelf */}
+              {!relatedShelves.some((s) => s.title.toLowerCase().includes("about") || (!s.tracks?.length && !s.artists?.length && !s.albums?.length && s.description)) && (
+                <SpotifyAboutArtistCard
+                  artistName={currentTrack.artist}
+                  artistOverview={artistOverview}
+                  fallbackArtwork={effectiveArtwork}
+                  isFollowing={isFollowingArtist}
+                  onToggleFollow={() => void toggleFollowingArtist()}
+                  onNavigateArtist={navigateArtist}
+                  artistId={currentTrack.artists?.[0]?.id}
+                />
               )}
             </>
           )}

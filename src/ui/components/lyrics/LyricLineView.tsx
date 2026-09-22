@@ -396,10 +396,18 @@ export const LyricLineView = memo(function LyricLineView({
 
   if (size === "preview") {
     const rowClass = cn(
-      "transition-all duration-300 leading-normal select-text text-left w-full will-change-[transform,opacity,filter] preview-lyric-row",
-      isArabic && "font-arabic tracking-normal font-bold",
-      isActive && !adlibLine && "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white scale-[1.02] origin-left",
-      isActive && adlibLine && "text-white text-xs sm:text-sm italic font-bold scale-[1.01] origin-left",
+      "transition-all duration-300 leading-normal select-text w-full will-change-[transform,opacity,filter] preview-lyric-row",
+      isArabic
+        ? "font-arabic tracking-normal font-bold text-right origin-right"
+        : "text-left origin-left",
+      isActive && !adlibLine && cn(
+        "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white scale-[1.02]",
+        isArabic ? "origin-right" : "origin-left",
+      ),
+      isActive && adlibLine && cn(
+        "text-white text-xs sm:text-sm italic font-bold scale-[1.01]",
+        isArabic ? "origin-right" : "origin-left",
+      ),
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
       !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold hover:text-white/70 hover:!filter-none transition-all",
       sweeps && "lyric-sweep font-bold",
@@ -416,6 +424,7 @@ export const LyricLineView = memo(function LyricLineView({
         <button
           ref={attach}
           type="button"
+          dir={isArabic ? "rtl" : "ltr"}
           onClick={(e) => {
             e.stopPropagation();
             onSeek(index);
@@ -428,7 +437,7 @@ export const LyricLineView = memo(function LyricLineView({
       );
     }
     return (
-      <p ref={attach} style={previewStyle} className={rowClass}>
+      <p ref={attach} dir={isArabic ? "rtl" : "ltr"} style={previewStyle} className={rowClass}>
         {tokenNodes}
       </p>
     );

@@ -127,17 +127,34 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
           throw new Error("This email is already registered.");
         }
 
-        setSuccessMessage("Account created! Check your email to confirm your sign up.");
+        // Automatically connect to YouTube Music so all accounts use YT Music data and storage
+        try {
+          await libraryController.signIn();
+        } catch {
+          // If user cancels or defers, account was still created
+        }
+
+        setSuccessMessage("Account created and YouTube Music connected!");
+        onAuthSuccess?.();
         setTimeout(() => {
-          setMode("signin");
-          setSuccessMessage(null);
-        }, 3000);
+          onClose();
+        }, 1500);
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
         if (signInError) throw signInError;
+
+        // Automatically connect to YouTube Music if not already active
+        if (libraryController.getState().status !== "ready") {
+          try {
+            await libraryController.signIn();
+          } catch {
+            // Continue with signed-in session
+          }
+        }
+
         onAuthSuccess?.();
         onClose();
       }
@@ -155,6 +172,11 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
 
     if (provider === "google") {
       try {
+        if (supabase) {
+          try {
+            await signInWithOAuthPopup("google");
+          } catch {}
+        }
         await libraryController.signIn();
         if (libraryController.getState().status === "ready") {
           onAuthSuccess?.();
