@@ -1,0 +1,16 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # Runs every day at 12:00 UTC to keep Supabase active
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Health
+        run: |
+          curl -s -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtkcmd4bm9vZXN0dHBweWhrb2luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NzQ3MjIsImV4cCI6MjA5ODI1MDcyMn0.g7asmjmArz5xKoUN0X2uGLRBQOcx0nKvdNMBSQPuK5U" \
+            https://kdrgxnooesttppyhkoin.supabase.co/auth/v1/health
