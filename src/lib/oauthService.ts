@@ -11,12 +11,64 @@ export function isTauriEnvironment(): boolean {
 export function isOAuthPopup(): boolean {
   if (typeof window === "undefined") return false;
   if (window.name === OAUTH_POPUP_LABEL) return true;
+  if (window.opener && (window.location.hash.includes("access_token=") || window.location.search.includes("code="))) {
+    return true;
+  }
+
+  // 1. Direct Tauri internals metadata check
+  try {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__?: {
+        metadata?: {
+          currentWindow?: { label?: string };
+          currentWebview?: { label?: string };
+        };
+      };
+    }).__TAURI_INTERNALS__;
+    const winLabel = internals?.metadata?.currentWindow?.label;
+    const webviewLabel = internals?.metadata?.currentWebview?.label;
+    if (winLabel === OAUTH_POPUP_LABEL || webviewLabel === OAUTH_POPUP_LABEL) {
+      return true;
+    }
+  } catch {}
+
+  // 2. Tauri API check
   if (isTauriEnvironment()) {
     try {
       const currentWin = getCurrentWebviewWindow();
       if (currentWin.label === OAUTH_POPUP_LABEL) return true;
     } catch {}
   }
+
+  // 3. Fallback: if URL contains oauth tokens/code and window is not main
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hash.includes("access_token=") ||
+      window.location.search.includes("code="))
+  ) {
+    try {
+      if (isTauriEnvironment()) {
+        const currentWin = getCurrentWebviewWindow();
+        if (currentWin.label !== "main") {
+          return true;
+        }
+      }
+    } catch {}
+    try {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__?: {
+          metadata?: {
+            currentWindow?: { label?: string };
+          };
+        };
+      }).__TAURI_INTERNALS__;
+      const winLabel = internals?.metadata?.currentWindow?.label;
+      if (winLabel && winLabel !== "main") {
+        return true;
+      }
+    } catch {}
+  }
+
   return false;
 }
 
@@ -30,6 +82,26 @@ export async function handleOAuthPopupRedirect(): Promise<boolean> {
   try {
     const hash = window.location.hash;
     const search = window.location.search;
+
+    // Direct session hydration in popup (shared storage across WebViews of same origin)
+    if (hash && hash.includes("access_token=") && supabase) {
+      try {
+        const params = new URLSearchParams(hash.replace(/^#/, ""));
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({ access_token, refresh_token });
+        }
+      } catch {}
+    } else if (search && search.includes("code=") && supabase) {
+      try {
+        const params = new URLSearchParams(search);
+        const code = params.get("code");
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
+      } catch {}
+    }
 
     // Broadcast completion to the main window
     try {
@@ -56,7 +128,7 @@ export async function handleOAuthPopupRedirect(): Promise<boolean> {
           window.close();
         }
       }
-    }, hasTokensOrCode ? 350 : 600);
+    }, hasTokensOrCode ? 300 : 500);
 
     return true;
   } catch {
@@ -81,6 +153,7 @@ export async function signInWithOAuthPopup(provider: "google" | "discord"): Prom
     options: {
       redirectTo,
       skipBrowserRedirect: true,
+      scopes: provider === "discord" ? "identify email" : undefined,
     },
   });
 
@@ -135,8 +208,28 @@ export async function signInWithOAuthPopup(provider: "google" | "discord"): Prom
       let bc: BroadcastChannel | null = null;
       try {
         bc = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
-        bc.onmessage = (event) => {
+        bc.onmessage = async (event) => {
           if (event.data?.type === "OAUTH_SUCCESS") {
+            const hash = event.data.hash as string | undefined;
+            const search = event.data.search as string | undefined;
+            if (hash && hash.includes("access_token=") && supabase) {
+              try {
+                const params = new URLSearchParams(hash.replace(/^#/, ""));
+                const access_token = params.get("access_token");
+                const refresh_token = params.get("refresh_token");
+                if (access_token && refresh_token) {
+                  await supabase.auth.setSession({ access_token, refresh_token });
+                }
+              } catch {}
+            } else if (search && search.includes("code=") && supabase) {
+              try {
+                const params = new URLSearchParams(search);
+                const code = params.get("code");
+                if (code) {
+                  await supabase.auth.exchangeCodeForSession(code);
+                }
+              } catch {}
+            }
             void finish();
           }
         };

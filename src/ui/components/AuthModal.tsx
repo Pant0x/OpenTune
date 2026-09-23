@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "../../lib/supabaseClient";
 import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { libraryController } from "../../player/playerStore";
-import { MailIcon, LockIcon, UserIcon, DiscordIcon, CloseIcon, EyeIcon, EyeClosedIcon } from "@/ui/icons";
+import { useClerkAuth } from "../../lib/clerkClient";
+import { MailIcon, LockIcon, UserIcon, DiscordIcon, GoogleIcon, CloseIcon, EyeIcon, EyeClosedIcon } from "@/ui/icons";
 import loadingVideo from "../../../assets/img/Loading.mp4";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
@@ -290,6 +291,35 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     }
   };
 
+  const { signInWithGoogle, isAvailable: isClerkAvailable } = useClerkAuth();
+
+  const handleGoogleAuth = async () => {
+    setBusy(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      if (isClerkAvailable) {
+        await signInWithGoogle();
+        onAuthSuccess?.();
+        onClose();
+      } else {
+        // Fallback to Supabase Google OAuth if configured, or notify user
+        if (supabase) {
+          await signInWithOAuthPopup("google");
+          onAuthSuccess?.();
+          onClose();
+        } else {
+          throw new Error("Google authentication is not configured yet.");
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleOAuth = async (provider: "discord") => {
     setBusy(true);
     setError(null);
@@ -303,8 +333,14 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
       }
       try {
         await signInWithOAuthPopup("discord");
-        onAuthSuccess?.();
-        onClose();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          onAuthSuccess?.();
+          onClose();
+          if (libraryController.getState().status !== "ready") {
+            void libraryController.signIn().catch(() => {});
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Discord sign-in failed.");
       } finally {
@@ -863,13 +899,26 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
                 <span className="flex-1 h-px bg-border/40" />
               </div>
 
-              <div className="flex justify-center">
+              <div className="grid grid-cols-2 gap-2.5">
                 <Button
+                  type="button"
+                  variant="outline"
+                  size="md"
+                  disabled={busy}
+                  onClick={() => void handleGoogleAuth()}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl text-xs hover:border-white/20 transition-all"
+                >
+                  <GoogleIcon size={16} />
+                  Google
+                </Button>
+
+                <Button
+                  type="button"
                   variant="outline"
                   size="md"
                   disabled={busy}
                   onClick={() => void handleOAuth("discord")}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl text-xs"
+                  className="w-full flex items-center justify-center gap-2 rounded-xl text-xs hover:border-[#5865F2]/40 transition-all"
                 >
                   <DiscordIcon size={16} className="text-[#5865F2]" />
                   Discord

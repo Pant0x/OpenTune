@@ -44,6 +44,7 @@ import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
 import { handleOAuthPopupRedirect, isOAuthPopup } from "./lib/oauthService";
+import { AmberClerkProvider } from "./lib/clerkClient";
 
 if (isOAuthPopup()) {
   void handleOAuthPopupRedirect();
@@ -138,7 +139,9 @@ if (isOAuthPopup()) {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       <ErrorBoundary label="Amber">
-        <App />
+        <AmberClerkProvider>
+          <App />
+        </AmberClerkProvider>
       </ErrorBoundary>
     </React.StrictMode>,
   );
