@@ -6,7 +6,7 @@ import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { libraryController } from "../../player/playerStore";
 import { useClerkAuth } from "../../lib/clerkClient";
 import { MailIcon, LockIcon, UserIcon, DiscordIcon, GoogleIcon, CloseIcon, EyeIcon, EyeClosedIcon } from "@/ui/icons";
-import loadingVideo from "../../../assets/img/Loading.mp4";
+import openTuneText from "../../../assets/img/opentune-text.png";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
 
@@ -389,29 +389,24 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <CloseIcon size={18} />
           </button>
 
-          {/* Amber MP4 Animation Banner */}
+          {/* OpenTune In-App Branding Banner */}
           <div className="flex flex-col items-center mb-5">
-            <div className="relative size-20 rounded-2xl overflow-hidden shadow-lg ring-1 ring-white/10 mb-3 bg-black/40">
-              <video
-                className="size-full object-cover"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-              >
-                <source src={loadingVideo} type="video/mp4" />
-              </video>
+            <div className="flex items-center justify-center py-2 px-4 mb-3">
+              <img
+                src={openTuneText}
+                alt="OpenTune"
+                className="h-8 w-auto object-contain select-none"
+              />
             </div>
             <h2 id="auth-modal-title" className="text-xl font-bold text-foreground">
-              {mode === "signin" && "Sign In to Amber"}
-              {mode === "signup" && "Create Amber Account"}
+              {mode === "signin" && "Sign In to OpenTune"}
+              {mode === "signup" && "Create OpenTune Account"}
               {mode === "forgot" && "Reset Password"}
               {mode === "reset_otp" && "Set New Password"}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground text-center">
               {mode === "signin" && "Sign in with your email or username to access your music library"}
-              {mode === "signup" && "Join Amber to sync your music and favorites across devices"}
+              {mode === "signup" && "Join OpenTune to sync your music and favorites across devices"}
               {mode === "forgot" && "Enter your account email to receive a 6-digit recovery code"}
               {mode === "reset_otp" && `Enter the 6-digit verification code sent to ${email || "your email"}`}
             </p>

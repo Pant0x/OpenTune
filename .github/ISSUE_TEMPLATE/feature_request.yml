@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest something Amber should do
+description: Suggest something OpenTune should do
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What are you trying to do that Amber makes hard or impossible today?
+      description: What are you trying to do that OpenTune makes hard or impossible today?
     validations:
       required: true
 

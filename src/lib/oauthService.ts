@@ -1,8 +1,8 @@
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { supabase } from "./supabaseClient";
 
-export const OAUTH_POPUP_LABEL = "amber_oauth_popup";
-const OAUTH_BROADCAST_CHANNEL = "amber_oauth_channel";
+export const OAUTH_POPUP_LABEL = "opentune_oauth_popup";
+const OAUTH_BROADCAST_CHANNEL = "opentune_oauth_channel";
 
 export function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
@@ -139,7 +139,7 @@ export async function handleOAuthPopupRedirect(): Promise<boolean> {
 
 /**
  * Initiates an OAuth sign-in flow (Discord or Google) inside a dedicated popup window,
- * keeping the main Amber application window intact without external navigation.
+ * keeping the main OpenTune application window intact without external navigation.
  */
 export async function signInWithOAuthPopup(provider: "google" | "discord"): Promise<void> {
   if (!supabase) {
@@ -170,8 +170,8 @@ export async function signInWithOAuthPopup(provider: "google" | "discord"): Prom
 
     const title =
       provider === "discord"
-        ? "Sign in with Discord - Amber"
-        : "Sign in with Google - Amber";
+        ? "Sign in with Discord - OpenTune"
+        : "Sign in with Google - OpenTune";
 
     const popup = new WebviewWindow(OAUTH_POPUP_LABEL, {
       url: data.url,

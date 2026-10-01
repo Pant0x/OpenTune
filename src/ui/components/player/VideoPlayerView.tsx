@@ -96,7 +96,7 @@ export function VideoPlayerView({
   const [commentSort, setCommentSort] = useState<"top" | "newest">("top");
 
   // Iframe, YT.Player and dock playback synchronization
-  const iframeId = useMemo(() => `amber-yt-${videoId}`, [videoId]);
+  const iframeId = useMemo(() => `opentune-yt-${videoId}`, [videoId]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const isPlayerReadyRef = useRef(false);

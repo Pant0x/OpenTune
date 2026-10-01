@@ -1,12 +1,12 @@
-# Architecture — Amber
+# Architecture — OpenTune
 
 An unofficial desktop YouTube Music client. Tauri 2 (Rust) shell + React 19 / TypeScript
 front end, bundled by Vite 7. No router and no Redux — plain classes with `useSyncExternalStore`
 and direct Tauri IPC. The UI is built on Tailwind v4 plus animated components vendored from the
 [beUI](https://beui.dev) registry, with [Solar](https://solar-icons.vercel.app) icons.
 
-- Version: `1.2.1` (`package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` are kept in lockstep)
-- Bundle id: `com.amber.desktop` · Rust crate `Amber` / lib `Amber_lib`
+- Version: `1.0.1` (`package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` are kept in lockstep)
+- Bundle id: `com.pant0x.opentune` · Rust crate `opentune` / lib `opentune_lib`
 - Platforms: Windows, macOS, Linux
 - Companion docs: [frontend.md](./frontend.md) (UI), [backend.md](./backend.md) (Rust/IPC)
 

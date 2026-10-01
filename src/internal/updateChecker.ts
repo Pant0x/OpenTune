@@ -5,9 +5,9 @@ import { logInternalError } from "./logging";
 
 const RELEASE_TAG_PREFIX = "v";
 const RELEASES_URL =
-  "https://github.com/Pant0x/Amber-Music-Platform/releases/tag";
+  "https://github.com/Pant0x/OpenTune/releases/tag";
 const RELEASES_API_URL =
-  "https://api.github.com/repos/Pant0x/Amber-Music-Platform/releases/latest";
+  "https://api.github.com/repos/Pant0x/OpenTune/releases/latest";
 const SNOOZE_PREFIX = "just-another-music-client:update-snooze:";
 const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
 

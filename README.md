@@ -1,8 +1,8 @@
 <p align="center">
-  <img width="120px" src="assets/img/logo2-noBG.png" alt="Amber" />
+  <img width="120px" src="public/icon.png" alt="OpenTune" />
 </p>
 
-<h1 align="center">Amber</h1>
+<h1 align="center">OpenTune</h1>
 
 <p align="center">
   A fast, native-feeling desktop client for YouTube Music.<br />
@@ -10,30 +10,29 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pant0x/Amber-Music-Platform/releases/latest"><img src="https://img.shields.io/github/downloads/Pant0x/Amber-Music-Platform/total?style=for-the-badge&color=ff0033&label=downloads" alt="Downloads"></a>
-  <a href="https://github.com/Pant0x/Amber-Music-Platform/releases/latest"><img src="https://img.shields.io/github/package-json/v/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff3d00&label=version" alt="Version"></a>
-  <a href="https://github.com/Pant0x/Amber-Music-Platform/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff6900" alt="License"></a>
-  <a href="https://github.com/Pant0x/Amber-Music-Platform/stargazers"><img src="https://img.shields.io/github/stars/Pant0x/Amber-Music-Platform?style=for-the-badge&color=ff9700&label=stars" alt="Stars"></a>
-  <a href="https://aur.archlinux.org/packages/amber"><img src="https://img.shields.io/aur/version/amber?style=for-the-badge&color=ffc300&label=AUR" alt="AUR"></a>
+  <a href="https://github.com/Pant0x/OpenTune/releases/latest"><img src="https://img.shields.io/github/downloads/Pant0x/OpenTune/total?style=for-the-badge&color=ffffff&label=downloads&labelColor=18181b" alt="Downloads"></a>
+  <a href="https://github.com/Pant0x/OpenTune/releases/latest"><img src="https://img.shields.io/github/package-json/v/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=version&labelColor=18181b" alt="Version"></a>
+  <a href="https://github.com/Pant0x/OpenTune/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=license&labelColor=18181b" alt="License"></a>
+  <a href="https://github.com/Pant0x/OpenTune/stargazers"><img src="https://img.shields.io/github/stars/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=stars&labelColor=18181b" alt="Stars"></a>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/img/Screenshot01.png" />
     <source media="(prefers-color-scheme: light)" srcset="assets/img/Screenshot02.png" />
-    <img src="assets/img/Screenshot01.png" alt="Amber home view" width="900" />
+    <img src="assets/img/Screenshot01.png" alt="OpenTune home view" width="900" />
   </picture>
 </p>
 
 > [!IMPORTANT]
-> Amber is an independent, unofficial project. It is not affiliated with, authorized by,
+> OpenTune is an independent, unofficial project. It is not affiliated with, authorized by,
 > sponsored by, or endorsed by YouTube or Google.
 
 <br />
 
 ## About
 
-Amber brings YouTube Music to the desktop as its own application, not a browser tab. There is
+OpenTune brings YouTube Music to the desktop as its own application, not a browser tab. There is
 no official desktop client, so the goal is a fast, native-feeling one that holds up with large
 libraries.
 
@@ -109,13 +108,13 @@ If you find it useful, **starring the repo** genuinely helps.
 
 ## Download
 
-Grab the newest installer from the **[latest release](https://github.com/Pant0x/Amber-Music-Platform/releases/latest)**
+Grab the newest installer from the **[latest release](https://github.com/Pant0x/OpenTune/releases/latest)**
 for Windows, macOS or Linux.
 
 On Arch and derivatives, install from the AUR instead:
 
 ```bash
-yay -S Amber     # or: paru -S Amber
+yay -S opentune     # or: paru -S opentune
 ```
 
 <br />
@@ -128,7 +127,7 @@ yay -S Amber     # or: paru -S Amber
 
 ### Linux notes
 
-Install the `.deb` or `.rpm`, or `Amber` from the AUR on Arch. All three run on your system's
+Install the `.deb` or `.rpm`, or `opentune` from the AUR on Arch. All three run on your system's
 WebKitGTK (rendering) and GStreamer (playback) rather than bundling their own.
 
 <details>
@@ -162,17 +161,17 @@ A WebKitGTK rendering problem under Wayland, most often on Nvidia. Launch from a
 with one of:
 
 ```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 Amber
-WEBKIT_DISABLE_COMPOSITING_MODE=1 Amber
-GDK_BACKEND=x11 Amber
+WEBKIT_DISABLE_DMABUF_RENDERER=1 opentune
+WEBKIT_DISABLE_COMPOSITING_MODE=1 opentune
+GDK_BACKEND=x11 opentune
 ```
 
 Launching from an app menu instead? Add the same variable to the `Exec` line of
-`Amber.desktop` (typically `/usr/share/applications/Amber.desktop`, or
-`~/.local/share/applications/Amber.desktop` for a user install):
+`opentune.desktop` (typically `/usr/share/applications/opentune.desktop`, or
+`~/.local/share/applications/opentune.desktop` for a user install):
 
 ```
-Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 Amber
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 opentune
 ```
 
 </details>
@@ -183,10 +182,10 @@ Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 Amber
 Preload the system Wayland client library:
 
 ```bash
-LD_PRELOAD=/usr/lib/libwayland-client.so ~/Downloads/Amber*.AppImage
+LD_PRELOAD=/usr/lib/libwayland-client.so ~/Downloads/OpenTune*.AppImage
 ```
 
-In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to Amber's environment variables.
+In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to OpenTune's environment variables.
 
 </details>
 
@@ -195,29 +194,29 @@ In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to Amber's environ
 Open **Settings → Library → Application log**, reproduce the problem, and attach the log to
 an issue along with your desktop environment, display server (X11 or Wayland) and distro —
 those three narrow down a Linux bug faster than anything else. The log also lives at
-`~/.local/share/com.amber.desktop/logs/current.log`.
+`~/.local/share/com.pant0x.opentune/logs/current.log`.
 
 ### macOS notes
 
 #### "Apple is not able to verify that it is free from malware"
 
 The macOS builds aren't signed with an Apple Developer ID, so Gatekeeper blocks them on first
-launch. This isn't a malware finding — it means the binary is unsigned. Drag Amber to
+launch. This isn't a malware finding — it means the binary is unsigned. Drag OpenTune to
 Applications, then either:
 
-- open **System Settings → Privacy & Security**, scroll to the message about Amber, and click
+- open **System Settings → Privacy & Security**, scroll to the message about OpenTune, and click
   **Open Anyway**, or
 - clear the quarantine flag yourself:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Amber.app
+xattr -dr com.apple.quarantine /Applications/OpenTune.app
 ```
 
 Build from source instead if you'd rather not trust a prebuilt, unsigned binary.
 
 #### A Keychain prompt on sign-in
 
-Amber stores one encryption key in its own Keychain entry and encrypts your YouTube Music
+OpenTune stores one encryption key in its own Keychain entry and encrypts your YouTube Music
 session with it before writing anything to the app data directory. Choose **Always Allow** to
 avoid repeated prompts — or **Deny** if you don't intend to sign in to YouTube Music.
 
@@ -262,7 +261,7 @@ By contributing you agree to the [Contributor License Agreement](CLA.md).
 
 ## Credits
 
-Amber is a fork of **[amber-musicplayer](https://github.com/2latemc/amber-musicplayer)**
+OpenTune is built upon and inspired by **[amber-musicplayer](https://github.com/2latemc/amber-musicplayer)**
 by [2latemc](https://github.com/2latemc), used under the Apache 2.0 licence. The original
 project did the hard groundwork of getting YouTube Music working on the desktop.
 
@@ -273,13 +272,13 @@ If you want to support the original author, they accept donations
 
 ## Legal
 
-**Amber provides no downloading functionality.** It is a client for audio listening, with
+**OpenTune provides no downloading functionality.** It is a client for audio listening, with
 theming and interface additions.
 
-Amber interacts with YouTube and YouTube Music. Access to those services remains governed by
+OpenTune interacts with YouTube and YouTube Music. Access to those services remains governed by
 their own terms, policies, availability and regional restrictions.
 
-Amber does not host or claim ownership of music, videos, artwork, metadata, or any other
+OpenTune does not host or claim ownership of music, videos, artwork, metadata, or any other
 content supplied by third parties. Rights in that content remain with their respective
 owners.
 
@@ -297,6 +296,6 @@ integration only.
 
 ## Thanks to our contributors
 
-<a href="https://github.com/Pant0x/Amber-Music-Platform/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Pant0x/Amber-Music-Platform" />
+<a href="https://github.com/Pant0x/OpenTune/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Pant0x/OpenTune" />
 </a>

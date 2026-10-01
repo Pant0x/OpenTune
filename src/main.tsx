@@ -44,14 +44,14 @@ import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
 import { handleOAuthPopupRedirect, isOAuthPopup } from "./lib/oauthService";
-import { AmberClerkProvider } from "./lib/clerkClient";
+import { OpenTuneClerkProvider } from "./lib/clerkClient";
 
 if (isOAuthPopup()) {
   void handleOAuthPopupRedirect();
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-[#0a0a0a] text-white gap-3 select-none">
       <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      <span className="text-xs font-medium text-white/80">Signing in to Amber...</span>
+      <span className="text-xs font-medium text-white/80">Signing in to OpenTune...</span>
     </div>
   );
 } else {
@@ -138,10 +138,10 @@ if (isOAuthPopup()) {
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-      <ErrorBoundary label="Amber">
-        <AmberClerkProvider>
+      <ErrorBoundary label="OpenTune">
+        <OpenTuneClerkProvider>
           <App />
-        </AmberClerkProvider>
+        </OpenTuneClerkProvider>
       </ErrorBoundary>
     </React.StrictMode>,
   );

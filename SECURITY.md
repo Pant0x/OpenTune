@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-Only the latest release gets fixes. Amber auto-updates; older versions are not patched.
+Only the latest release gets fixes. OpenTune auto-updates; older versions are not patched.
 
 ## Reporting a vulnerability
 
-Use GitHub's [private vulnerability reporting](https://github.com/Pant0x/Amber-Music-Platform/security/advisories/new)
-— it is private until a fix ships. If that is unavailable, email m.faizanasad97@gmail.com
-with `Amber security` in the subject.
+Use GitHub's [private vulnerability reporting](https://github.com/Pant0x/OpenTune/security/advisories/new)
+— it is private until a fix ships. If that is unavailable, contact the maintainer
+with `OpenTune security` in the subject.
 
 Please do not open a public issue for a vulnerability.
 
@@ -18,7 +18,7 @@ bounty, and a fix lands in the next release rather than on a fixed SLA.
 
 ## Scope
 
-Amber is a desktop app that plays YouTube content locally. Things worth reporting:
+OpenTune is a desktop app that plays YouTube content locally. Things worth reporting:
 
 - Remote content (video metadata, captions, thumbnails, URLs) escaping into command
   execution, file writes outside the app's own data directory, or the webview's privileged

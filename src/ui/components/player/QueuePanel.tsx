@@ -1592,7 +1592,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     aria-label={isLiked ? "Added to Liked Songs" : "Save to Your Library"}
                   >
                     {isLiked ? (
-                      <span className="flex size-7 items-center justify-center rounded-full bg-[#ff0033] text-white shadow-xs">
+                      <span className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs">
                         <CheckIcon size={14} className="stroke-[3]" />
                       </span>
                     ) : (

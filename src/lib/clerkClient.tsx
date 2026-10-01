@@ -15,7 +15,7 @@ function InnerAvailabilityProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
-export function AmberClerkProvider({ children }: { children: React.ReactNode }) {
+export function OpenTuneClerkProvider({ children }: { children: React.ReactNode }) {
   if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <ClerkAvailableContext.Provider value={false}>
@@ -30,6 +30,8 @@ export function AmberClerkProvider({ children }: { children: React.ReactNode }) 
     </ClerkProvider>
   );
 }
+
+export { OpenTuneClerkProvider as AmberClerkProvider };
 
 export function useIsClerkAvailable(): boolean {
   return useContext(ClerkAvailableContext);

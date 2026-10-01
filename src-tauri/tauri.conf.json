@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Amber",
+  "productName": "OpenTune",
   "version": "1.0.1",
-  "identifier": "com.amber.desktop",
+  "identifier": "com.pant0x.opentune",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Amber",
+        "title": "OpenTune",
         "decorations": false,
         "transparent": true,
         "shadow": true,
@@ -54,8 +54,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCMkIwQzdFNUIwNTBBQzEKUldUQkNnVmJmZ3dyNjJGU0ZsSTFjNWtvaU5oSFMyMDBqRkRJaFBPYXVqMSsvdDcrc0xFdE9uVmsK",
       "endpoints": [
-        "https://github.com/Pant0x/Amber-Music-Platform/releases/latest/download/latest.json",
-        "https://raw.githubusercontent.com/Pant0x/Amber-Music-Platform/updater-channel/latest.json"
+        "https://github.com/Pant0x/OpenTune/releases/latest/download/latest.json",
+        "https://raw.githubusercontent.com/Pant0x/OpenTune/updater-channel/latest.json"
       ]
     }
   }

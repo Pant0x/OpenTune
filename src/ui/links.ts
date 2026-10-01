@@ -5,7 +5,7 @@
  * and the settings page, and a project that gets forked or renamed should only have to
  * change it here.
  */
-export const GITHUB_REPOSITORY_URL = "https://github.com/Pant0x/Amber-Music-Platform";
+export const GITHUB_REPOSITORY_URL = "https://github.com/Pant0x/OpenTune";
 export const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPOSITORY_URL}/issues/new/choose`;
 export const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 

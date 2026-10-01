@@ -85,7 +85,11 @@ fn collect() -> MemoryReport {
 
     // Breadth-first from our own pid, so utility processes nested under the browser process are
     // counted rather than only the direct children.
-    let mut queue = vec![(own_pid, "Amber.exe".to_string())];
+    let own_exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "OpenTune.exe".to_string());
+    let mut queue = vec![(own_pid, own_exe)];
     let mut seen = std::collections::HashSet::new();
 
     while let Some((pid, name)) = queue.pop() {

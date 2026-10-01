@@ -53,7 +53,7 @@ const PLAYLIST_ORDER_KEY = "ytc-sidebar-playlist-order";
 const ALBUM_ORDER_KEY = "ytc-sidebar-album-order";
 const PLAYLIST_LIKED_ORDER_MIGRATION_KEY = "ytc-sidebar-playlist-liked-order-v1";
 const ALBUM_LIKED_ORDER_MIGRATION_KEY = "ytc-sidebar-album-liked-order-v1";
-const LIBRARY_SORT_KEY = "amber:sidebar-library-sort";
+const LIBRARY_SORT_KEY = "opentune:sidebar-library-sort";
 
 function loadOrderFromStorage(key: string, migrationKey: string): string[] {
   if (typeof window === "undefined") return [];

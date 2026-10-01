@@ -400,10 +400,10 @@ export function ArtistView({
     let next: string[];
     if (isBlockedArtist) {
       next = blockedArtists.filter((name) => name !== key);
-      showToast(`Amber will play songs by ${displayedArtist.name}`);
+      showToast(`OpenTune will play songs by ${displayedArtist.name}`);
     } else {
       next = [...blockedArtists, key];
-      showToast(`Amber won't play songs by ${displayedArtist.name}`);
+      showToast(`OpenTune won't play songs by ${displayedArtist.name}`);
     }
     setBlockedArtists(next);
     try {

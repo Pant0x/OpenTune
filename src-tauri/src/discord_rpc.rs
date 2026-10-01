@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DISCORD_CLIENT_ID: &str = "1515682467154100344";
-/// Asset key for the Amber logo uploaded to Discord Developer Portal
-/// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "amber-logo"
-const AMBER_LOGO_ASSET_KEY: &str = "amber-logo";
+/// Asset key for the OpenTune logo uploaded to Discord Developer Portal
+/// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "opentune-logo"
+const OPENTUNE_LOGO_ASSET_KEY: &str = "opentune-logo";
 
 /// How often to refresh presence while playing (Discord runs its own clock but
 /// periodic updates keep the connection alive and handle edge cases).
@@ -112,7 +112,7 @@ impl DiscordRpcManager {
         let state_str = data.artist.clone();
 
         let artwork_image = data.artwork_url.clone();
-        let artwork_key = artwork_image.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
+        let artwork_key = artwork_image.as_deref().unwrap_or(OPENTUNE_LOGO_ASSET_KEY);
 
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -126,11 +126,11 @@ impl DiscordRpcManager {
         if !data.album.is_empty() {
             assets_map.insert("large_text".to_string(), json!(data.album));
         }
-        assets_map.insert("small_image".to_string(), json!(AMBER_LOGO_ASSET_KEY));
-        assets_map.insert("small_text".to_string(), json!("Amber"));
+        assets_map.insert("small_image".to_string(), json!(OPENTUNE_LOGO_ASSET_KEY));
+        assets_map.insert("small_text".to_string(), json!("OpenTune"));
 
         let mut activity = json!({
-            "name": "Amber",
+            "name": "OpenTune",
             "type": 2, // LISTENING
             "details": data.title,
             "state": state_str,
@@ -345,17 +345,17 @@ impl DiscordRpcManager {
                             let start_ts = now_secs - elapsed as i64;
                             let end_ts = start_ts + duration as i64;
                             let state_str = data.artist.clone();
-                            let artwork_key = data.artwork_url.as_deref().unwrap_or(AMBER_LOGO_ASSET_KEY);
+                            let artwork_key = data.artwork_url.as_deref().unwrap_or(OPENTUNE_LOGO_ASSET_KEY);
                             let mut assets_map = serde_json::Map::new();
                             assets_map.insert("large_image".to_string(), json!(artwork_key));
                             if !data.album.is_empty() {
                                 assets_map.insert("large_text".to_string(), json!(data.album));
                             }
-                            assets_map.insert("small_image".to_string(), json!(AMBER_LOGO_ASSET_KEY));
-                            assets_map.insert("small_text".to_string(), json!("Amber"));
+                            assets_map.insert("small_image".to_string(), json!(OPENTUNE_LOGO_ASSET_KEY));
+                            assets_map.insert("small_text".to_string(), json!("OpenTune"));
 
                             let activity = json!({
-                                "name": "Amber",
+                                "name": "OpenTune",
                                 "type": 2, // LISTENING
                                 "details": data.title,
                                 "state": state_str,

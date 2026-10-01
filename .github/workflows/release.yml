@@ -88,10 +88,10 @@ jobs:
 
           if test -s "$notes"; then
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
-              --title "Amber ${tag#v}" --notes-file "$notes"
+              --title "OpenTune ${tag#v}" --notes-file "$notes"
           else
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
-              --title "Amber ${tag#v}" --generate-notes
+              --title "OpenTune ${tag#v}" --generate-notes
           fi
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
@@ -237,7 +237,7 @@ jobs:
           fi
           echo "Uploading $portable_exe"
           gh release upload "$RELEASE_TAG" \
-            "${portable_exe}#Amber-Windows-portable.exe" \
+            "${portable_exe}#OpenTune-Windows-portable.exe" \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -372,7 +372,7 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@main
         if: steps.release_metadata.outputs.prerelease == 'false'
         with:
-          identifier: Pant0x.Amber
+          identifier: Pant0x.OpenTune
           release-tag: ${{ env.RELEASE_TAG }}
           installers-regex: '_x64-setup\.exe$'
           token: ${{ secrets.WINGET_TOKEN }}

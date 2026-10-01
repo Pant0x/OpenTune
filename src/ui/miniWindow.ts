@@ -33,7 +33,7 @@ export async function openMiniWindow(): Promise<void> {
 
     const mini = new WebviewWindow(MINI_WINDOW_LABEL, {
       url: "mini.html",
-      title: "Amber Mini",
+      title: "OpenTune Mini",
       decorations: false,
       transparent: true,
       shadow: true,

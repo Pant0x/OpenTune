@@ -1110,7 +1110,7 @@ export function SettingsPage({
                   </span>
                   {profile && (
                     <span className="mt-1 inline-flex w-fit items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      {profile.provider === "google" ? "Google Account" : profile.provider === "discord" ? "Discord Account" : "Amber Account"}
+                      {profile.provider === "google" ? "Google Account" : profile.provider === "discord" ? "Discord Account" : "OpenTune Account"}
                     </span>
                   )}
                 </div>
@@ -1213,7 +1213,7 @@ export function SettingsPage({
                       onClick={() => void handleSaveAvatar("/icons/128x128.png")}
                       className="text-[11px] font-medium text-primary hover:underline"
                     >
-                      Amber Logo
+                      OpenTune Logo
                     </button>
                   </div>
                 </div>
@@ -1260,7 +1260,7 @@ export function SettingsPage({
                     <span className="text-xs text-muted-foreground">
                       {profile?.isDiscordConnected || profile?.provider === "discord"
                         ? `Connected — Linked to ${profile?.username || "Discord"}`
-                        : "Connect your Discord account to link your Amber profile"}
+                        : "Connect your Discord account to link your OpenTune profile"}
                     </span>
                   </div>
                 </div>
@@ -1329,7 +1329,7 @@ export function SettingsPage({
                     <div className="flex flex-col">
                       <strong className="text-sm font-semibold text-foreground">GitHub Repository</strong>
                       <span className="text-xs text-muted-foreground">
-                        View source code, report issues, and star Amber on GitHub
+                        View source code, report issues, and star OpenTune on GitHub
                       </span>
                     </div>
                   </div>
@@ -1422,7 +1422,7 @@ export function SettingsPage({
               title="Local music"
               titleId="library-local-title"
               icon={<FolderIcon size={18} aria-hidden="true" />}
-              description="Choose a music folder on your computer to play local audio files in Amber."
+              description="Choose a music folder on your computer to play local audio files in OpenTune."
             />
 
             <div className="flex flex-col gap-4">
@@ -1471,7 +1471,7 @@ export function SettingsPage({
               title="Storage"
               titleId="library-storage-title"
               icon={<DownloadIcon size={18} aria-hidden="true" />}
-              description="How much disk Amber is allowed to use."
+              description="How much disk OpenTune is allowed to use."
             />
 
             <div className="flex flex-col gap-4 divide-y divide-border/40">
@@ -1766,12 +1766,12 @@ export function SettingsPage({
               title="System"
               titleId="library-system-title"
               icon={<SettingsIcon size={18} aria-hidden="true" />}
-              description="How Amber behaves outside the window."
+              description="How OpenTune behaves outside the window."
             />
 
             <SettingToggle
               title="Launch at startup"
-              description="Start Amber when your computer starts."
+              description="Start OpenTune when your computer starts."
               checked={autostartEnabled}
               disabled={autostartLoading}
               onCheckedChange={(checked) => void handleAutostartChange(checked)}
@@ -1782,7 +1782,7 @@ export function SettingsPage({
 
             <SettingToggle
               title="Minimize to tray"
-              description="Closing the window hides Amber to the system tray and keeps playing. Quit from the tray icon."
+              description="Closing the window hides OpenTune to the system tray and keeps playing. Quit from the tray icon."
               checked={minimizeToTray}
               onCheckedChange={setMinimizeToTray}
             />
@@ -2134,7 +2134,7 @@ export function SettingsPage({
               title="Session"
               titleId="session-settings-title"
               icon={<QueuePanelIcon size={18} aria-hidden="true" />}
-              description="What comes back when you reopen Amber."
+              description="What comes back when you reopen OpenTune."
             />
 
             <SettingToggle

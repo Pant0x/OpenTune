@@ -22,7 +22,8 @@ import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
-import appIcon from "../../../assets/img/logo2-noBG.png";
+import appIcon from "../../../assets/img/icon.png";
+import openTuneText from "../../../assets/img/opentune-text.png";
 import { SearchBar } from "./SearchBar";
 import type { Playlist } from "../../datasource/types";
 
@@ -193,19 +194,21 @@ export function TitleBar({
         onPointerCancel={() => {
           homePointerRef.current = null;
         }}
-        aria-label="Amber Home"
+        aria-label="OpenTune Home"
         aria-current={isHomeActive ? "page" : undefined}
       >
         <div className="relative flex size-7 shrink-0 items-center justify-center">
           <img
-            className="size-7 object-contain"
+            className="size-7 object-contain select-none"
             src={appIcon}
-            alt="Amber"
+            alt="OpenTune"
           />
         </div>
-        <span className="font-kablammo text-lg font-normal tracking-wide text-foreground leading-none pt-0.5 select-none">
-          Amber
-        </span>
+        <img
+          className="h-4.5 w-auto object-contain select-none"
+          src={openTuneText}
+          alt="OpenTune"
+        />
       </button>
 
       <div

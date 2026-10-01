@@ -11,7 +11,7 @@ interface SidebarAudioVisualizerProps {
 
 export const SidebarAudioVisualizer = memo(function SidebarAudioVisualizer({
   isPlaying,
-  color = "#ff0033",
+  color = "#ffffff",
   className,
   barCount = 28,
 }: SidebarAudioVisualizerProps) {

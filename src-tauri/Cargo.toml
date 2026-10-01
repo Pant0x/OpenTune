@@ -1,7 +1,7 @@
 [package]
-name = "amber"
+name = "opentune"
 version = "1.0.0"
-description = "Amber - a desktop music client"
+description = "OpenTune - a desktop music client"
 authors = ["Panto"]
 edition = "2021"
 
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "amber_lib"
+name = "opentune_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
@@ -86,7 +86,7 @@ lto = false
 incremental = false
 strip = "debuginfo"
 
-[profile.release.package.amber]
+[profile.release.package.opentune]
 opt-level = 1
 codegen-units = 1
 

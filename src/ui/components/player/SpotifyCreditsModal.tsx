@@ -139,7 +139,7 @@ export function SpotifyCreditsModal({
                         </div>
                       </div>
 
-                      {/* Follow toggle button connected to Amber library & YouTube */}
+                      {/* Follow toggle button connected to OpenTune library & YouTube */}
                       {i === 0 && (
                         <button
                           type="button"

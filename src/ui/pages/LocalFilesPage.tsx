@@ -135,7 +135,7 @@ export function LocalFilesPage({
         <div className="flex flex-col gap-1 max-w-sm">
           <h2 className="text-lg font-semibold text-foreground">No Local Folder Selected</h2>
           <p className="text-sm text-muted-foreground">
-            Select a folder on your computer to scan and play your local audio files directly in Amber.
+            Select a folder on your computer to scan and play your local audio files directly in OpenTune.
           </p>
         </div>
         <button

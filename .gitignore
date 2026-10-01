@@ -68,3 +68,30 @@ docs/amber.PNG
 # Mobile APK builds
 APK/
 *.apk
+
+# Local binaries & installers
+*.exe
+*.msi
+
+# Deployment & Vercel
+.vercel
+.vercel/
+
+# Tooling, AI, & Build caches
+.qodo/
+*.tsbuildinfo
+.turbo/
+.temp/
+
+# Build outputs & caches
+target/
+src-tauri/target/
+
+# Raw source assets, designs & mockups
+assets/New Logo/
+assets/NEW Identity/
+NEW Identity/
+*.psd
+*.ai
+*.sketch
+

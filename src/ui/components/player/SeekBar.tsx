@@ -255,7 +255,7 @@ export function SeekBar() {
           <WaveformCanvas
             progress={duration > 0 ? currentTime / duration : 0}
             isPlaying={state.status === "playing"}
-            color="#ff0033"
+            color="#ffffff"
             className="pointer-events-none absolute inset-x-0 h-3.5 w-full overflow-hidden opacity-90"
           />
         )}

@@ -48,8 +48,8 @@ impl LinuxMediaSession {
         }
 
         let config = PlatformConfig {
-            dbus_name: "Amber",
-            display_name: "Amber",
+            dbus_name: "OpenTune",
+            display_name: "OpenTune",
             hwnd: None,
         };
 

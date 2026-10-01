@@ -17,9 +17,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: Amber version
+      label: OpenTune version
       description: Settings → About, or the installer filename.
-      placeholder: "1.2.1"
+      placeholder: "1.0.1"
     validations:
       required: true
 
@@ -40,7 +40,7 @@ body:
       label: Log
       description: |
         `current.log` from the log directory — it usually says what failed.
-        Windows: `%LOCALAPPDATA%\com.amber.desktop\logs`
-        macOS: `~/Library/Logs/com.amber.desktop`
-        Linux: `~/.local/share/com.amber.desktop/logs`
+        Windows: `%LOCALAPPDATA%\com.pant0x.opentune\logs`
+        macOS: `~/Library/Logs/com.pant0x.opentune`
+        Linux: `~/.local/share/com.pant0x.opentune/logs`
       render: text

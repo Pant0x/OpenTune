@@ -1,6 +1,6 @@
 # Backend — Rust / Tauri
 
-`src-tauri/` — Tauri 2, edition 2021, crate `Amber`, lib target `Amber_lib`.
+`src-tauri/` — Tauri 2, edition 2021, crate `opentune`, lib target `opentune_lib`.
 See [architecture.md](./architecture.md) for the system view.
 
 ---
@@ -78,8 +78,8 @@ player API will not initialize under the `tauri://` custom protocol origin.
 
 ### Tray
 
-`build_tray()` installs a `main-tray` icon with a two-item menu (**Show Amber** / **Quit Amber**).
-Left click restores the window; the menu is right-click only. **Quit Amber** is the one path that
+`build_tray()` installs a `main-tray` icon with a two-item menu (**Show OpenTune** / **Quit OpenTune**).
+Left click restores the window; the menu is right-click only. **Quit OpenTune** is the one path that
 always exits regardless of the minimize-to-tray setting.
 
 ---
@@ -426,8 +426,8 @@ Defense in depth that *is* in place:
 "plugins": { "updater": {
   "pubkey": "<minisign public key>",
   "endpoints": [
-    "https://github.com/Pant0x/Amber-Music-Platform/releases/latest/download/latest.json",
-    "https://raw.githubusercontent.com/Pant0x/Amber-Music-Platform/updater-channel/latest.json"
+    "https://github.com/Pant0x/OpenTune/releases/latest/download/latest.json",
+    "https://raw.githubusercontent.com/Pant0x/OpenTune/updater-channel/latest.json"
   ]}}
 ```
 

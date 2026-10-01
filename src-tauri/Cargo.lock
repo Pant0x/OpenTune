@@ -90,45 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "amber"
-version = "1.0.0"
-dependencies = [
- "aes-gcm",
- "base64 0.22.1",
- "block2",
- "discord-rich-presence",
- "futures-util",
- "keyring",
- "lofty",
- "md5",
- "notify",
- "objc2",
- "objc2-foundation",
- "opus",
- "portpicker",
- "rand 0.8.6",
- "reqwest 0.12.28",
- "rodio",
- "serde",
- "serde_json",
- "souvlaki",
- "symphonia",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-localhost",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "url",
- "windows 0.61.3",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3177,6 +3138,45 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "opentune"
+version = "1.0.0"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "block2",
+ "discord-rich-presence",
+ "futures-util",
+ "keyring",
+ "lofty",
+ "md5",
+ "notify",
+ "objc2",
+ "objc2-foundation",
+ "opus",
+ "portpicker",
+ "rand 0.8.6",
+ "reqwest 0.12.28",
+ "rodio",
+ "serde",
+ "serde_json",
+ "souvlaki",
+ "symphonia",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-localhost",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "url",
+ "windows 0.61.3",
+]
 
 [[package]]
 name = "option-ext"

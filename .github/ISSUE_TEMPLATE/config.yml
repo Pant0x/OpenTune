@@ -3,9 +3,9 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/Pant0x/Amber-Music-Platform/security/advisories/new
+    url: https://github.com/Pant0x/OpenTune/security/advisories/new
     about: Report privately, not as a public issue. See SECURITY.md for scope.
 
-  - name: Question or help using Amber
-    url: https://github.com/Pant0x/Amber-Music-Platform/discussions/new?category=q-a
+  - name: Question or help using OpenTune
+    url: https://github.com/Pant0x/OpenTune/discussions/new?category=q-a
     about: Not sure whether it is a bug? Ask here — it can be moved to an issue.

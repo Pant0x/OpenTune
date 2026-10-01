@@ -77,19 +77,20 @@ fn migrate_legacy_app_data(app: &tauri::AppHandle) {
     let Some(base) = new_dir.parent() else {
         return;
     };
-    let legacy_dir = base.join(LEGACY_BUNDLE_IDENTIFIER);
-    if !legacy_dir.is_dir() || legacy_dir == new_dir {
-        return;
+    for legacy_id in LEGACY_BUNDLE_IDENTIFIERS {
+        let legacy_dir = base.join(legacy_id);
+        if legacy_dir.is_dir() && legacy_dir != new_dir {
+            if let Err(error) = copy_dir_contents(&legacy_dir, &new_dir) {
+                eprintln!("[internal][tauri][warn] legacy app data migration from {legacy_id} failed: {error}");
+            } else {
+                eprintln!(
+                    "[internal][tauri][info] migrated app data from {}",
+                    legacy_dir.display()
+                );
+                return;
+            }
+        }
     }
-
-    if let Err(error) = copy_dir_contents(&legacy_dir, &new_dir) {
-        eprintln!("[internal][tauri][warn] legacy app data migration failed: {error}");
-        return;
-    }
-    eprintln!(
-        "[internal][tauri][info] migrated app data from {}",
-        legacy_dir.display()
-    );
 }
 
 fn copy_dir_contents(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
@@ -106,7 +107,7 @@ fn copy_dir_contents(from: &std::path::Path, to: &std::path::Path) -> std::io::R
     Ok(())
 }
 
-/// Bundle identifier used before the rename to Amber.
+/// Bundle identifiers used before the rename to OpenTune.
 ///
 /// Tauri derives the app-data directory from the identifier, so changing it points the app
 /// at an empty folder and strands every stored preference — including user-created local
@@ -114,7 +115,10 @@ fn copy_dir_contents(from: &std::path::Path, to: &std::path::Path) -> std::io::R
 ///
 /// Sign-in credentials are unaffected: they live in the OS keyring under `KEYRING_SERVICE`,
 /// which is deliberately decoupled from the identifier.
-const LEGACY_BUNDLE_IDENTIFIER: &str = "com.justanothermusicclient.desktop";
+const LEGACY_BUNDLE_IDENTIFIERS: &[&str] = &[
+    "com.amber.desktop",
+    "com.justanothermusicclient.desktop",
+];
 const KEYRING_USER: &str = "youtube-oauth";
 const YOUTUBE_COOKIE_KEYRING_USER: &str = "youtube-music-cookie";
 /// Slot id for the one account that existed before multi-account support.
@@ -1639,15 +1643,15 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
-    let show = MenuItem::with_id(app, "tray-show", "Show Amber", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "tray-quit", "Quit Amber", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "tray-show", "Show OpenTune", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray-quit", "Quit OpenTune", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().cloned().ok_or_else(|| {
             tauri::Error::AssetNotFound("default window icon".to_string())
         })?)
-        .tooltip("Amber")
+        .tooltip("OpenTune")
         .menu(&menu)
         // The menu is for the right-click; a left click should just bring the window back.
         .show_menu_on_left_click(false)
@@ -1912,7 +1916,7 @@ fn load_youtube_music_cookie_entries() -> Result<Option<String>, CommandError> {
 
 /*
  * The Keychain entry backing `load_or_create_cookie_encryption_key` is scoped to this build's
- * code signature. Amber's macOS builds are ad-hoc signed (no paid Developer ID), so that
+ * code signature. OpenTune's macOS builds are ad-hoc signed (no paid Developer ID), so that
  * signature — and with it, access to the old key — changes on every single update. Before this
  * guarded against it, a stale key read as `NoEntry`, the loader minted a brand new random one,
  * and it was handed straight to AES-GCM against ciphertext only the *old* key could ever open:
