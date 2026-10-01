@@ -18,6 +18,7 @@ import { libraryController, playerController, useLibraryState } from "../../../p
 import { YouTubeShareModal } from "./YouTubeShareModal";
 import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { ArtistLinks, parseTrackArtistsWithFeatures, useArtistNavigation } from "../ArtistLinks";
 
 interface VideoPlayerViewProps {
   videoId: string;
@@ -76,6 +77,14 @@ export function VideoPlayerView({
   const account = libraryState.library?.account;
   const userAvatarUrl = account?.artworkUrl;
   const userName = account?.name || "You";
+
+  const navigateArtist = useArtistNavigation();
+  const parsedArtists = useMemo(() => {
+    return parseTrackArtistsWithFeatures(track.title, track.artist, track.artists);
+  }, [track.title, track.artist, track.artists]);
+  const primaryArtist = useMemo(() => {
+    return parsedArtists.mainArtists[0] || { id: track.artists?.[0]?.id || "", name: track.artist || "" };
+  }, [parsedArtists, track.artists, track.artist]);
 
   const [details, setDetails] = useState<VideoDetails | null>(null);
   const [comments, setComments] = useState<VideoComment[]>([]);
@@ -620,19 +629,30 @@ export function VideoPlayerView({
             {details?.channelAvatarUrl ? (
               <img
                 src={details.channelAvatarUrl}
-                alt={details.channelTitle || track.artist}
-                className="size-10 sm:size-11 rounded-full object-cover ring-1 ring-white/20"
+                alt={primaryArtist.name || details.channelTitle || track.artist}
+                onClick={() => navigateArtist?.({ id: primaryArtist.id || "", name: primaryArtist.name }, false)}
+                className="size-10 sm:size-11 rounded-full object-cover ring-1 ring-white/20 cursor-pointer hover:scale-105 transition-transform"
+                title={`View ${primaryArtist.name}`}
               />
             ) : (
-              <div className="size-10 sm:size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm">
-                {(details?.channelTitle || track.artist || "Y")[0].toUpperCase()}
+              <div
+                onClick={() => navigateArtist?.({ id: primaryArtist.id || "", name: primaryArtist.name }, false)}
+                className="size-10 sm:size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm cursor-pointer hover:bg-white/20 transition-colors"
+                title={`View ${primaryArtist.name}`}
+              >
+                {(primaryArtist.name || details?.channelTitle || track.artist || "Y")[0].toUpperCase()}
               </div>
             )}
 
             <div className="flex flex-col mr-2">
-              <span className="font-semibold text-sm sm:text-base text-white hover:underline cursor-pointer">
-                {details?.channelTitle || track.artist}
-              </span>
+              <div className="font-semibold text-sm sm:text-base text-white">
+                <ArtistLinks
+                  artists={track.artists}
+                  fallback={details?.channelTitle || track.artist}
+                  trackTitle={track.title}
+                  className="hover:underline text-white"
+                />
+              </div>
               {details?.subscriberCount && (
                 <span className="text-xs text-muted-foreground">{details.subscriberCount}</span>
               )}

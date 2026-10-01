@@ -19,6 +19,7 @@ import { Loader, MusicVisualizer } from "@/components/motion/loader";
 import { useLibraryState } from "../../../player/playerStore";
 import { logInternalError } from "../../../internal/logging";
 import {
+  isArtistFollowedLocally,
   setArtistFollowedLocally,
   useFollowedArtistLocally,
 } from "../../../player/followedArtists";
@@ -35,7 +36,13 @@ import {
   toggleQueuePanelCollapsed,
   useQueuePanelCollapsed,
 } from "../../settings/queuePanel";
-import { ArtistLinks, useAlbumNavigation, useArtistNavigation } from "../ArtistLinks";
+import {
+  ArtistLinks,
+  parseTrackArtistsWithFeatures,
+  useAlbumNavigation,
+  useArtistNavigation,
+} from "../ArtistLinks";
+import type { ArtistReference } from "../../../datasource/types";
 import { TrackArtwork } from "../TrackArtwork";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
@@ -70,6 +77,8 @@ interface SpotifyAboutArtistCardProps {
   onToggleFollow: () => void;
   onNavigateArtist?: ((artist: Artist, openInNewTab: boolean) => void) | null;
   artistId?: string;
+  artists?: ArtistReference[];
+  trackTitle?: string;
 }
 
 function SpotifyAboutArtistCard({
@@ -81,6 +90,8 @@ function SpotifyAboutArtistCard({
   onToggleFollow,
   onNavigateArtist,
   artistId,
+  artists,
+  trackTitle,
 }: SpotifyAboutArtistCardProps) {
   const bio = artistOverview?.cleanBio || artistOverview?.bio || descriptionFallback;
   const image = artistOverview?.headerUrl || artistOverview?.avatarUrl || fallbackArtwork;
@@ -132,13 +143,21 @@ function SpotifyAboutArtistCard({
           ) : null}
         </div>
 
-        {/* Bottom Details overlay inside image */}
+        {/* Bottom Details overlay inside image with split individual artist links */}
         <div className="absolute bottom-3 left-3 right-3 flex flex-col gap-0.5">
-          <h3 className="text-lg font-bold text-white tracking-tight leading-tight group-hover:underline">
-            {artistName}
-          </h3>
+          <div
+            className="text-lg font-bold text-white tracking-tight leading-tight"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ArtistLinks
+              artists={artists}
+              fallback={artistName}
+              trackTitle={trackTitle}
+              className="text-white hover:underline drop-shadow-md"
+            />
+          </div>
           {monthly ? (
-            <span className="text-xs font-medium text-[#b3b3b3]">
+            <span className="text-xs font-medium text-[#b3b3b3] drop-shadow-md">
               {monthly.toLocaleString()} monthly listeners
             </span>
           ) : null}
@@ -940,11 +959,20 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
     };
   }, [currentTrack?.id]);
 
+  const parsedArtists = useMemo(() => {
+    return parseTrackArtistsWithFeatures(currentTrack?.title, currentTrack?.artist, currentTrack?.artists);
+  }, [currentTrack?.title, currentTrack?.artist, currentTrack?.artists]);
+
+  const primaryArtist = useMemo(() => {
+    return parsedArtists.mainArtists[0] || { id: currentTrack?.artists?.[0]?.id || "", name: currentTrack?.artist || "" };
+  }, [parsedArtists, currentTrack?.artists, currentTrack?.artist]);
+
   useEffect(() => {
     setArtistOverview(null);
-    if (!currentTrack?.artist || currentTrack.source === "local") return;
+    const targetArtist = primaryArtist.name || currentTrack?.artist;
+    if (!targetArtist || currentTrack?.source === "local") return;
     let active = true;
-    void SpotifyService.getArtistOverview(currentTrack.artist).then((overview) => {
+    void SpotifyService.getArtistOverview(targetArtist).then((overview) => {
       if (active && overview) {
         setArtistOverview(overview);
       }
@@ -952,31 +980,32 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
     return () => {
       active = false;
     };
-  }, [currentTrack?.artist]);
+  }, [primaryArtist.name, currentTrack?.artist, currentTrack?.source]);
 
   const effectiveArtwork = spotifyCover || currentTrack?.artworkUrl;
   const isFollowedLocally = useFollowedArtistLocally(
-    currentTrack?.artist ?? null,
-    currentTrack?.artists?.[0]?.id ?? null,
+    primaryArtist.name,
+    primaryArtist.id,
+    currentTrack?.artist,
   );
   const isSubscribedInLibrary = useMemo(() => {
-    if (!currentTrack?.artist) return false;
-    const artistNameLower = currentTrack.artist.toLowerCase();
-    const artistId = currentTrack.artists?.[0]?.id;
+    const pName = primaryArtist.name.toLowerCase();
+    const pId = primaryArtist.id;
     return (libraryState.library?.artists ?? []).some(
-      (a) => a.name.toLowerCase() === artistNameLower || (artistId && a.id === artistId),
+      (a) => (pName && a.name.toLowerCase() === pName) || (pId && a.id === pId),
     );
-  }, [currentTrack?.artist, currentTrack?.artists, libraryState.library?.artists]);
+  }, [primaryArtist, libraryState.library?.artists]);
 
   const isFollowingArtist = isSubscribedInLibrary || isFollowedLocally;
 
-  const toggleFollowingArtist = async () => {
-    if (!currentTrack?.artist) return;
-    const nextState = !isFollowingArtist;
-    setArtistFollowedLocally(currentTrack.artists?.[0]?.id, currentTrack.artist, nextState);
+  const toggleFollowingArtist = async (artistToToggle: { id?: string; name: string } = primaryArtist) => {
+    if (!artistToToggle?.name) return;
+    const isCurrentlyFollowed = isArtistFollowedLocally(artistToToggle.name, artistToToggle.id);
+    const nextState = !isCurrentlyFollowed;
+    setArtistFollowedLocally(artistToToggle.id, artistToToggle.name, nextState);
     try {
       await libraryController.setArtistSubscribed(
-        { id: currentTrack.artists?.[0]?.id || "", name: currentTrack.artist },
+        { id: artistToToggle.id || "", name: artistToToggle.name },
         nextState,
       );
     } catch (err) {
@@ -990,15 +1019,24 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
       return;
     }
     let active = true;
-    void SpotifyService.getTrackCredits(currentTrack.title, currentTrack.artist).then((data) => {
+    void SpotifyService.getTrackCredits(currentTrack.title, primaryArtist.name || currentTrack.artist).then((data) => {
       if (!active) return;
       if (data) {
         setCredits(data);
       } else {
+        const allArtists = [...parsedArtists.mainArtists, ...parsedArtists.featuredArtists];
         setCredits({
           trackTitle: currentTrack.title,
-          artists: [{ name: currentTrack.artist, role: "Main Artist", avatarUrl: currentTrack.artworkUrl }],
-          writers: [{ name: currentTrack.artist, role: "Composer, Lyricist" }],
+          artists: allArtists.length > 0
+            ? allArtists.map((a, i) => ({
+                name: a.name,
+                role: i === 0 ? "Main Artist" : "Featured Artist",
+                avatarUrl: i === 0 ? (artistOverview?.avatarUrl || currentTrack.artworkUrl) : undefined,
+              }))
+            : [{ name: currentTrack.artist, role: "Main Artist", avatarUrl: currentTrack.artworkUrl }],
+          writers: allArtists.length > 0
+            ? allArtists.map((a) => ({ name: a.name, role: "Composer, Lyricist" }))
+            : [{ name: currentTrack.artist, role: "Composer, Lyricist" }],
           producers: [],
           label: currentTrack.album ? `Released by ${currentTrack.album}` : undefined,
         });
@@ -1007,7 +1045,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
     return () => {
       active = false;
     };
-  }, [currentTrack?.title, currentTrack?.artist]);
+  }, [currentTrack?.title, currentTrack?.artist, primaryArtist.name, parsedArtists, artistOverview?.avatarUrl, currentTrack?.artworkUrl]);
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(playerController.getCurrentTime());
@@ -1705,33 +1743,47 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     </span>
                     <div className="flex flex-col gap-1.5">
                       {credits?.artists?.length ? (
-                        credits.artists.slice(0, 3).map((a, i) => (
-                          <div key={i} className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-white truncate">{a.name}</span>
-                            {i === 0 && currentTrack && a.name.toLowerCase() === currentTrack.artist.toLowerCase() ? (
+                        credits.artists.slice(0, 5).map((a, i) => {
+                          const isFollowed = isArtistFollowedLocally(a.name, a.uri?.replace("spotify:artist:", ""));
+                          return (
+                            <div key={i} className="flex items-center justify-between gap-2">
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void toggleFollowingArtist();
-                                }}
-                                className={cn(
-                                  "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
-                                  isFollowingArtist
-                                    ? "border-white bg-white text-black"
-                                    : "border-[#b3b3b3] text-white hover:border-white",
-                                )}
+                                onClick={() => navigateArtist?.({ id: a.uri?.replace("spotify:artist:", "") || "", name: a.name }, false)}
+                                className="font-semibold text-white truncate hover:underline text-left cursor-pointer"
                               >
-                                {isFollowingArtist ? "Following" : "Follow"}
+                                {a.name}
                               </button>
-                            ) : (
-                              <span className="text-[11px] text-[#b3b3b3] shrink-0">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
-                            )}
-                          </div>
-                        ))
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] text-[#b3b3b3]">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void toggleFollowingArtist({ id: a.uri ? a.uri.replace("spotify:artist:", "") : "", name: a.name });
+                                  }}
+                                  className={cn(
+                                    "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
+                                    isFollowed
+                                      ? "border-white bg-white text-black"
+                                      : "border-[#b3b3b3] text-white hover:border-white",
+                                  )}
+                                >
+                                  {isFollowed ? "Following" : "Follow"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
                       ) : (
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-white truncate">{currentTrack.artist}</span>
+                          <button
+                            type="button"
+                            onClick={() => navigateArtist?.({ id: primaryArtist.id || "", name: primaryArtist.name }, false)}
+                            className="font-semibold text-white truncate hover:underline text-left cursor-pointer"
+                          >
+                            {primaryArtist.name}
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1759,9 +1811,15 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                         Written by
                       </span>
                       <div className="flex flex-col gap-0.5">
-                        {credits.writers.slice(0, 2).map((w, i) => (
+                        {credits.writers.slice(0, 4).map((w, i) => (
                           <div key={i} className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-white truncate">{w.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => navigateArtist?.({ id: w.uri?.replace("spotify:artist:", "") || "", name: w.name }, false)}
+                              className="font-medium text-white truncate hover:underline text-left cursor-pointer"
+                            >
+                              {w.name}
+                            </button>
                             <span className="text-[11px] text-[#b3b3b3] shrink-0">{w.role || "Composer, Lyricist"}</span>
                           </div>
                         ))}
@@ -1776,9 +1834,15 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                         Produced by
                       </span>
                       <div className="flex flex-col gap-0.5">
-                        {credits.producers.slice(0, 2).map((p, i) => (
+                        {credits.producers.slice(0, 4).map((p, i) => (
                           <div key={i} className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-white truncate">{p.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => navigateArtist?.({ id: p.uri?.replace("spotify:artist:", "") || "", name: p.name }, false)}
+                              className="font-medium text-white truncate hover:underline text-left cursor-pointer"
+                            >
+                              {p.name}
+                            </button>
                             <span className="text-[11px] text-[#b3b3b3] shrink-0">{p.role || "Producer"}</span>
                           </div>
                         ))}
@@ -1835,11 +1899,13 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
               <SpotifyAboutArtistCard
                 artistName={currentTrack.artist}
                 artistOverview={artistOverview}
-                fallbackArtwork={effectiveArtwork}
+                fallbackArtwork={artistOverview?.avatarUrl || effectiveArtwork}
                 isFollowing={isFollowingArtist}
                 onToggleFollow={() => void toggleFollowingArtist()}
                 onNavigateArtist={navigateArtist}
-                artistId={currentTrack.artists?.[0]?.id}
+                artistId={primaryArtist.id || currentTrack.artists?.[0]?.id}
+                artists={currentTrack.artists}
+                trackTitle={currentTrack.title}
               />
 
               {/* Next in Queue Preview Card */}
@@ -2198,11 +2264,13 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 <SpotifyAboutArtistCard
                   artistName={currentTrack.artist}
                   artistOverview={artistOverview}
-                  fallbackArtwork={effectiveArtwork}
+                  fallbackArtwork={artistOverview?.avatarUrl || effectiveArtwork}
                   isFollowing={isFollowingArtist}
                   onToggleFollow={() => void toggleFollowingArtist()}
                   onNavigateArtist={navigateArtist}
-                  artistId={currentTrack.artists?.[0]?.id}
+                  artistId={primaryArtist.id || currentTrack.artists?.[0]?.id}
+                  artists={currentTrack.artists}
+                  trackTitle={currentTrack.title}
                 />
               )}
             </>
@@ -2213,8 +2281,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
         <SpotifyCreditsModal
           isOpen={showCreditsModal}
           track={currentTrack}
-          isFollowingArtist={false}
-          onToggleFollowArtist={() => {}}
+          isFollowingArtist={isFollowingArtist}
+          onToggleFollowArtist={() => void toggleFollowingArtist()}
           onClose={() => setShowCreditsModal(false)}
         />
       )}

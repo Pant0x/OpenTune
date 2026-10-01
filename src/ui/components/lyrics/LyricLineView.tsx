@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   isRtlText,
   parseLyricTokens,
+  unmaskProfanity,
   type DuetAlignment,
 } from "../../pages/lyricsTiming";
 
@@ -173,15 +174,17 @@ export const LyricLineView = memo(function LyricLineView({
     [index, register, elementRef],
   );
 
+  const cleanedText = useMemo(() => unmaskProfanity(text), [text]);
+
   const tokens = useMemo(() => {
-    if (!enableAdlibs) return [{ type: "main" as const, text }];
-    return parseLyricTokens(text);
-  }, [text, enableAdlibs]);
+    if (!enableAdlibs) return [{ type: "main" as const, text: cleanedText }];
+    return parseLyricTokens(cleanedText);
+  }, [cleanedText, enableAdlibs]);
 
   const adlibLine = forceAdlibLine
     || (tokens.length > 0 && tokens.every((token) => token.type === "adlib"));
 
-  const isArabic = isRtlText(text);
+  const isArabic = isRtlText(cleanedText);
   const sweeps = sweepEnabled && isActive && !adlibLine && !reduceMotion;
   const sweepStyle = sweeps && sweep01 !== undefined
     ? ({ "--sweep": `${(Math.min(1, Math.max(0, sweep01)) * 100).toFixed(2)}%` } as CSSProperties)
@@ -195,10 +198,15 @@ export const LyricLineView = memo(function LyricLineView({
 
   // Split tokens into snake-wipe word items with proportional durations
   const wordTokens = useMemo(() => {
-    if (!text.trim()) return [];
+    if (!cleanedText.trim()) return [];
+
+    const hasMainTokens = tokens.some((t) => t.type === "main" && /\S/.test(t.text));
 
     let totalChars = 0;
     for (const token of tokens) {
+      // If line has main vocal words, only main tokens count towards character timing!
+      // Ad-libs play concurrently in the background and shouldn't rob time from main lyrics.
+      if (hasMainTokens && token.type === "adlib") continue;
       const matches = token.text.match(/\S+/g);
       if (matches) {
         for (const m of matches) {
@@ -222,6 +230,16 @@ export const LyricLineView = memo(function LyricLineView({
             end: 0,
           };
         }
+        if (hasMainTokens && token.type === "adlib") {
+          // Ad-libs float independently alongside main lyrics; they don't consume the main sweep allocation
+          return {
+            id: `${tIdx}-${pIdx}`,
+            text: part,
+            isWord: true,
+            start: 0,
+            end: 1,
+          };
+        }
         const start = accumulatedChars / totalChars;
         accumulatedChars += part.length;
         const end = accumulatedChars / totalChars;
@@ -238,10 +256,10 @@ export const LyricLineView = memo(function LyricLineView({
         items,
       };
     });
-  }, [text, tokens]);
+  }, [cleanedText, tokens]);
 
   // An empty LRC line is a real instrumental beat, not junk.
-  if (!text.trim()) {
+  if (!cleanedText.trim()) {
     if (emptyStyle === "dots") {
       return (
         <div
@@ -315,7 +333,13 @@ export const LyricLineView = memo(function LyricLineView({
 
       if (group.type === "adlib") {
         return (
-          <span key={gIdx} className={ADLIB_TOKEN_CLASS[size]}>
+          <span
+            key={gIdx}
+            className={cn(
+              ADLIB_TOKEN_CLASS[size],
+              isActive && "adlib-wobble-active text-white/95 opacity-90",
+            )}
+          >
             {content}
           </span>
         );
@@ -349,6 +373,8 @@ export const LyricLineView = memo(function LyricLineView({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
           isActive && "is-active lyrics-lyricsContent-active",
           sweeps ? "lyric-sweep font-black" : "text-foreground font-semibold",
+          adlibLine && isActive && "adlib-wobble-active opacity-90",
+          adlibLine && !isActive && "opacity-50 italic",
           !isActive && "hover:opacity-95 hover:filter-none hover:scale-100",
         )}
         style={{
@@ -384,7 +410,7 @@ export const LyricLineView = memo(function LyricLineView({
           "transition-all duration-350 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           isArabic && "font-arabic tracking-normal font-black leading-snug",
           isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
-          isActive && adlibLine && "text-white italic scale-[1.03] opacity-100",
+          isActive && adlibLine && "text-white italic scale-[1.03] opacity-100 adlib-wobble-active",
           !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:text-white/85 hover:opacity-90 hover:scale-[1.015]",
           !isActive && adlibLine && "text-white/30 italic font-medium scale-100 opacity-45 hover:text-white/60 hover:opacity-75",
         )}
@@ -405,7 +431,7 @@ export const LyricLineView = memo(function LyricLineView({
         isArabic ? "origin-right" : "origin-left",
       ),
       isActive && adlibLine && cn(
-        "text-white text-xs sm:text-sm italic font-bold scale-[1.01]",
+        "text-white text-xs sm:text-sm italic font-bold scale-[1.01] adlib-wobble-active",
         isArabic ? "origin-right" : "origin-left",
       ),
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
@@ -452,7 +478,7 @@ export const LyricLineView = memo(function LyricLineView({
       className={cn(
         "cursor-pointer rounded-lg px-2 py-1 text-sm font-semibold transition-all duration-300",
         isActive && !adlibLine && "scale-105 font-bold text-white [text-shadow:0_0_12px_rgba(255,255,255,0.7)]",
-        isActive && adlibLine && "scale-105 font-bold italic text-white",
+        isActive && adlibLine && "scale-105 font-bold italic text-white adlib-wobble-active",
         !isActive && !adlibLine && "text-muted-foreground/45 hover:text-white/80",
         !isActive && adlibLine && "text-[13px] font-medium italic text-white/35",
       )}

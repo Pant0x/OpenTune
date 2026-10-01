@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import { CloseIcon } from "@/ui/icons";
 import { SpinnerSteps } from "@/components/motion/loader";
 import { SpotifyService, type SpotifyTrackCredits } from "../../../services/SpotifyService";
 import type { Track } from "../../../datasource/types";
 import { useArtistNavigation } from "../ArtistLinks";
+import {
+  isArtistFollowedLocally,
+  setArtistFollowedLocally,
+  subscribeToFollowedArtists,
+} from "../../../player/followedArtists";
+import { libraryController } from "../../../player/playerStore";
 
 interface SpotifyCreditsModalProps {
   isOpen: boolean;
@@ -12,6 +18,32 @@ interface SpotifyCreditsModalProps {
   track: Track;
   isFollowingArtist: boolean;
   onToggleFollowArtist: () => void;
+}
+
+function splitCreditPeople<T extends { name: string; role: string; avatarUrl?: string; uri?: string }>(
+  items?: T[],
+): T[] {
+  if (!items || items.length === 0) return [];
+  const result: T[] = [];
+  for (const item of items) {
+    if (!item.name) continue;
+    const names = item.name
+      .split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+and\s+|•/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (names.length > 1) {
+      for (const n of names) {
+        result.push({
+          ...item,
+          name: n,
+          uri: undefined,
+        });
+      }
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 export function SpotifyCreditsModal({
@@ -24,6 +56,14 @@ export function SpotifyCreditsModal({
   const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const navigateArtist = useArtistNavigation();
+
+  // Re-read local followed store reactively so any follow button click updates immediately
+  const followedKeys = useSyncExternalStore(
+    subscribeToFollowedArtists,
+    () => isArtistFollowedLocally(track?.artist),
+    () => false,
+  );
+  void followedKeys;
 
   useEffect(() => {
     if (!isOpen || !track) return;
@@ -58,12 +98,30 @@ export function SpotifyCreditsModal({
     };
   }, [isOpen, track?.title, track?.artist]);
 
+  const splitArtists = useMemo(() => splitCreditPeople(credits?.artists), [credits?.artists]);
+  const splitWriters = useMemo(() => splitCreditPeople(credits?.writers), [credits?.writers]);
+  const splitProducers = useMemo(() => splitCreditPeople(credits?.producers), [credits?.producers]);
+
   if (!isOpen) return null;
 
   const handleOpenArtist = (person: { name: string; uri?: string }) => {
     onClose();
     const artistId = person.uri?.replace("spotify:artist:", "") || "";
     navigateArtist?.({ id: artistId, name: person.name }, false);
+  };
+
+  const handleToggleFollowPerson = (artist: { name: string; uri?: string }, isFirst: boolean) => {
+    const artistId = artist.uri?.replace("spotify:artist:", "") || "";
+    const isFollowed = isArtistFollowedLocally(artist.name, artistId);
+    const nextState = !isFollowed;
+    setArtistFollowedLocally(artistId, artist.name, nextState);
+    void libraryController.setArtistSubscribed(
+      { id: artistId, name: artist.name },
+      nextState,
+    );
+    if (isFirst) {
+      onToggleFollowArtist();
+    }
   };
 
   return (
@@ -110,55 +168,58 @@ export function SpotifyCreditsModal({
                 </span>
 
                 <div className="flex flex-col gap-1.5">
-                  {credits?.artists.map((artist, i) => (
-                    <div
-                      key={artist.name + i}
-                      onClick={() => handleOpenArtist(artist)}
-                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {artist.avatarUrl ? (
-                          <img
-                            src={artist.avatarUrl}
-                            alt={artist.name}
-                            className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
-                          />
-                        ) : (
-                          <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
-                            {artist.name[0]?.toUpperCase() || "A"}
+                  {splitArtists.map((artist, i) => {
+                    const artistId = artist.uri?.replace("spotify:artist:", "") || "";
+                    const isFollowed = isArtistFollowedLocally(artist.name, artistId) || (i === 0 && isFollowingArtist);
+
+                    return (
+                      <div
+                        key={artist.name + i}
+                        onClick={() => handleOpenArtist(artist)}
+                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {artist.avatarUrl ? (
+                            <img
+                              src={artist.avatarUrl}
+                              alt={artist.name}
+                              className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                            />
+                          ) : (
+                            <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                              {artist.name[0]?.toUpperCase() || "A"}
+                            </div>
+                          )}
+
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-white truncate group-hover:underline">
+                              {artist.name}
+                            </span>
+                            <span className="text-xs text-white/60 font-medium">
+                              {artist.role}
+                            </span>
                           </div>
-                        )}
-
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold text-white truncate group-hover:underline">
-                            {artist.name}
-                          </span>
-                          <span className="text-xs text-white/60 font-medium">
-                            {artist.role}
-                          </span>
                         </div>
-                      </div>
 
-                      {/* Follow toggle button connected to OpenTune library & YouTube */}
-                      {i === 0 && (
+                        {/* Individual Follow toggle button */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onToggleFollowArtist();
+                            handleToggleFollowPerson(artist, i === 0);
                           }}
                           className={cn(
                             "rounded-full px-4 py-1.5 text-xs font-bold border transition-all cursor-pointer shrink-0",
-                            isFollowingArtist
+                            isFollowed
                               ? "border-white/60 bg-white text-black hover:bg-white/90"
                               : "border-white/40 text-white hover:bg-white/15",
                           )}
                         >
-                          {isFollowingArtist ? "Following" : "Follow"}
+                          {isFollowed ? "Following" : "Follow"}
                         </button>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -169,7 +230,7 @@ export function SpotifyCreditsModal({
                 </span>
 
                 <div className="flex flex-col gap-1.5">
-                  {credits?.writers.map((w, i) => (
+                  {splitWriters.map((w, i) => (
                     <div
                       key={w.name + i}
                       onClick={() => handleOpenArtist(w)}
@@ -203,14 +264,14 @@ export function SpotifyCreditsModal({
               </div>
 
               {/* 3. Produced by */}
-              {Boolean(credits?.producers?.length) && (
+              {Boolean(splitProducers.length) && (
                 <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
                   <span className="text-xs font-bold uppercase tracking-wider text-white/50">
                     Produced by
                   </span>
 
                   <div className="flex flex-col gap-1.5">
-                    {credits?.producers.map((p, i) => (
+                    {splitProducers.map((p, i) => (
                       <div
                         key={p.name + i}
                         onClick={() => handleOpenArtist(p)}

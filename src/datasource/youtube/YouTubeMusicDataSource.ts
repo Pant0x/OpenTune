@@ -81,6 +81,11 @@ import {
   normTranslit,
   parseSubscriberCount,
 } from "../searchNormalize";
+import {
+  hasProfanityCensorship,
+  isLyricsTitleMatch,
+  unmaskProfanity,
+} from "../../internal/lyricsCensor";
 
 type ClientLabel = "music" | "web" | "download";
 type NativeAudioPayload = {
@@ -5676,7 +5681,8 @@ export class YouTubeMusicDataSource extends DataSource {
         end_ms?: string;
         snippet?: { toString(): string };
       };
-      const text = item.snippet?.toString().trim();
+      const rawText = item.snippet?.toString().trim();
+      const text = rawText ? unmaskProfanity(rawText) : "";
       const startTimeMs = Number(item.start_ms);
       const endTimeMs = Number(item.end_ms);
       if (!text || !Number.isFinite(startTimeMs)) return [];
@@ -5773,7 +5779,8 @@ export class YouTubeMusicDataSource extends DataSource {
         if (!response.ok) continue;
 
         const matches = await response.json() as LrcLibTrack[];
-        const withDelta = matches
+        const filteredMatches = matches.filter((match) => isLyricsTitleMatch(track.title, match.trackName));
+        const withDelta = filteredMatches
           .map((match) => ({
             match,
             durationDelta: this.getLyricsDurationDelta(track, match.duration),
@@ -5781,8 +5788,17 @@ export class YouTubeMusicDataSource extends DataSource {
           .filter(({ durationDelta }) => !durationSec || durationDelta <= 20)
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
-        // Prefer synced lyrics
+        // Prefer synced lyrics; prioritize uncensored / explicit candidates over censored asterisks
         const syncedCandidates = withDelta.filter(({ match }) => Boolean(match.syncedLyrics));
+        syncedCandidates.sort((a, b) => {
+          const aCensored = hasProfanityCensorship(a.match.syncedLyrics ?? "");
+          const bCensored = hasProfanityCensorship(b.match.syncedLyrics ?? "");
+          if (aCensored !== bCensored) {
+            return aCensored ? 1 : -1;
+          }
+          return a.durationDelta - b.durationDelta;
+        });
+
         for (const candidate of syncedCandidates) {
           const result = this.toLrcLibLyrics(track, candidate.match, "LRCLIB search", 20);
           if (result) return result;
@@ -5790,6 +5806,15 @@ export class YouTubeMusicDataSource extends DataSource {
 
         // Fallback: accept unsynced lyrics if no synced found
         const unsyncedCandidates = withDelta.filter(({ match }) => Boolean(match.plainLyrics) && !match.syncedLyrics);
+        unsyncedCandidates.sort((a, b) => {
+          const aCensored = hasProfanityCensorship(a.match.plainLyrics ?? "");
+          const bCensored = hasProfanityCensorship(b.match.plainLyrics ?? "");
+          if (aCensored !== bCensored) {
+            return aCensored ? 1 : -1;
+          }
+          return a.durationDelta - b.durationDelta;
+        });
+
         for (const candidate of unsyncedCandidates) {
           const result = this.toLrcLibPlainLyrics(track, candidate.match, "LRCLIB search (unsynced)", 25);
           if (result) return result;
@@ -5884,7 +5909,16 @@ export class YouTubeMusicDataSource extends DataSource {
         const candidateSongs = searchData.result?.songs || [];
         if (candidateSongs.length === 0) continue;
 
-        const bestSong = candidateSongs[0];
+        const matchingSongs = candidateSongs.filter((song) => isLyricsTitleMatch(query.title, song.name));
+        if (matchingSongs.length === 0) continue;
+
+        matchingSongs.sort((a, b) => {
+          const aDur = a.dt ? Math.round(a.dt / 1000) : 0;
+          const bDur = b.dt ? Math.round(b.dt / 1000) : 0;
+          return this.getLyricsDurationDelta(track, aDur) - this.getLyricsDurationDelta(track, bDur);
+        });
+
+        const bestSong = matchingSongs[0];
         if (!bestSong?.id) continue;
 
         const lyricUrl = `https://music.163.com/api/song/lyric?id=${bestSong.id}&lv=1`;
@@ -5910,7 +5944,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
         const providerDuration = bestSong.dt ? Math.round(bestSong.dt / 1000) : undefined;
         let autoIntroOffsetSec: number | undefined;
-        if (track.durationSec && providerDuration && track.durationSec > providerDuration) {
+        if (track.isVideo && track.durationSec && providerDuration && track.durationSec > providerDuration) {
           const introDiff = track.durationSec - providerDuration;
           if (introDiff >= 1.5 && introDiff <= 30.0) {
             autoIntroOffsetSec = Number(introDiff.toFixed(2));
@@ -5955,7 +5989,7 @@ export class YouTubeMusicDataSource extends DataSource {
     if (lines.length === 0) return null;
 
     let autoIntroOffsetSec: number | undefined;
-    if (track.durationSec && match.duration && track.durationSec > match.duration) {
+    if (track.isVideo && track.durationSec && match.duration && track.durationSec > match.duration) {
       const introDiff = track.durationSec - match.duration;
       if (introDiff >= 1.5 && introDiff <= 30.0) {
         autoIntroOffsetSec = Number(introDiff.toFixed(2));
@@ -5989,7 +6023,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const lines = match.plainLyrics
       .split(/\r?\n/)
-      .map((line) => line.trim())
+      .map((line) => unmaskProfanity(line.trim()))
       .filter(Boolean)
       .map((text) => ({ text }));
 
@@ -6103,13 +6137,15 @@ export class YouTubeMusicDataSource extends DataSource {
       if (!trimmed) continue;
       if (/^\[(ti|ar|al|by|offset|re|ve|length|creator):/i.test(trimmed)) continue;
 
-      const text = rawLine.replace(timestampPattern, "").trim();
-      if (!text) continue;
+      const rawText = rawLine.replace(timestampPattern, "").trim();
+      if (!rawText) continue;
 
       // Filter out non-vocal metadata and contributor credits commonly embedded in NetEase / QQ / LRC headers
-      if (/^(?:作\s*词|作\s*曲|词\s*曲|编\s*曲|制\s*作(?:人)?|混\s*音(?:师|室)?|母\s*带(?:师|室|处理)?|录\s*音(?:师|棚|室)?|和\s*声(?:编写)?|吉\s*他(?:手)?|贝\s*斯(?:手)?|鼓(?:手)?|键\s*盘(?:手)?|弦\s*乐|企\s*划|统\s*筹|监\s*制|发\s*行(?:人|公司)?|出\s*品(?:人)?|演\s*唱(?:者)?|原\s*唱|翻\s*唱|版\s*权|题\s*字|美\s*工|PV|OP|SP|Written\s+by|Composed\s+by|Lyrics(?:\s+by)?|Produced\s+by|Mixed\s+by|Mastered\s+by|Arranged\s+by)\s*[:：]/i.test(text)) {
+      if (/^(?:作\s*词|作\s*曲|词\s*曲|编\s*曲|制\s*作(?:人)?|混\s*音(?:师|室)?|母\s*带(?:师|室|处理)?|录\s*音(?:师|棚|室)?|和\s*声(?:编写)?|吉\s*他(?:手)?|贝\s*斯(?:手)?|鼓(?:手)?|键\s*盘(?:手)?|弦\s*乐|企\s*划|统\s*筹|监\s*制|发\s*行(?:人|公司)?|出\s*品(?:人)?|演\s*唱(?:者)?|原\s*唱|翻\s*唱|版\s*权|题\s*字|美\s*工|PV|OP|SP|Written\s+by|Composed\s+by|Lyrics(?:\s+by)?|Produced\s+by|Mixed\s+by|Mastered\s+by|Arranged\s+by)\s*[:：]/i.test(rawText)) {
         continue;
       }
+
+      const text = unmaskProfanity(rawText);
 
       const timestamps = [...rawLine.matchAll(timestampPattern)];
       for (const timestamp of timestamps) {
@@ -6141,10 +6177,12 @@ export class YouTubeMusicDataSource extends DataSource {
       if (startTimeSec === undefined) return [];
 
       const endTimeSec = this.parseTtmlTime(node.getAttribute("end"));
-      const text = (node.textContent ?? "")
+      const rawText = (node.textContent ?? "")
         .replace(/\s+/g, " ")
         .trim();
-      if (!text) return [];
+      if (!rawText) return [];
+
+      const text = unmaskProfanity(rawText);
 
       return [{
         text,

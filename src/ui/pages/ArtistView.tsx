@@ -881,38 +881,28 @@ export function ArtistView({
         </div>
 
         {/* Hero Content */}
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-end gap-6 max-w-5xl">
-          {/* If there is NO panoramic banner (e.g. YouTube channels or local artists), show circular avatar */}
-          {!heroBanner && (
+        <div className="relative z-10 flex flex-row items-center sm:items-end gap-5 sm:gap-7 max-w-5xl">
+          {artistAvatar ? (
             <button
               type="button"
               onClick={() => setIsLightboxOpen(true)}
-              className="group relative size-36 sm:size-44 md:size-48 shrink-0 rounded-full overflow-hidden shadow-2xl ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="group relative size-24 sm:size-36 md:size-44 shrink-0 rounded-full overflow-hidden shadow-2xl ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               title="Click to view artist photo"
             >
               <TrackArtwork
                 className="size-full object-cover"
                 artworkUrl={artistAvatar}
-                iconSize={72}
+                iconSize={56}
                 size={800}
                 loading="eager"
                 variant="artist"
               />
             </button>
-          )}
+          ) : null}
 
-          {/* Artist Name, Verified Badge, Stats */}
+          {/* Artist Name & Stats */}
           <div className="flex flex-col gap-2 min-w-0 flex-1 pb-1">
-            {!isCreator && (
-              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white/90 drop-shadow-md">
-                <div className="flex size-4 sm:size-5 items-center justify-center rounded-full bg-blue-500 text-white shadow-xs">
-                  <CheckIcon size={10} className="sm:size-3" strokeWidth={3} />
-                </div>
-                <span>Verified Artist</span>
-              </div>
-            )}
-
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-white drop-shadow-2xl select-text leading-tight pb-1 break-words">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-white drop-shadow-2xl select-text leading-tight pb-1 break-words">
               {displayedArtist.name}
             </h1>
 

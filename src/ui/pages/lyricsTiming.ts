@@ -1,4 +1,10 @@
 import type { LyricLine, Lyrics } from "../../datasource/types";
+export {
+  unmaskProfanity,
+  hasProfanityCensorship,
+  normalizeLyricsTitle,
+  isLyricsTitleMatch,
+} from "../../internal/lyricsCensor";
 
 /**
  * Whether a set of lines can drive a karaoke highlight.
@@ -44,13 +50,30 @@ export function getLineProgress(
   if (start === undefined) return 0;
 
   const isLast = index === lines.length - 1;
-  const end = line.endTimeSec
-    ?? lines[index + 1]?.startTimeSec
-    ?? (isLast ? trackDurationSec : undefined)
-    ?? start + FALLBACK_LINE_SEC;
+  const nextStart = lines[index + 1]?.startTimeSec;
 
-  if (end <= start) return 1;
-  return Math.min(1, Math.max(0, (timeSec - start) / (end - start)));
+  let duration: number;
+  if (line.endTimeSec !== undefined && line.endTimeSec > start) {
+    duration = line.endTimeSec - start;
+  } else if (nextStart !== undefined && nextStart > start) {
+    const rawGap = nextStart - start;
+    if (rawGap > 6.5) {
+      // Long intro / instrumental gap: do NOT stretch the lyric sweep slowly across 20-30s!
+      // Keep singing pace natural (2.8s to 5.5s) and let it stay fully sung through the rest of the break.
+      const textLen = (line.text || "").trim().length;
+      duration = Math.max(2.8, Math.min(5.5, textLen * 0.12 + 1.2));
+    } else {
+      duration = rawGap;
+    }
+  } else if (isLast && trackDurationSec && trackDurationSec > start) {
+    const rawGap = trackDurationSec - start;
+    duration = rawGap > 6.5 ? 5.0 : rawGap;
+  } else {
+    duration = FALLBACK_LINE_SEC;
+  }
+
+  if (duration <= 0) return 1;
+  return Math.min(1, Math.max(0, (timeSec - start) / duration));
 }
 
 export function findActiveLineIndex(

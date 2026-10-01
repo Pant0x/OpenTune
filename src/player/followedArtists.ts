@@ -118,7 +118,11 @@ export function isArtistFollowedLocally(
 ): boolean {
   if (candidates.length === 0) return false;
   const keys = loadKeys();
-  return candidates.some((candidate) => Boolean(candidate) && keys.has(candidate as string));
+  return candidates.some((candidate) => {
+    if (!candidate) return false;
+    const str = String(candidate).trim();
+    return keys.has(str) || keys.has(str.toLowerCase());
+  });
 }
 
 export function setArtistFollowedLocally(
@@ -195,7 +199,11 @@ export function useFollowedArtistLocally(
     subscribeToFollowedArtists,
     () => {
       const keys = loadKeys();
-      return candidates.some((candidate) => Boolean(candidate) && keys.has(candidate as string));
+      return candidates.some((candidate) => {
+        if (!candidate) return false;
+        const str = String(candidate).trim();
+        return keys.has(str) || keys.has(str.toLowerCase());
+      });
     },
     () => false,
   );
