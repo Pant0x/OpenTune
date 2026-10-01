@@ -22,7 +22,6 @@ import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
-import appIcon from "../../../assets/img/icon.png";
 import openTuneText from "../../../assets/img/opentune-text.png";
 import { SearchBar } from "./SearchBar";
 import type { Playlist } from "../../datasource/types";
@@ -197,15 +196,8 @@ export function TitleBar({
         aria-label="OpenTune Home"
         aria-current={isHomeActive ? "page" : undefined}
       >
-        <div className="relative flex size-7 shrink-0 items-center justify-center">
-          <img
-            className="size-7 object-contain select-none"
-            src={appIcon}
-            alt="OpenTune"
-          />
-        </div>
         <img
-          className="h-4.5 w-auto object-contain select-none"
+          className="h-5 w-auto object-contain select-none transition-opacity group-hover:opacity-85"
           src={openTuneText}
           alt="OpenTune"
         />
