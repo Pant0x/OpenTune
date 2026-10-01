@@ -261,32 +261,46 @@ export default function App() {
   }, []);
 
   const wasMaximizedBeforeFullscreenRef = useRef(false);
+  const isFullscreenActive = playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen;
 
-  // Full-screen lyrics is real OS fullscreen, not just a wider layout — the whole point is
-  // the window chrome getting out of the way too.
+  // Real OS fullscreen for both Lyrics fullscreen and Now Playing fullscreen:
+  // Handles unmaximizing before entering fullscreen so Windows does not constrain to the work-area,
+  // sets always-on-top so the OS taskbar is completely covered, and focuses the window.
   useEffect(() => {
     const win = getCurrentWindow();
     const syncFullscreen = async () => {
       try {
-        if (playerUIState.isLyricsFullscreen) {
-          const isMax = await win.isMaximized().catch(() => false);
-          wasMaximizedBeforeFullscreenRef.current = isMax;
-          await win.setFullscreen(true).catch(() => {});
+        const isCurrentFs = await win.isFullscreen().catch(() => false);
+        if (isFullscreenActive) {
+          if (!isCurrentFs) {
+            const isMax = await win.isMaximized().catch(() => false);
+            wasMaximizedBeforeFullscreenRef.current = isMax;
+            if (isMax) {
+              await win.unmaximize().catch(() => {});
+            }
+            await win.setFullscreen(true).catch(() => {});
+            await win.setAlwaysOnTop(true).catch(() => {});
+            await win.setFocus().catch(() => {});
+          }
         } else {
-          await win.setFullscreen(false).catch(() => {});
-          if (wasMaximizedBeforeFullscreenRef.current) {
-            await win.maximize().catch(() => {});
-            wasMaximizedBeforeFullscreenRef.current = false;
+          if (isCurrentFs) {
+            await win.setAlwaysOnTop(false).catch(() => {});
+            await win.setFullscreen(false).catch(() => {});
+            if (wasMaximizedBeforeFullscreenRef.current) {
+              await win.maximize().catch(() => {});
+              wasMaximizedBeforeFullscreenRef.current = false;
+            }
+            await win.setFocus().catch(() => {});
           }
         }
       } catch (error) {
-        logInternalWarn("App.syncLyricsFullscreen failed", {
+        logInternalWarn("App.syncFullscreen failed", {
           error: error instanceof Error ? error.message : String(error),
         });
       }
     };
     void syncFullscreen();
-  }, [playerUIState.isLyricsFullscreen]);
+  }, [isFullscreenActive]);
 
   const [currentView, setCurrentView] = useState<AppViewState>({ view: "home" });
   const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>([]);
@@ -1141,6 +1155,18 @@ export default function App() {
       if (event.defaultPrevented) return;
       const textEntry = isTextEntry(event.target);
       if (textEntry) return;
+
+      if (event.key === "F11") {
+        event.preventDefault();
+        if (isFullscreenActive) {
+          playerUIStore.setLyricsFullscreen(false);
+          playerUIStore.setNowPlayingFullscreen(false);
+        } else {
+          playerUIStore.setLyricsOpen(true);
+          playerUIStore.setLyricsFullscreen(true);
+        }
+        return;
+      }
 
       if (event.key === "Escape") {
         if (playerUIState.isNowPlayingFullscreen) {

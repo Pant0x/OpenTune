@@ -9,6 +9,11 @@ function normalizeArtworkUrl(url: string): string {
   return trimmedUrl.startsWith("//") ? `https:${trimmedUrl}` : trimmedUrl;
 }
 
+export function isVideoThumbnailUrl(url?: string): boolean {
+  if (!url) return false;
+  return /i\d?\.ytimg\.com\/vi(?:_webp)?\//i.test(url) || /img\.youtube\.com\/vi\//i.test(url);
+}
+
 function isArtworkCandidate(value: unknown): value is ArtworkCandidate {
   return Boolean(
     value

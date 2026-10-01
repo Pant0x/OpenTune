@@ -43,7 +43,7 @@ import type {
   Track,
   TrackRating,
 } from "../types";
-import { collectArtworkCandidates, getVideoArtworkFallback, selectArtworkUrl } from "./artwork";
+import { collectArtworkCandidates, getVideoArtworkFallback, isVideoThumbnailUrl, selectArtworkUrl } from "./artwork";
 import {
   LYRICS_SOURCES,
   type LyricsSource,
@@ -106,11 +106,6 @@ type MusicColumn = {
 };
 
 const knownAlbumArtworkCache = new Map<string, string>();
-
-function isVideoThumbnailUrl(url?: string): boolean {
-  if (!url) return false;
-  return /i\d?\.ytimg\.com\/vi(?:_webp)?\//i.test(url) || /img\.youtube\.com\/vi\//i.test(url);
-}
 
 function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -6962,6 +6957,8 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private topicSongCache = new Map<string, string>();
+  private topicArtworkCache = new Map<string, string>();
+  private topicAlbumCache = new Map<string, string>();
   private resolvedStreamUrlCache = new Map<string, { url: string; mimeType: string; cookie?: string; expiresAt: number }>();
 
   private async findOfficialTopicSongId(
@@ -6981,6 +6978,10 @@ export class YouTubeMusicDataSource extends DataSource {
         const cached = localStorage.getItem(`yt_topic_${key}`);
         if (cached) {
           this.topicSongCache.set(key, cached);
+          const cachedArt = localStorage.getItem(`yt_topic_art_${key}`);
+          if (cachedArt) this.topicArtworkCache.set(key, cachedArt);
+          const cachedAlb = localStorage.getItem(`yt_topic_alb_${key}`);
+          if (cachedAlb) this.topicAlbumCache.set(key, cachedAlb);
           return cached;
         }
       } catch {}
@@ -6997,6 +6998,7 @@ export class YouTubeMusicDataSource extends DataSource {
       ];
 
       let bestSongId: string | null = null;
+      let bestItem: MusicItem | null = null;
       let highestScore = -1;
 
       for (const rawItem of rawCandidates) {
@@ -7063,6 +7065,7 @@ export class YouTubeMusicDataSource extends DataSource {
         if (score > highestScore) {
           highestScore = score;
           bestSongId = id;
+          bestItem = item;
         }
       }
 
@@ -7075,6 +7078,25 @@ export class YouTubeMusicDataSource extends DataSource {
           score: highestScore,
         });
         this.topicSongCache.set(key, bestSongId);
+        if (bestItem) {
+          const itemArtwork = this.getArtwork(bestItem);
+          const itemAlbum = this.getTrackAlbum(bestItem);
+          if (itemArtwork && !isVideoThumbnailUrl(itemArtwork)) {
+            this.topicArtworkCache.set(key, itemArtwork);
+            knownAlbumArtworkCache.set(key, itemArtwork);
+            if (itemAlbum.id) knownAlbumArtworkCache.set(itemAlbum.id, itemArtwork);
+            if (itemAlbum.name) knownAlbumArtworkCache.set(itemAlbum.name.toLowerCase().trim(), itemArtwork);
+            if (typeof localStorage !== "undefined") {
+              try { localStorage.setItem(`yt_topic_art_${key}`, itemArtwork); } catch {}
+            }
+          }
+          if (itemAlbum.name) {
+            this.topicAlbumCache.set(key, itemAlbum.name);
+            if (typeof localStorage !== "undefined") {
+              try { localStorage.setItem(`yt_topic_alb_${key}`, itemAlbum.name); } catch {}
+            }
+          }
+        }
         if (typeof localStorage !== "undefined") {
           try { localStorage.setItem(`yt_topic_${key}`, bestSongId); } catch {}
         }
@@ -7145,17 +7167,8 @@ export class YouTubeMusicDataSource extends DataSource {
       !track.artist ||
       track.artist === "Unknown artist" ||
       track.artist.toLowerCase().endsWith("- topic") ||
-      this.isSpecialAudioVersion(track.title) ||
-      // Official album tracks already point directly to the authentic studio release
-      ((Boolean(track.albumId) || Boolean(track.album)) && isVideoId(track.id))
+      this.isSpecialAudioVersion(track.title)
     ) {
-      return track.id;
-    }
-
-    // Fast-path: If the track is already a valid YouTube track and NOT explicitly labeled as a video upload,
-    // play it instantly without blocking network searches.
-    const isExplicitVideo = /(?:official\s+)?(?:music\s+)?video|short\s+film|video\s+clip|visualizer/i.test(track.title);
-    if (!isExplicitVideo && isVideoId(track.id)) {
       return track.id;
     }
 
@@ -7167,12 +7180,44 @@ export class YouTubeMusicDataSource extends DataSource {
         track.durationSec,
       );
       const timeoutPromise = new Promise<string>((resolve) => {
-        setTimeout(() => resolve(track.id), 650);
+        setTimeout(() => resolve(track.id), 2500);
       });
       const topicId = await Promise.race([topicPromise, timeoutPromise]);
       return topicId || track.id;
     } catch {
       return track.id;
+    }
+  }
+
+  async resolveOfficialTrack(track: Track): Promise<{ id: string; artworkUrl?: string; album?: string } | null> {
+    if (
+      track.source === "local" ||
+      !track.title ||
+      !track.artist ||
+      track.artist === "Unknown artist" ||
+      this.isSpecialAudioVersion(track.title)
+    ) {
+      return null;
+    }
+
+    try {
+      const cleanTitle = cleanSongTitle(track.title);
+      const cleanArtist = cleanArtistName(track.artist);
+      const key = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
+
+      const targetId = await this.resolveTopicSongTargetId(track);
+      const artworkUrl = this.topicArtworkCache.get(key)
+        || (typeof localStorage !== "undefined" ? localStorage.getItem(`yt_topic_art_${key}`) || undefined : undefined);
+      const album = this.topicAlbumCache.get(key)
+        || (typeof localStorage !== "undefined" ? localStorage.getItem(`yt_topic_alb_${key}`) || undefined : undefined);
+
+      return {
+        id: targetId,
+        artworkUrl: artworkUrl && !isVideoThumbnailUrl(artworkUrl) ? artworkUrl : undefined,
+        album: album || undefined,
+      };
+    } catch {
+      return null;
     }
   }
 

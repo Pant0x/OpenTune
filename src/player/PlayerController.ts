@@ -19,7 +19,8 @@ import {
   type PlaybackSettings,
 } from "./playbackSettings";
 import { saveLastPlayedTrack } from "./appSession";
-import { getVideoArtworkFallback } from "../datasource/youtube/artwork";
+import { getVideoArtworkFallback, isVideoThumbnailUrl } from "../datasource/youtube/artwork";
+import { SpotifyService } from "../services/SpotifyService";
 
 /**
  * How the queue advances. Repeat only — shuffle is a separate, independent flag.
@@ -175,7 +176,18 @@ function getYouTubeMusicAlbumUrl(track: Track): string | undefined {
 }
 
 function getDiscordArtworkUrl(track: Track): string | undefined {
-  // Always use the official release/album artworkUrl if available
+  // If track has an artworkUrl and it is NOT a video thumbnail, use it
+  if (track.artworkUrl && track.artworkUrl.trim() && !isVideoThumbnailUrl(track.artworkUrl)) {
+    return track.artworkUrl;
+  }
+
+  // Prioritize official Spotify album artwork if available in cache
+  const cachedSpotify = SpotifyService.getCachedTrackCoverUrl(track.title, track.artist, track.album);
+  if (cachedSpotify) {
+    return cachedSpotify;
+  }
+
+  // Fallback to track artworkUrl if provided
   if (track.artworkUrl && track.artworkUrl.trim()) {
     return track.artworkUrl;
   }
@@ -761,6 +773,50 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
         playbackOrderMode: this.playbackOrderMode,
         shuffleEnabled: this.shuffleEnabled,
       });
+
+      // Proactively ensure track uses authentic official release artwork
+      if (track.source !== "local") {
+        if (!track.artworkUrl || isVideoThumbnailUrl(track.artworkUrl)) {
+          const cachedCover = SpotifyService.getCachedTrackCoverUrl(track.title, track.artist, track.album);
+          if (cachedCover) {
+            track.artworkUrl = cachedCover;
+          } else {
+            void SpotifyService.getTrackCoverUrl(track.title, track.artist, track.album)
+              .then((cover) => {
+                if (cover && this.state.currentTrack?.id === track.id) {
+                  if (this.state.currentTrack) {
+                    this.state.currentTrack.artworkUrl = cover;
+                  }
+                  this.emit();
+                  this.updateDiscordPresence();
+                }
+              })
+              .catch(() => {});
+          }
+        }
+
+        if (typeof (this.dataSource as any).resolveOfficialTrack === "function") {
+          void (this.dataSource as any).resolveOfficialTrack(track)
+            .then((official: { id: string; artworkUrl?: string; album?: string } | null) => {
+              if (official && this.state.currentTrack?.id === track.id) {
+                let changed = false;
+                if (official.artworkUrl && (!this.state.currentTrack.artworkUrl || isVideoThumbnailUrl(this.state.currentTrack.artworkUrl))) {
+                  this.state.currentTrack.artworkUrl = official.artworkUrl;
+                  changed = true;
+                }
+                if (official.album && !this.state.currentTrack.album) {
+                  this.state.currentTrack.album = official.album;
+                  changed = true;
+                }
+                if (changed) {
+                  this.emit();
+                  this.updateDiscordPresence();
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      }
       if (autoplayWhenQueueEnds && playbackQueue?.length === 1) {
         void this.primeRadioQueue(track, requestId);
       }
@@ -2093,11 +2149,13 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
         status: this.state.status,
       });
 
+      const initialArtwork = getDiscordArtworkUrl(currentTrack);
+
       void DiscordRpcService.updatePresence({
         title: currentTrack.title,
         artist: displayArtist,
         album: currentTrack.album ?? "",
-        artworkUrl: getDiscordArtworkUrl(currentTrack),
+        artworkUrl: initialArtwork,
         songUrl: getYouTubeMusicTrackUrl(currentTrack),
         artistUrl: getYouTubeMusicArtistUrl(currentTrack),
         albumUrl: getYouTubeMusicAlbumUrl(currentTrack),
@@ -2105,6 +2163,33 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
         currentTime: Math.floor(Math.max(0, currentTime)),
         isPlaying: this.state.status === "playing",
       });
+
+      // If the artwork is a video thumbnail or missing, fetch the official album cover from Spotify
+      // and re-send to Discord presence immediately once resolved!
+      if (!initialArtwork || isVideoThumbnailUrl(initialArtwork)) {
+        void SpotifyService.getTrackCoverUrl(currentTrack.title, currentTrack.artist, currentTrack.album)
+          .then((coverUrl) => {
+            if (coverUrl && this.state.currentTrack?.id === currentTrack.id) {
+              if (this.state.currentTrack && (!this.state.currentTrack.artworkUrl || isVideoThumbnailUrl(this.state.currentTrack.artworkUrl))) {
+                this.state.currentTrack.artworkUrl = coverUrl;
+              }
+              void DiscordRpcService.updatePresence({
+                title: currentTrack.title,
+                artist: displayArtist,
+                album: currentTrack.album ?? "",
+                artworkUrl: coverUrl,
+                songUrl: getYouTubeMusicTrackUrl(currentTrack),
+                artistUrl: getYouTubeMusicArtistUrl(currentTrack),
+                albumUrl: getYouTubeMusicAlbumUrl(currentTrack),
+                duration: Math.floor(currentTrack.durationSec ?? 0),
+                currentTime: Math.floor(Math.max(0, this.getCurrentTime())),
+                isPlaying: this.state.status === "playing",
+              });
+              this.emit();
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
