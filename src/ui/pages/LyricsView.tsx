@@ -9,6 +9,7 @@ import {
 import { useReduceMotion } from "../settings/renderEffects";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
+  CloseIcon,
   HeartActiveIcon,
   HeartBrokenIcon,
   HeartIcon,
@@ -698,12 +699,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         <button
           type="button"
           onClick={() => playerUIStore.setLyricsFullscreen(false)}
-          className="fixed top-6 right-6 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white text-xs font-semibold shadow-xl transition-all cursor-pointer group select-none"
+          className="fixed top-6 right-6 z-50 flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 group select-none"
           aria-label="Exit fullscreen"
           title="Exit fullscreen (Esc)"
         >
-          <QuitFullScreenIcon size={15} className="transition-transform group-hover:scale-110" />
-          <span>Exit Fullscreen</span>
+          <CloseIcon size={18} className="transition-transform group-hover:scale-110" />
         </button>
       )}
 

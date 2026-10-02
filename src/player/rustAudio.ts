@@ -220,3 +220,50 @@ export function warn(context: string, error: unknown): void {
     error: error instanceof Error ? error.message : String(error),
   });
 }
+
+export type PlaybackStatus = {
+  trackId: string | null;
+  isPlaying: boolean;
+  positionSec: number;
+  durationSec: number;
+};
+
+/** Directly instructs the Rust core to play a track with immediate low-latency streaming. */
+export async function playTrack(trackId: string, streamHint?: string): Promise<number> {
+  await ensureListening();
+  return invoke<number>("play_track", { trackId, streamHint });
+}
+
+/** Pre-fetches audio chunks or confirms disk-cache status for upcoming tracks. */
+export async function prefetchTracks(trackIds: string[]): Promise<number> {
+  if (trackIds.length === 0) return 0;
+  return invoke<number>("prefetch_tracks", { trackIds });
+}
+
+/** Queries real-time low-latency playback status from the native audio engine. */
+export async function getPlaybackStatus(): Promise<PlaybackStatus> {
+  const status = await invoke<{
+    track_id: string | null;
+    is_playing: boolean;
+    position_sec: number;
+    duration_sec: number;
+  }>("get_playback_status");
+  return {
+    trackId: status.track_id,
+    isPlaying: status.is_playing,
+    positionSec: status.position_sec,
+    durationSec: status.duration_sec,
+  };
+}
+
+/** Saves a resolved audio stream URL into the Rust core's in-memory LRU cache with TTL. */
+export async function cacheStreamUrl(
+  trackId: string,
+  url: string,
+  mimeType = "audio/webm",
+  cookie?: string,
+  ttlSec?: number,
+): Promise<void> {
+  return invoke("cache_stream_url", { trackId, url, mimeType, cookie, ttlSec });
+}
+

@@ -825,6 +825,48 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   text-shadow: none !important;
 }
 
+html[data-theme="light"] .preview-lyric-row .lyric-word[data-state="sung"],
+html[data-theme="light"] .preview-lyric-row.is-active .lyric-word[data-state="sung"] {
+  color: var(--color-foreground) !important;
+  -webkit-text-fill-color: var(--color-foreground) !important;
+}
+
+html[data-theme="light"] .preview-lyric-row .lyric-word[data-state="unsung"],
+html[data-theme="light"] .preview-lyric-row.is-active .lyric-word[data-state="unsung"] {
+  color: var(--color-muted-foreground) !important;
+  -webkit-text-fill-color: var(--color-muted-foreground) !important;
+}
+
+html[data-theme="light"] .preview-lyric-row .lyric-word[data-state="active"],
+html[data-theme="light"] .preview-lyric-row.is-active .lyric-word[data-state="active"] {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-foreground) 0%,
+    var(--color-foreground) clamp(0%, var(--w-sweep, 0%), 100%),
+    var(--color-muted-foreground) clamp(0%, calc(var(--w-sweep, 0%) + 8%), 100%),
+    var(--color-muted-foreground) 100%
+  ) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: var(--color-foreground) !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+html[data-theme="light"] [dir="rtl"] .preview-lyric-row .lyric-word[data-state="active"],
+html[data-theme="light"] [dir="rtl"] .preview-lyric-row.is-active .lyric-word[data-state="active"] {
+  background-image: linear-gradient(
+    270deg,
+    var(--color-foreground) 0%,
+    var(--color-foreground) clamp(0%, var(--w-sweep, 0%), 100%),
+    var(--color-muted-foreground) clamp(0%, calc(var(--w-sweep, 0%) + 8%), 100%),
+    var(--color-muted-foreground) 100%
+  ) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  color: var(--color-foreground) !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
 /*
  * Slow parallax on the blurred cover behind the lyrics. Long and asymmetric on purpose: it is
  * always drifting — visibly, like Beautiful Lyrics — but slowly enough that nothing ever snaps

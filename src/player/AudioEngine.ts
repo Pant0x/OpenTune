@@ -790,6 +790,9 @@ export class AudioEngine {
     if (this.rustStandbyTrackId === trackId) return;
 
     routeRustEnded();
+    if (source.kind === "stream") {
+      void rustAudio.cacheStreamUrl(trackId, source.url, source.mimeType, source.cookie).catch(() => {});
+    }
     this.rustStandbyDurationSec = await rustAudio.load(trackId, source, durationSec, true);
     this.rustStandbyTrackId = trackId;
     logInternalInfo("AudioEngine rust preloaded", { trackId });
@@ -1015,6 +1018,10 @@ export class AudioEngine {
       this.rustStandbyTrackId = null;
       this.rustStandbyDurationSec = 0;
       await rustAudio.dropStandby().catch(() => {});
+    }
+
+    if (source.kind === "stream") {
+      void rustAudio.cacheStreamUrl(videoId, source.url, source.mimeType, source.cookie).catch(() => {});
     }
 
     const duration = await rustAudio.load(videoId, source, durationSec);

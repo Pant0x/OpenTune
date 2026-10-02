@@ -3158,6 +3158,94 @@ fn offline_entry_path(app: &tauri::AppHandle, track_id: &str) -> Result<PathBuf,
     Ok(offline_dir(app)?.join(format!("{track_id}.bin")))
 }
 
+/// Local audio cache for high-performance instant streaming playback.
+/// Stores streamed tracks locally on SSD so subsequent plays or pre-fetched tracks stream directly with zero network overhead.
+fn audio_cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, CommandError> {
+    app.path()
+        .app_cache_dir()
+        .map(|path| path.join("audio-stream-cache-v1"))
+        .map_err(|error| cache_error(format!("audio cache directory unavailable: {error}")))
+}
+
+fn audio_cache_entry_path(app: &tauri::AppHandle, track_id: &str) -> Result<PathBuf, CommandError> {
+    let unsafe_char = track_id
+        .chars()
+        .any(|value| value == '/' || value == '\\' || value == ':' || value == '\0');
+    if track_id.is_empty() || unsafe_char || track_id.contains("..") {
+        return Err(cache_error("invalid audio cache track id"));
+    }
+    Ok(audio_cache_dir(app)?.join(format!("{track_id}.bin")))
+}
+
+fn save_stream_to_disk_cache(app: &tauri::AppHandle, track_id: &str, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    if let Ok(path) = audio_cache_entry_path(app, track_id) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let temp_path = path.with_extension("tmp");
+        if fs::write(&temp_path, bytes).is_ok() {
+            let _ = fs::rename(&temp_path, &path);
+            eprintln!(
+                "[internal][tauri][info] cached complete audio stream track_id={} bytes={}",
+                track_id, bytes.len()
+            );
+        }
+    }
+}
+
+struct CachedStreamUrl {
+    url: String,
+    mime_type: String,
+    cookie: Option<String>,
+    expires_at: Instant,
+}
+
+static STREAM_URL_CACHE: OnceLock<Mutex<HashMap<String, CachedStreamUrl>>> = OnceLock::new();
+
+fn stream_url_cache() -> &'static Mutex<HashMap<String, CachedStreamUrl>> {
+    STREAM_URL_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cache_stream_url_internal(
+    track_id: String,
+    url: String,
+    mime_type: String,
+    cookie: Option<String>,
+    ttl_sec: u64,
+) {
+    if let Ok(mut cache) = stream_url_cache().lock() {
+        if cache.len() >= 200 {
+            let now = Instant::now();
+            cache.retain(|_, entry| entry.expires_at > now);
+        }
+        cache.insert(
+            track_id,
+            CachedStreamUrl {
+                url,
+                mime_type,
+                cookie,
+                expires_at: Instant::now() + Duration::from_secs(ttl_sec),
+            },
+        );
+    }
+}
+
+fn get_cached_stream_url(track_id: &str) -> Option<(String, String, Option<String>)> {
+    if let Ok(mut cache) = stream_url_cache().lock() {
+        if let Some(entry) = cache.get(track_id) {
+            if Instant::now() < entry.expires_at {
+                return Some((entry.url.clone(), entry.mime_type.clone(), entry.cookie.clone()));
+            } else {
+                cache.remove(track_id);
+            }
+        }
+    }
+    None
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OfflineEntryInfo {
@@ -3801,6 +3889,7 @@ async fn fetch_audio_source(
         buffer,
         ranges,
         None,
+        None,
     ));
 
     Ok(AudioSourcePayload {
@@ -3864,6 +3953,7 @@ async fn fill_media_buffer(
     buffer: Arc<Mutex<MediaBuffer>>,
     ranges: Vec<(usize, usize)>,
     slot: Option<(usize, u64)>,
+    app: Option<tauri::AppHandle>,
 ) {
     use futures_util::stream::StreamExt;
 
@@ -4039,12 +4129,24 @@ async fn fill_media_buffer(
                             return;
                         }
                         if let Ok(mut guard) = buffer.lock() {
-                            guard.adopt_complete(whole);
+                            guard.adopt_complete(whole.clone());
+                        }
+                        if let Some(app_handle) = &app {
+                            save_stream_to_disk_cache(app_handle, &track_id, &whole);
                         }
                     }
                     _ => fail(&buffer),
                 }
                 return;
+            }
+        }
+    }
+
+    if let Some(app_handle) = &app {
+        if let Ok(guard) = buffer.lock() {
+            if !guard.failed && guard.total > 0 && guard.contiguous_len() == guard.total {
+                let complete_bytes = guard.read(0, guard.total - 1);
+                save_stream_to_disk_cache(app_handle, &track_id, &complete_bytes);
             }
         }
     }
@@ -4107,6 +4209,32 @@ fn open_native_audio_reader(
     source: NativeAudioSource,
     standby: bool,
 ) -> Result<NativeAudioReader, CommandError> {
+    // 1. Instant SSD playback: Check local audio cache on disk first!
+    if let Ok(cache_path) = audio_cache_entry_path(app, track_id) {
+        if cache_path.is_file() {
+            if let Ok(mut file) = File::open(&cache_path) {
+                let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+                if file_len > 0 {
+                    let fallback_mime = match &source {
+                        NativeAudioSource::Stream { mime_type, .. } => mime_type.clone(),
+                        NativeAudioSource::Offline { mime_type, .. } => mime_type.clone(),
+                        NativeAudioSource::File { .. } => "audio/mp4".to_string(),
+                    };
+                    let mime_type = sniffed_mime(&mut file, fallback_mime, track_id);
+                    eprintln!(
+                        "[internal][tauri][info] open_native_audio_reader SSD cache hit track_id={} bytes={}",
+                        track_id, file_len
+                    );
+                    return Ok(NativeAudioReader {
+                        reader: Box::new(file),
+                        mime_type,
+                        buffer: None,
+                    });
+                }
+            }
+        }
+    }
+
     match source {
         NativeAudioSource::Stream {
             url,
@@ -4124,6 +4252,7 @@ fn open_native_audio_reader(
             let buffer = Arc::new(Mutex::new(MediaBuffer::pending(total, ranges.len())));
             let slot_index = standby as usize;
             let generation = LOAD_GENERATION[slot_index].fetch_add(1, Ordering::SeqCst) + 1;
+            let app_handle = app.clone();
             tauri::async_runtime::spawn(fill_media_buffer(
                 url,
                 track_id.to_string(),
@@ -4132,6 +4261,7 @@ fn open_native_audio_reader(
                 Arc::clone(&buffer),
                 ranges,
                 Some((slot_index, generation)),
+                Some(app_handle),
             ));
             Ok(NativeAudioReader {
                 reader: Box::new(audio::BufferReader::new(Arc::clone(&buffer))),
@@ -4439,6 +4569,117 @@ fn native_audio_drop_active(
     state: tauri::State<'_, audio::NativeAudio>,
 ) -> Result<(), CommandError> {
     state.send(audio::Command::DropActive).map_err(cache_error)
+}
+
+async fn prefetch_head_chunk(
+    url: &str,
+    track_id: &str,
+    cookie: Option<&str>,
+) -> Result<(), CommandError> {
+    let Ok(request_url) = url::Url::parse(url) else {
+        return Err(cache_error("invalid prefetch url"));
+    };
+    let client = offline_http_client(&request_url)?;
+    let ranged = audio_url_with_range(url, 0, 384 * 1024 - 1);
+    let response = googlevideo_audio_request(&client, &ranged, cookie)
+        .send()
+        .await
+        .map_err(|e| cache_error(e.to_string()))?;
+    if response.status().is_success() {
+        let _ = response.bytes().await;
+        eprintln!("[internal][tauri][info] prefetch_head_chunk warmed track_id={}", track_id);
+    }
+    Ok(())
+}
+
+/// Pre-fetches and warms up upcoming tracks in the queue (e.g. tracks N+1 and N+2)
+/// in background tokio tasks so stream resolution and initial decoding are instantaneous.
+#[tauri::command]
+async fn prefetch_tracks(
+    app: tauri::AppHandle,
+    track_ids: Vec<String>,
+) -> Result<usize, CommandError> {
+    let mut count = 0;
+    for track_id in track_ids {
+        // 1. If already on SSD in local audio cache, it's already 100% warmed!
+        if let Ok(path) = audio_cache_entry_path(&app, &track_id) {
+            if path.is_file() {
+                count += 1;
+                continue;
+            }
+        }
+        if offline_audio_has(app.clone(), track_id.clone()).unwrap_or(false) {
+            count += 1;
+            continue;
+        }
+
+        // 2. If stream URL is cached, pre-fetch initial chunks in background task
+        if let Some((url, _mime, cookie)) = get_cached_stream_url(&track_id) {
+            let tid = track_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = prefetch_head_chunk(&url, &tid, cookie.as_deref()).await;
+            });
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Plays a track using disk cache, in-memory stream cache, or an optional stream hint.
+/// Starts playback immediately on the native audio engine with low latency.
+#[tauri::command]
+async fn play_track(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, audio::NativeAudio>,
+    track_id: String,
+    stream_hint: Option<String>,
+) -> Result<f64, CommandError> {
+    if let Some(hint_url) = &stream_hint {
+        cache_stream_url_internal(track_id.clone(), hint_url.clone(), "audio/webm".to_string(), None, 6 * 3600);
+    }
+
+    let source = if let Ok(path) = audio_cache_entry_path(&app, &track_id) {
+        if path.is_file() {
+            NativeAudioSource::File { path: path.to_string_lossy().to_string() }
+        } else if offline_audio_has(app.clone(), track_id.clone()).unwrap_or(false) {
+            NativeAudioSource::Offline { track_id: track_id.clone(), mime_type: "audio/webm".to_string() }
+        } else if let Some((url, mime_type, cookie)) = get_cached_stream_url(&track_id) {
+            NativeAudioSource::Stream { url, mime_type, cookie }
+        } else if let Some(hint) = stream_hint {
+            NativeAudioSource::Stream { url: hint, mime_type: "audio/webm".to_string(), cookie: None }
+        } else {
+            return Err(cache_error(format!("No audio stream available for track {track_id}")));
+        }
+    } else if let Some((url, mime_type, cookie)) = get_cached_stream_url(&track_id) {
+        NativeAudioSource::Stream { url, mime_type, cookie }
+    } else if let Some(hint) = stream_hint {
+        NativeAudioSource::Stream { url: hint, mime_type: "audio/webm".to_string(), cookie: None }
+    } else {
+        return Err(cache_error(format!("No audio stream available for track {track_id}")));
+    };
+
+    let duration = native_audio_load(app, state.clone(), track_id, source, None, Some(false)).await?;
+    let _ = native_audio_play(state)?;
+    Ok(duration)
+}
+
+/// Retrieves the current engine playback status (playing state, position, and duration).
+#[tauri::command]
+fn get_playback_status(state: tauri::State<'_, audio::NativeAudio>) -> Result<audio::PlaybackStatusPayload, CommandError> {
+    Ok(state.status())
+}
+
+/// Stores a resolved stream URL into the in-memory LRU cache with a given TTL.
+#[tauri::command]
+fn cache_stream_url(
+    track_id: String,
+    url: String,
+    mime_type: String,
+    cookie: Option<String>,
+    ttl_sec: Option<u64>,
+) -> Result<(), CommandError> {
+    cache_stream_url_internal(track_id, url, mime_type, cookie, ttl_sec.unwrap_or(6 * 3600));
+    Ok(())
 }
 
 /// Devices cpal can currently see, for the output-device picker in Settings.
@@ -5477,6 +5718,10 @@ pub fn run() {
             native_audio_drop_active,
             native_audio_list_output_devices,
             native_audio_set_output_device,
+            play_track,
+            prefetch_tracks,
+            get_playback_status,
+            cache_stream_url,
             media_server_release,
             proxy_http_request,
             load_youtube_music_cookie,

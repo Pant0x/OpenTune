@@ -435,15 +435,15 @@ export const LyricLineView = memo(function LyricLineView({
         ? "font-arabic tracking-normal font-bold text-right origin-right"
         : "text-left origin-left",
       isActive && !adlibLine && cn(
-        "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-white scale-[1.02]",
+        "is-active lyrics-lyricsContent-active font-bold text-sm sm:text-base text-foreground scale-[1.02]",
         isArabic ? "origin-right" : "origin-left",
       ),
       isActive && adlibLine && cn(
-        "text-white text-xs sm:text-sm italic font-bold scale-[1.01]",
+        "text-foreground text-xs sm:text-sm italic font-bold scale-[1.01]",
         isArabic ? "origin-right" : "origin-left",
       ),
-      !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
-      !isActive && adlibLine && "text-white/30 text-[11px] sm:text-xs italic font-semibold hover:text-white/70 hover:!filter-none transition-all",
+      !isActive && !adlibLine && "text-muted-foreground/75 font-semibold text-xs sm:text-sm hover:text-foreground hover:!filter-none hover:!scale-100 transition-all",
+      !isActive && adlibLine && "text-muted-foreground/50 text-[11px] sm:text-xs italic font-semibold hover:text-foreground hover:!filter-none transition-all",
       sweeps && "lyric-sweep font-bold",
       className,
     );

@@ -61,6 +61,15 @@ struct EndedEvent {
     track_id: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PlaybackStatusPayload {
+    pub track_id: Option<String>,
+    pub is_playing: bool,
+    pub position_sec: f64,
+    pub duration_sec: f64,
+}
+
 /**
  * A `Read + Seek` view over a body that is still downloading.
  *
@@ -276,6 +285,7 @@ pub(crate) enum Command {
     /// heading towards, so a preload could never survive a second click arriving before the
     /// first one finished.
     DropActive,
+    GetStatus(Sender<PlaybackStatusPayload>),
 }
 
 /// The handle held as Tauri state. Cheap to clone, trivially `Send + Sync`.
@@ -359,6 +369,15 @@ impl NativeAudio {
             .send(Command::SetOutputDevice { id, reply: tx })
             .map_err(|_| "audio thread is gone".to_string())?;
         rx.recv().map_err(|_| "audio thread dropped the request".to_string())?
+    }
+
+    pub(crate) fn status(&self) -> PlaybackStatusPayload {
+        request(self, |reply| Command::GetStatus(reply)).unwrap_or(PlaybackStatusPayload {
+            track_id: None,
+            is_playing: false,
+            position_sec: 0.0,
+            duration_sec: 0.0,
+        })
     }
 }
 
@@ -918,6 +937,15 @@ impl Engine {
                     let _ = reply.send(Err(error));
                 }
             },
+            Command::GetStatus(reply) => {
+                let deck = &self.decks[self.active];
+                let _ = reply.send(PlaybackStatusPayload {
+                    track_id: deck.track_id.clone(),
+                    is_playing: self.playing,
+                    position_sec: deck.sink.get_pos().as_secs_f64(),
+                    duration_sec: deck.duration_sec,
+                });
+            }
         }
         false
     }

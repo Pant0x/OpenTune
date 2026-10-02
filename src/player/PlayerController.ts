@@ -21,6 +21,7 @@ import {
 import { saveLastPlayedTrack } from "./appSession";
 import { getVideoArtworkFallback, isVideoThumbnailUrl } from "../datasource/youtube/artwork";
 import { SpotifyService } from "../services/SpotifyService";
+import * as rustAudio from "./rustAudio";
 
 /**
  * How the queue advances. Repeat only — shuffle is a separate, independent flag.
@@ -1888,6 +1889,21 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     }
 
     if (!next) return;
+
+    // Warm N+2 as well so continuous queue advancement never stalls on network requests
+    const nextIdx = this.queue.currentIndex + 1;
+    const nextNext = nextIdx + 1 < this.queue.all.length ? this.queue.all[nextIdx + 1] : undefined;
+    if (nextNext && nextNext.source === "youtube") {
+      void this.dataSource.getTrack(nextNext.id).catch(() => {});
+      if (this.dataSource.getStreamData) {
+        void this.dataSource.getStreamData(nextNext).catch(() => {});
+      }
+    }
+
+    // Trigger background chunk prefetching in Rust for upcoming queue tracks
+    const prefetchIds: string[] = [next.id];
+    if (nextNext) prefetchIds.push(nextNext.id);
+    void rustAudio.prefetchTracks(prefetchIds).catch(() => {});
 
     /*
      * Metadata first, and for both engines.

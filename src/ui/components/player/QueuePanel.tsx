@@ -184,7 +184,7 @@ function SpotifyAboutArtistCard({
               "px-4 py-1 rounded-full border text-xs font-bold transition-all shrink-0 cursor-pointer shadow-sm",
               isFollowing
                 ? "border-foreground bg-foreground text-background"
-                : "border-border text-foreground hover:border-foreground hover:scale-105",
+                : "border-foreground/30 hover:border-foreground text-foreground hover:bg-muted/40 hover:scale-105",
             )}
           >
             {isFollowing ? "Following" : "Follow"}
@@ -1780,7 +1780,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                                     "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
                                     isFollowed
                                       ? "border-foreground bg-foreground text-background"
-                                      : "border-border text-foreground hover:border-foreground",
+                                      : "border-foreground/30 hover:border-foreground text-foreground hover:bg-muted/40",
                                   )}
                                 >
                                   {isFollowed ? "Following" : "Follow"}
@@ -1808,7 +1808,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                               "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
                               isFollowingArtist
                                 ? "border-foreground bg-foreground text-background"
-                                : "border-border text-foreground hover:border-foreground",
+                                : "border-foreground/30 hover:border-foreground text-foreground hover:bg-muted/40",
                             )}
                           >
                             {isFollowingArtist ? "Following" : "Follow"}
