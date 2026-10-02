@@ -1,14 +1,19 @@
 #[cfg(target_os = "windows")]
 pub mod implementation {
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
     use tauri::{AppHandle, Manager};
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        SendMessageW, SetWindowPos, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        WM_SETREDRAW,
+        GetWindowPlacement, SendMessageW, SetWindowPlacement, SetWindowPos, SWP_FRAMECHANGED,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WINDOWPLACEMENT, WM_SETREDRAW,
     };
 
     static WAS_MAXIMIZED: AtomicBool = AtomicBool::new(false);
+    static SAVED_PLACEMENT: Mutex<Option<WINDOWPLACEMENT>> = Mutex::new(None);
 
     pub fn set_fullscreen(app: &AppHandle, fullscreen: bool) -> Result<(), String> {
         let window = app
@@ -26,6 +31,31 @@ pub mod implementation {
             unsafe {
                 // Freeze rendering so the fullscreen transition is completely invisible and atomic
                 let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
+            }
+
+            if is_max {
+                unsafe {
+                    let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                    let mut mi = MONITORINFO::default();
+                    mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+                    let _ = GetMonitorInfoW(monitor, &mut mi);
+
+                    let mut placement = WINDOWPLACEMENT::default();
+                    placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+                    let _ = GetWindowPlacement(hwnd, &mut placement);
+
+                    // Save the original placement to restore exact bounds and state on exit
+                    *SAVED_PLACEMENT.lock().unwrap() = Some(placement);
+
+                    // Temporarily set the normal restored rectangle to the full monitor rect.
+                    // When unmaximize() is called below, Windows DWM restores to rcNormalPosition.
+                    // Because rcNormalPosition is already the full monitor rect, DWM performs
+                    // ZERO shrinking/minimizing animation!
+                    placement.rcNormalPosition = mi.rcMonitor;
+                    let _ = SetWindowPlacement(hwnd, &placement);
+                }
+
+                let _ = window.unmaximize();
             }
 
             let _ = window.set_fullscreen(true);
@@ -54,7 +84,13 @@ pub mod implementation {
 
             let _ = window.set_always_on_top(false);
             let _ = window.set_fullscreen(false);
+
             if was_max {
+                unsafe {
+                    if let Some(orig) = SAVED_PLACEMENT.lock().unwrap().take() {
+                        let _ = SetWindowPlacement(hwnd, &orig);
+                    }
+                }
                 let _ = window.maximize();
             }
             let _ = window.set_focus();
