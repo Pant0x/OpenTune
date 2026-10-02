@@ -83,7 +83,10 @@ import {
 } from "../searchNormalize";
 import {
   hasProfanityCensorship,
+  isLyricsArtistMatch,
   isLyricsTitleMatch,
+  isSectionHeaderLine,
+  stripSectionHeaderPrefix,
   unmaskProfanity,
 } from "../../internal/lyricsCensor";
 
@@ -5778,8 +5781,16 @@ export class YouTubeMusicDataSource extends DataSource {
         });
         if (!response.ok) continue;
 
+        const expectedArtists = [
+          track.artist,
+          ...(track.artists?.map((a) => a.name) ?? []),
+        ].filter(Boolean);
+
         const matches = await response.json() as LrcLibTrack[];
-        const filteredMatches = matches.filter((match) => isLyricsTitleMatch(track.title, match.trackName));
+        const filteredMatches = matches.filter((match) =>
+          isLyricsTitleMatch(track.title, match.trackName) &&
+          isLyricsArtistMatch(expectedArtists, match.artistName)
+        );
         const withDelta = filteredMatches
           .map((match) => ({
             match,
@@ -5909,7 +5920,17 @@ export class YouTubeMusicDataSource extends DataSource {
         const candidateSongs = searchData.result?.songs || [];
         if (candidateSongs.length === 0) continue;
 
-        const matchingSongs = candidateSongs.filter((song) => isLyricsTitleMatch(query.title, song.name));
+        const expectedArtists = [
+          track.artist,
+          ...(track.artists?.map((a) => a.name) ?? []),
+        ].filter(Boolean);
+
+        const matchingSongs = candidateSongs.filter((song) => {
+          const titleMatches = isLyricsTitleMatch(query.title, song.name);
+          const candArtists = song.artists?.map((a) => a.name) ?? [];
+          const artistMatches = candArtists.length === 0 || candArtists.some((ca) => isLyricsArtistMatch(expectedArtists, ca));
+          return titleMatches && artistMatches;
+        });
         if (matchingSongs.length === 0) continue;
 
         matchingSongs.sort((a, b) => {
@@ -5982,6 +6003,11 @@ export class YouTubeMusicDataSource extends DataSource {
     maxDeltaSec = 16,
   ): LyricsProviderResult | null {
     if (!match.syncedLyrics) return null;
+    const expectedArtists = [
+      track.artist,
+      ...(track.artists?.map((a) => a.name) ?? []),
+    ].filter(Boolean);
+    if (!isLyricsArtistMatch(expectedArtists, match.artistName)) return null;
     const durationDelta = this.getLyricsDurationDelta(track, match.duration);
     if (Number.isFinite(durationDelta) && durationDelta > maxDeltaSec) return null;
 
@@ -6018,12 +6044,19 @@ export class YouTubeMusicDataSource extends DataSource {
     maxDeltaSec = 24,
   ): LyricsProviderResult | null {
     if (!match.plainLyrics?.trim()) return null;
+    const expectedArtists = [
+      track.artist,
+      ...(track.artists?.map((a) => a.name) ?? []),
+    ].filter(Boolean);
+    if (!isLyricsArtistMatch(expectedArtists, match.artistName)) return null;
     const durationDelta = this.getLyricsDurationDelta(track, match.duration);
     if (Number.isFinite(durationDelta) && durationDelta > maxDeltaSec) return null;
 
     const lines = match.plainLyrics
       .split(/\r?\n/)
-      .map((line) => unmaskProfanity(line.trim()))
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !isSectionHeaderLine(line))
+      .map((line) => unmaskProfanity(stripSectionHeaderPrefix(line)))
       .filter(Boolean)
       .map((text) => ({ text }));
 
@@ -6145,7 +6178,14 @@ export class YouTubeMusicDataSource extends DataSource {
         continue;
       }
 
-      const text = unmaskProfanity(rawText);
+      // Filter out purely structural section headers like [Intro: ...], [Chorus], [Verse 1]
+      if (isSectionHeaderLine(rawText)) {
+        continue;
+      }
+
+      const cleanText = stripSectionHeaderPrefix(rawText);
+      const text = unmaskProfanity(cleanText);
+      if (!text) continue;
 
       const timestamps = [...rawLine.matchAll(timestampPattern)];
       for (const timestamp of timestamps) {
@@ -6180,9 +6220,11 @@ export class YouTubeMusicDataSource extends DataSource {
       const rawText = (node.textContent ?? "")
         .replace(/\s+/g, " ")
         .trim();
-      if (!rawText) return [];
+      if (!rawText || isSectionHeaderLine(rawText)) return [];
 
-      const text = unmaskProfanity(rawText);
+      const cleanText = stripSectionHeaderPrefix(rawText);
+      const text = unmaskProfanity(cleanText);
+      if (!text) return [];
 
       return [{
         text,

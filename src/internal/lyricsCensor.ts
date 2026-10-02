@@ -1,9 +1,10 @@
 /**
- * Lyrics profanity unmasking and title matching utilities.
+ * Lyrics profanity unmasking, artist & title matching, and adlib/header cleaning utilities.
  *
- * Provides decensoring for lyrics sources that embed asterisks/censored profanity
- * (e.g. from radio edits or clean uploads on LRCLIB / NetEase / transcripts),
- * and validates candidate songs so unrelated search results are never displayed.
+ * Provides decensoring for lyrics sources that embed asterisks/censored profanity,
+ * validates candidate songs so unrelated search results (e.g. same title, different artist)
+ * are rejected, cleans out non-vocal bracketed section headers (e.g. [Intro: ...], [Chorus]),
+ * and removes brackets from adlibs for rumble letter animation.
  */
 
 function preserveCase(original: string, replacement: string): string {
@@ -136,4 +137,78 @@ export function isLyricsTitleMatch(targetTitle: string, candidateTitle?: string)
   }
 
   return false;
+}
+
+export function normalizeArtistForComparison(artist: string): string {
+  if (!artist) return "";
+  return artist
+    .toLowerCase()
+    .replace(/\s*-\s*topic$/i, "")
+    .replace(/\s*vevo$/i, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Verifies that the candidate lyric song belongs to one of the expected track artists.
+ * Prevents songs with the same title by completely different artists from polluting playback.
+ */
+export function isLyricsArtistMatch(expectedArtists: string[], candidateArtist?: string): boolean {
+  if (!candidateArtist?.trim()) return true;
+  const candNorm = normalizeArtistForComparison(candidateArtist);
+  if (!candNorm) return true;
+
+  const candParts = candidateArtist
+    .split(/,\s*|\s*&\s*|\s+feat\.?\s+|\s+ft\.?\s+|\s+and\s+|•|\/|;/i)
+    .map(normalizeArtistForComparison)
+    .filter(Boolean);
+
+  for (const exp of expectedArtists) {
+    if (!exp) continue;
+    const expNorm = normalizeArtistForComparison(exp);
+    if (!expNorm) continue;
+
+    if (candNorm === expNorm || candNorm.includes(expNorm) || expNorm.includes(candNorm)) {
+      return true;
+    }
+
+    for (const cp of candParts) {
+      if (cp === expNorm || cp.includes(expNorm) || expNorm.includes(cp)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+const SECTION_HEADER_REGEX = /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*$/i;
+
+const SECTION_HEADER_PREFIX_REGEX = /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*/i;
+
+/**
+ * Returns true if a lyric line is purely an structural section tag (e.g. [Intro: AI Playboi Carti], [Chorus], [Verse 1]).
+ */
+export function isSectionHeaderLine(text: string): boolean {
+  if (!text) return false;
+  return SECTION_HEADER_REGEX.test(text);
+}
+
+/**
+ * Strips bracketed section header prefix if present (e.g. "[Intro] Yeah yeah" -> "Yeah yeah").
+ */
+export function stripSectionHeaderPrefix(text: string): string {
+  if (!text) return "";
+  return text.replace(SECTION_HEADER_PREFIX_REGEX, "").trim();
+}
+
+/**
+ * Strips outer brackets/parentheses from adlib text so no brackets are rendered.
+ */
+export function cleanAdlibBrackets(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/^[\s(\[{<«"'\u201C\u2018]+|[\s)\]}>»"'\u201D\u2019]+$/gu, "")
+    .trim();
 }

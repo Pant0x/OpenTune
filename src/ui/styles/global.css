@@ -1012,3 +1012,21 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   animation: adlib-wobble 2.2s ease-in-out infinite;
   will-change: transform;
 }
+
+@keyframes adlib-letter-rumble {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  25% {
+    transform: translateY(-3.2px);
+  }
+  75% {
+    transform: translateY(2.8px);
+  }
+}
+
+.adlib-letter-rumble {
+  display: inline-block;
+  animation: adlib-letter-rumble 2.4s ease-in-out infinite;
+  will-change: transform;
+}

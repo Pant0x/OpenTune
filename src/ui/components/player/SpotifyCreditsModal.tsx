@@ -36,6 +36,8 @@ function splitCreditPeople<T extends { name: string; role: string; avatarUrl?: s
         result.push({
           ...item,
           name: n,
+          // Only preserve the avatar if this specific split person matches the source item name
+          avatarUrl: n.toLowerCase() === item.name.toLowerCase() ? item.avatarUrl : undefined,
           uri: undefined,
         });
       }
@@ -55,6 +57,7 @@ export function SpotifyCreditsModal({
 }: SpotifyCreditsModalProps) {
   const [credits, setCredits] = useState<SpotifyTrackCredits | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [extraAvatars, setExtraAvatars] = useState<Record<string, string>>({});
   const navigateArtist = useArtistNavigation();
 
   // Re-read local followed store reactively so any follow button click updates immediately
@@ -99,8 +102,53 @@ export function SpotifyCreditsModal({
   }, [isOpen, track?.title, track?.artist]);
 
   const splitArtists = useMemo(() => splitCreditPeople(credits?.artists), [credits?.artists]);
-  const splitWriters = useMemo(() => splitCreditPeople(credits?.writers), [credits?.writers]);
-  const splitProducers = useMemo(() => splitCreditPeople(credits?.producers), [credits?.producers]);
+  const rawWriters = useMemo(() => splitCreditPeople(credits?.writers), [credits?.writers]);
+  const rawProducers = useMemo(() => splitCreditPeople(credits?.producers), [credits?.producers]);
+
+  // Match writers and producers against performers list first (e.g. Marwan Pablo, Lege-Cy, HatemBas)
+  const splitWriters = useMemo(() => {
+    return rawWriters.map((w) => {
+      const matchedArtist = splitArtists.find(
+        (a) => a.name.trim().toLowerCase() === w.name.trim().toLowerCase(),
+      );
+      if (matchedArtist?.avatarUrl) {
+        return { ...w, avatarUrl: matchedArtist.avatarUrl, uri: matchedArtist.uri || w.uri };
+      }
+      return w;
+    });
+  }, [rawWriters, splitArtists]);
+
+  const splitProducers = useMemo(() => {
+    return rawProducers.map((p) => {
+      const matchedArtist = splitArtists.find(
+        (a) => a.name.trim().toLowerCase() === p.name.trim().toLowerCase(),
+      );
+      if (matchedArtist?.avatarUrl) {
+        return { ...p, avatarUrl: matchedArtist.avatarUrl, uri: matchedArtist.uri || p.uri };
+      }
+      return p;
+    });
+  }, [rawProducers, splitArtists]);
+
+  useEffect(() => {
+    const missing = [...splitWriters, ...splitProducers].filter(
+      (p) => !p.avatarUrl && !extraAvatars[p.name.toLowerCase()],
+    );
+    if (missing.length === 0) return;
+    let active = true;
+
+    for (const p of missing) {
+      void SpotifyService.getArtistAvatar(p.name).then((url) => {
+        if (active && url) {
+          setExtraAvatars((prev) => ({ ...prev, [p.name.toLowerCase()]: url }));
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [splitWriters, splitProducers, extraAvatars]);
 
   if (!isOpen) return null;
 
@@ -230,36 +278,39 @@ export function SpotifyCreditsModal({
                 </span>
 
                 <div className="flex flex-col gap-1.5">
-                  {splitWriters.map((w, i) => (
-                    <div
-                      key={w.name + i}
-                      onClick={() => handleOpenArtist(w)}
-                      className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {w.avatarUrl ? (
-                          <img
-                            src={w.avatarUrl}
-                            alt={w.name}
-                            className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
-                          />
-                        ) : (
-                          <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
-                            {w.name[0]?.toUpperCase() || "W"}
-                          </div>
-                        )}
+                  {splitWriters.map((w, i) => {
+                    const avatar = w.avatarUrl || extraAvatars[w.name.trim().toLowerCase()];
+                    return (
+                      <div
+                        key={w.name + i}
+                        onClick={() => handleOpenArtist(w)}
+                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {avatar ? (
+                            <img
+                              src={avatar}
+                              alt={w.name}
+                              className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                            />
+                          ) : (
+                            <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                              {w.name[0]?.toUpperCase() || "W"}
+                            </div>
+                          )}
 
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold text-white truncate group-hover:underline">
-                            {w.name}
-                          </span>
-                          <span className="text-xs text-white/60 font-medium">
-                            {w.role}
-                          </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-sm font-bold text-white truncate group-hover:underline">
+                              {w.name}
+                            </span>
+                            <span className="text-xs text-white/60 font-medium">
+                              {w.role}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -271,36 +322,39 @@ export function SpotifyCreditsModal({
                   </span>
 
                   <div className="flex flex-col gap-1.5">
-                    {splitProducers.map((p, i) => (
-                      <div
-                        key={p.name + i}
-                        onClick={() => handleOpenArtist(p)}
-                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          {p.avatarUrl ? (
-                            <img
-                              src={p.avatarUrl}
-                              alt={p.name}
-                              className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
-                            />
-                          ) : (
-                            <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
-                              {p.name[0]?.toUpperCase() || "P"}
-                            </div>
-                          )}
+                    {splitProducers.map((p, i) => {
+                      const avatar = p.avatarUrl || extraAvatars[p.name.trim().toLowerCase()];
+                      return (
+                        <div
+                          key={p.name + i}
+                          onClick={() => handleOpenArtist(p)}
+                          className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {avatar ? (
+                              <img
+                                src={avatar}
+                                alt={p.name}
+                                className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                              />
+                            ) : (
+                              <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                                {p.name[0]?.toUpperCase() || "P"}
+                              </div>
+                            )}
 
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-bold text-white truncate group-hover:underline">
-                              {p.name}
-                            </span>
-                            <span className="text-xs text-white/60 font-medium">
-                              {p.role}
-                            </span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-bold text-white truncate group-hover:underline">
+                                {p.name}
+                              </span>
+                              <span className="text-xs text-white/60 font-medium">
+                                {p.role}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

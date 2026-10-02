@@ -711,12 +711,12 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         /* Split Screen Fullscreen View (Pure lyrics, no video section) */
         <div className="relative min-h-0 flex-1 flex flex-col justify-center">
           <div className={cn(
-            "grid gap-8 lg:gap-14 items-center max-w-7xl mx-auto w-full h-full px-6 md:px-12 py-8 overflow-hidden",
+            "grid gap-8 lg:gap-14 items-center max-w-[1700px] w-full mx-auto px-6 md:px-12 lg:pl-16 lg:pr-10 py-8 overflow-hidden",
             showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-4xl",
           )}>
             {/* Left Column: Artwork Card + Mini Transport Player (Only when showPlaybackCard is true) */}
             {showPlaybackCard && (
-              <div className="lg:col-span-5 flex flex-col items-center justify-center">
+              <div className="lg:col-span-5 flex flex-col items-center lg:items-start justify-center lg:pl-6 xl:pl-10">
                 <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
                   <TrackArtwork
                     artworkUrl={effectiveArtworkUrl}

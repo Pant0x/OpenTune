@@ -4,6 +4,10 @@ export {
   hasProfanityCensorship,
   normalizeLyricsTitle,
   isLyricsTitleMatch,
+  isLyricsArtistMatch,
+  isSectionHeaderLine,
+  stripSectionHeaderPrefix,
+  cleanAdlibBrackets,
 } from "../../internal/lyricsCensor";
 
 /**

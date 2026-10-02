@@ -12,6 +12,7 @@
 import { memo, useCallback, useMemo, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import {
+  cleanAdlibBrackets,
   isRtlText,
   parseLyricTokens,
   unmaskProfanity,
@@ -332,15 +333,39 @@ export const LyricLineView = memo(function LyricLineView({
       });
 
       if (group.type === "adlib") {
+        const adlibContent = group.items.map((item) => {
+          const rawText = item.text;
+          const cleanText = cleanAdlibBrackets(rawText);
+          if (!cleanText) return null;
+
+          if (isActive && !reduceMotion) {
+            return (
+              <span key={item.id} className="inline-block whitespace-nowrap">
+                {cleanText.split("").map((ch, cIdx) => (
+                  <span
+                    key={cIdx}
+                    className="adlib-letter-rumble"
+                    style={{ animationDelay: `${((cIdx % 10) * 0.14).toFixed(2)}s` }}
+                  >
+                    {ch === " " ? "\u00A0" : ch}
+                  </span>
+                ))}
+              </span>
+            );
+          }
+
+          return <span key={item.id}>{cleanText}</span>;
+        });
+
         return (
           <span
             key={gIdx}
             className={cn(
               ADLIB_TOKEN_CLASS[size],
-              isActive && "adlib-wobble-active text-white/95 opacity-90",
+              isActive && "text-white/95 opacity-90 font-semibold",
             )}
           >
-            {content}
+            {adlibContent}
           </span>
         );
       }
@@ -410,7 +435,7 @@ export const LyricLineView = memo(function LyricLineView({
           "transition-all duration-350 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           isArabic && "font-arabic tracking-normal font-black leading-snug",
           isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
-          isActive && adlibLine && "text-white italic scale-[1.03] opacity-100 adlib-wobble-active",
+          isActive && adlibLine && "text-white italic scale-[1.03] opacity-100",
           !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:text-white/85 hover:opacity-90 hover:scale-[1.015]",
           !isActive && adlibLine && "text-white/30 italic font-medium scale-100 opacity-45 hover:text-white/60 hover:opacity-75",
         )}
@@ -431,7 +456,7 @@ export const LyricLineView = memo(function LyricLineView({
         isArabic ? "origin-right" : "origin-left",
       ),
       isActive && adlibLine && cn(
-        "text-white text-xs sm:text-sm italic font-bold scale-[1.01] adlib-wobble-active",
+        "text-white text-xs sm:text-sm italic font-bold scale-[1.01]",
         isArabic ? "origin-right" : "origin-left",
       ),
       !isActive && !adlibLine && "text-white/45 font-semibold text-xs sm:text-sm hover:text-white/85 hover:!filter-none hover:!scale-100 transition-all",
@@ -478,7 +503,7 @@ export const LyricLineView = memo(function LyricLineView({
       className={cn(
         "cursor-pointer rounded-lg px-2 py-1 text-sm font-semibold transition-all duration-300",
         isActive && !adlibLine && "scale-105 font-bold text-white [text-shadow:0_0_12px_rgba(255,255,255,0.7)]",
-        isActive && adlibLine && "scale-105 font-bold italic text-white adlib-wobble-active",
+        isActive && adlibLine && "scale-105 font-bold italic text-white",
         !isActive && !adlibLine && "text-muted-foreground/45 hover:text-white/80",
         !isActive && adlibLine && "text-[13px] font-medium italic text-white/35",
       )}
