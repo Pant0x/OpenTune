@@ -1312,10 +1312,10 @@ export default function App() {
     <PlaylistContextMenuProvider libraryController={libraryController}>
     <VolumeSyncBridge />
     <div
-      className={`relative flex h-full w-full flex-col overflow-hidden ${playerUIState.isLyricsOpen ? "bg-black" : "bg-shell"} ${
+      className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
         nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
-          : "rounded-[var(--window-radius)] border border-border ring-1 ring-inset ring-[var(--window-edge)]"
+          : "rounded-[var(--window-radius)] border-none ring-0"
       }`}
     >
       {!playerUIState.isLyricsFullscreen && (
@@ -1335,7 +1335,7 @@ export default function App() {
         />
       )}
 
-      <div className={`flex min-h-0 flex-1 flex-col ${playerUIState.isLyricsOpen ? "bg-black" : ""}`}>
+      <div className="flex min-h-0 flex-1 flex-col">
         <Layout
           sidebarWidth={sidebarWidth}
           onSidebarWidthChange={handleSidebarWidthChange}

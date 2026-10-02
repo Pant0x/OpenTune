@@ -204,7 +204,7 @@ export function PlaybackControls({ extraControlsAlwaysVisible = true }: Playback
 
       <button
         type="button"
-        className="flex size-9 items-center justify-center rounded-full bg-white text-black shadow-md transition-transform duration-150 hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+        className="flex size-9 items-center justify-center rounded-full bg-foreground text-background shadow-md transition-transform duration-150 hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
         onClick={handlePlayPause}
         disabled={!hasCurrentTrack}
         aria-label={isPlaying ? "Pause" : "Play"}

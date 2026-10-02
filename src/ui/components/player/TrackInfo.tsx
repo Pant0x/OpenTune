@@ -226,14 +226,14 @@ export function TrackInfo({ artworkUrl: propArtworkUrl, dominantColor: _propDomi
               ref={titleTextRef}
               aria-hidden={isTitleOverflowing}
               className={cn(
-                "block whitespace-nowrap text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all",
+                "block whitespace-nowrap text-sm font-medium text-foreground hover:text-primary transition-colors",
                 isTitleOverflowing && "invisible absolute",
               )}
             >
               {currentTrack.title}
             </span>
             {isTitleOverflowing && (
-              <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.7)] transition-all">
+              <Marquee speed={22} gap="2.5rem" className="text-sm font-medium text-foreground hover:text-primary transition-colors">
                 <span className="whitespace-nowrap" title={currentTrack.title}>
                   {currentTrack.title}
                 </span>

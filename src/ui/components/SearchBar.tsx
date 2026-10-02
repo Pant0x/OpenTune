@@ -398,7 +398,7 @@ export function SearchBar({
             onClick={onForward}
             disabled={!canGoForward}
             aria-label="Go forward"
-            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/10"
+            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
           >
             <ArrowRightIcon size={16} aria-hidden="true" />
           </Button>
@@ -406,7 +406,7 @@ export function SearchBar({
       )}
 
       <div className="relative flex min-w-0 flex-1 items-center">
-        <div className="group relative flex h-8 sm:h-8.5 w-full items-center gap-2 rounded-full bg-white/[0.07] dark:bg-white/[0.06] hover:bg-white/[0.11] focus-within:bg-white/[0.14] backdrop-blur-xl px-3 border border-white/15 dark:border-white/10 shadow-sm transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
+        <div className="group relative flex h-8 sm:h-8.5 w-full items-center gap-2 rounded-full bg-black/[0.05] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.11] focus-within:bg-black/[0.10] dark:focus-within:bg-white/[0.14] backdrop-blur-xl px-3 border border-black/10 dark:border-white/10 shadow-sm transition-all focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
           <SearchIcon size={15} className="shrink-0 text-muted-foreground transition-colors group-focus-within:text-primary" />
           <input
             ref={inputRef}
@@ -434,7 +434,7 @@ export function SearchBar({
               <CloseIcon size={13} />
             </button>
           ) : (
-            <kbd className="ml-auto hidden md:inline-flex shrink-0 items-center rounded-md bg-white/10 px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground border border-white/10">
+            <kbd className="ml-auto hidden md:inline-flex shrink-0 items-center rounded-md bg-black/5 dark:bg-white/10 px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground border border-black/10 dark:border-white/10">
               {primaryModifierLabel} Space
             </kbd>
           )}
@@ -448,7 +448,7 @@ export function SearchBar({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.98 }}
               transition={{ duration: 0.12 }}
-              className="absolute left-0 right-0 top-full mt-1.5 max-h-[75vh] overflow-y-auto rounded-2xl bg-card/90 dark:bg-[#181818]/95 border border-white/10 shadow-2xl backdrop-blur-2xl p-2 flex flex-col gap-2 z-50"
+              className="absolute left-0 right-0 top-full mt-1.5 max-h-[75vh] overflow-y-auto rounded-2xl bg-card border border-border shadow-2xl backdrop-blur-2xl p-2 flex flex-col gap-2 z-50"
             >
               {hasQuery ? (
                 <>

@@ -18,6 +18,7 @@ import {
   useExtraPlayerControlsAlwaysVisible,
 } from "../../settings/playerControls";
 import { useCoverAmbienceEnabled } from "../../settings/coverAmbience";
+import { useResolvedTheme } from "../../settings/theme";
 
 interface PlayerBarProps {
   onToggleLyrics: () => void;
@@ -185,11 +186,15 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
     }
   };
 
+  const resolvedTheme = useResolvedTheme();
+  const isLight = resolvedTheme === "light";
   const extraControlsAlwaysVisible = useExtraPlayerControlsAlwaysVisible();
   const isCoverAmbience = useCoverAmbienceEnabled();
   const coverAmbienceStyle = isCoverAmbience && dominantColor?.rgb
     ? {
-        backgroundImage: `linear-gradient(to right, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.22) 0%, rgba(12, 12, 14, 0.95) 340px, rgba(12, 12, 14, 0.98) 100%)`,
+        backgroundImage: isLight
+          ? `linear-gradient(to right, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.18) 0%, rgba(255, 255, 255, 0.95) 340px, rgba(255, 255, 255, 0.98) 100%)`
+          : `linear-gradient(to right, rgba(${dominantColor.rgb.r}, ${dominantColor.rgb.g}, ${dominantColor.rgb.b}, 0.22) 0%, rgba(12, 12, 14, 0.95) 340px, rgba(12, 12, 14, 0.98) 100%)`,
       }
     : undefined;
 
@@ -226,7 +231,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
 
       <div
         style={coverAmbienceStyle}
-        className="group/playerbar flex shrink-0 items-center rounded-2xl bg-background px-4 py-2 min-h-[72px]"
+        className="group/playerbar flex shrink-0 items-center rounded-2xl bg-card text-foreground border border-border/30 shadow-md px-4 py-2 min-h-[72px]"
       >
         <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}

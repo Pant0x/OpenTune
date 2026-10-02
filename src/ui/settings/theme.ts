@@ -102,3 +102,8 @@ function subscribe(callback: () => void) {
 export function useThemePreference(): ThemePreference {
   return useSyncExternalStore(subscribe, readThemePreference, () => "dark" as const);
 }
+
+export function useResolvedTheme(): ResolvedTheme {
+  const pref = useThemePreference();
+  return resolveTheme(pref);
+}

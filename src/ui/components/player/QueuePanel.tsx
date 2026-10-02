@@ -47,6 +47,7 @@ import { TrackArtwork } from "../TrackArtwork";
 import { useTrackContextMenu } from "../TrackContextMenu";
 import { usePlayerUIState, playerUIStore } from "../../stores/playerUIStore";
 import { SquareAltArrowLeftIcon } from "@solar-icons/react/linear";
+import { ArtworkLightboxModal } from "../ArtworkLightboxModal";
 
 import { usePlayHistory } from "../../../player/playHistory";
 import { SpotifyCreditsModal } from "./SpotifyCreditsModal";
@@ -112,7 +113,7 @@ function SpotifyAboutArtistCard({
           );
         }
       }}
-      className="group relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 cursor-pointer transition-all duration-300 hover:bg-[#282828] shadow-lg flex flex-col"
+      className="group relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 cursor-pointer transition-all duration-300 hover:bg-muted/70 dark:hover:bg-[#282828] shadow-lg flex flex-col"
     >
       {/* Top Banner / Hero */}
       <div className="relative h-44 sm:h-52 w-full overflow-hidden bg-black/40">
@@ -129,7 +130,7 @@ function SpotifyAboutArtistCard({
         )}
 
         {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#242424] via-[#242424]/40 to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/20" />
 
         {/* Top Badges */}
         <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
@@ -157,7 +158,7 @@ function SpotifyAboutArtistCard({
             />
           </div>
           {monthly ? (
-            <span className="text-xs font-medium text-[#b3b3b3] drop-shadow-md">
+            <span className="text-xs font-medium text-white/80 drop-shadow-md">
               {monthly.toLocaleString()} monthly listeners
             </span>
           ) : null}
@@ -169,7 +170,7 @@ function SpotifyAboutArtistCard({
         {/* Action row with Follow Button */}
         <div className="flex items-center justify-between gap-2">
           {monthly && !image ? (
-            <span className="text-xs text-[#b3b3b3]">
+            <span className="text-xs text-muted-foreground">
               {monthly.toLocaleString()} monthly listeners
             </span>
           ) : <div />}
@@ -182,8 +183,8 @@ function SpotifyAboutArtistCard({
             className={cn(
               "px-4 py-1 rounded-full border text-xs font-bold transition-all shrink-0 cursor-pointer shadow-sm",
               isFollowing
-                ? "border-white bg-white text-black"
-                : "border-[#b3b3b3] text-white hover:border-white hover:scale-105",
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-foreground hover:border-foreground hover:scale-105",
             )}
           >
             {isFollowing ? "Following" : "Follow"}
@@ -192,7 +193,7 @@ function SpotifyAboutArtistCard({
 
         {/* Biography */}
         {bio ? (
-          <p className="text-xs text-[#b3b3b3] group-hover:text-white/90 leading-relaxed line-clamp-4 transition-colors">
+          <p className="text-xs text-muted-foreground group-hover:text-foreground leading-relaxed line-clamp-4 transition-colors">
             {bio}
           </p>
         ) : null}
@@ -257,10 +258,10 @@ function RelatedShelfView({
   return (
     <div
       key={`related-tab-shelf-${sIdx}-${shelf.title}`}
-      className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3 shadow-md"
+      className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 flex flex-col gap-3 shadow-md"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wider text-[#b3b3b3]">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
           {shelf.title}
         </span>
         {(hasArtists || hasAlbums) && (
@@ -270,7 +271,7 @@ function RelatedShelfView({
               onClick={() => handleScroll("left")}
               disabled={!canScrollLeft}
               aria-label="Scroll left"
-              className="size-7 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/15 text-[#b3b3b3] hover:text-white disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer border border-white/5 shadow-xs"
+              className="size-7 rounded-full flex items-center justify-center bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer border border-border/40 shadow-xs"
             >
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="15 18 9 12 15 6" />
@@ -281,7 +282,7 @@ function RelatedShelfView({
               onClick={() => handleScroll("right")}
               disabled={!canScrollRight}
               aria-label="Scroll right"
-              className="size-7 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/15 text-[#b3b3b3] hover:text-white disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer border border-white/5 shadow-xs"
+              className="size-7 rounded-full flex items-center justify-center bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer border border-border/40 shadow-xs"
             >
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6" />
@@ -296,7 +297,7 @@ function RelatedShelfView({
           {shelf.tracks.map((track) => (
             <div
               key={track.id}
-              className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10"
+              className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-muted/50"
             >
               <button
                 type="button"
@@ -315,10 +316,10 @@ function RelatedShelfView({
                   </span>
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-xs font-semibold text-white group-hover:underline">
+                  <span className="truncate text-xs font-semibold text-foreground group-hover:underline">
                     {track.title}
                   </span>
-                  <span className="truncate text-[11px] text-[#b3b3b3]">
+                  <span className="truncate text-[11px] text-muted-foreground">
                     {track.artist}
                   </span>
                 </div>
@@ -331,7 +332,7 @@ function RelatedShelfView({
                     onAddToQueue(track);
                   }}
                   aria-label="Add to queue"
-                  className="size-7 shrink-0 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white bg-white/5 hover:bg-white/15 border border-white/10 transition-all opacity-80 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+                  className="size-7 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 border border-border/40 transition-all opacity-80 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
                 >
                   <PlusIcon size={14} />
                 </button>
@@ -739,6 +740,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
    */
   const dropTargetRef = useRef(dropTarget);
   dropTargetRef.current = dropTarget;
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   const collapsed = useQueuePanelCollapsed();
   const uiState = usePlayerUIState();
@@ -1481,13 +1483,13 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
       <aside
         ref={panelRef}
         className={cn(
-          "flex h-full flex-col overflow-hidden bg-[#121212]",
+          "flex h-full flex-col overflow-hidden bg-card text-foreground",
           draggedIndex !== null && "select-none",
         )}
         aria-label="Now Playing and Queue"
       >
       {/* Top Header: Unified Right Sidebar Tabs */}
-      <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#121212] px-3 py-2 z-10">
+      <header className="flex shrink-0 items-center justify-between border-b border-border/40 bg-card px-3 py-2 z-10">
         <div className="flex items-center gap-1" role="tablist" aria-label="Sidebar views">
           <button
             type="button"
@@ -1497,8 +1499,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
             className={cn(
               "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
               activeTab === "nowplaying"
-                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                : "text-[#b3b3b3] hover:text-white",
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             Now playing
@@ -1511,8 +1513,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
             className={cn(
               "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
               activeTab === "queue"
-                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                : "text-[#b3b3b3] hover:text-white",
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             Queue
@@ -1525,8 +1527,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
             className={cn(
               "relative px-2.5 py-1.5 text-xs sm:text-sm font-bold transition-colors focus-visible:outline-none cursor-pointer",
               activeTab === "related"
-                ? "text-white after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
-                : "text-[#b3b3b3] hover:text-white",
+                ? "text-foreground after:absolute after:bottom-0 after:left-2 after:right-2 after:h-0.5 after:rounded-full after:bg-primary"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             Related
@@ -1537,7 +1539,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
             <Tooltip side="bottom" content="More options">
               <button
                 type="button"
-                className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
                 onClick={(e) => openTrackMenu(e, currentTrack)}
                 aria-label="Track options"
               >
@@ -1549,7 +1551,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
           <Tooltip side="bottom" content="Close">
             <button
               type="button"
-              className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
               onClick={onClose}
               aria-label="Close sidebar"
             >
@@ -1565,9 +1567,23 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
           {currentTrack ? (
             <>
               {/* Square Album Artwork (Spotify 1:1, Cover Art only) */}
-              <div className="relative w-full aspect-square shrink-0 overflow-hidden rounded-xl bg-black/40 shadow-2xl select-none">
+              <div
+                className="group/art relative w-full aspect-square shrink-0 overflow-hidden rounded-xl bg-black/40 shadow-2xl select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  if (effectiveArtwork) setIsLightboxOpen(true);
+                }}
+                title="Click to preview cover art"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && effectiveArtwork) {
+                    e.preventDefault();
+                    setIsLightboxOpen(true);
+                  }
+                }}
+              >
                 <TrackArtwork
-                  className="size-full object-cover rounded-xl"
+                  className="size-full object-cover rounded-xl transition-transform duration-300 group-hover/art:scale-105"
                   size={640}
                   artworkUrl={effectiveArtwork}
                   iconSize={56}
@@ -1577,15 +1593,15 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
               {/* Title & Artist & Spotify Plus/Like Button */}
               <div className="flex shrink-0 items-start justify-between gap-3 pt-1">
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight tracking-tight line-clamp-2">
+                  <h2 className="text-xl sm:text-2xl font-bold text-foreground leading-tight tracking-tight line-clamp-2">
                     {currentTrack.title}
                   </h2>
-                  <div className="text-sm font-medium text-[#b3b3b3]">
+                  <div className="text-sm font-medium text-muted-foreground">
                     <ArtistLinks
                       artists={currentTrack.artists}
                       fallback={currentTrack.artist}
                       trackTitle={currentTrack.title}
-                      className="text-[#b3b3b3] hover:text-white transition-colors no-underline"
+                      className="text-muted-foreground hover:text-foreground transition-colors no-underline"
                     />
                   </div>
                 </div>
@@ -1595,7 +1611,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     <button
                       type="button"
                       onClick={() => playerUIStore.openVideoMode()}
-                      className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
                       aria-label="Watch video"
                     >
                       <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1610,7 +1626,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     <button
                       type="button"
                       onClick={handleShare}
-                      className="flex size-8 items-center justify-center rounded-full text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
                       aria-label="Share track"
                     >
                       <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1634,7 +1650,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                         <CheckIcon size={14} className="stroke-[3]" />
                       </span>
                     ) : (
-                      <span className="flex size-7 items-center justify-center rounded-full border border-[#b3b3b3]/60 text-[#b3b3b3] hover:border-white hover:text-white transition-colors">
+                      <span className="flex size-7 items-center justify-center rounded-full border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
                         <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="12" y1="5" x2="12" y2="19" />
                           <line x1="5" y1="12" x2="19" y2="12" />
@@ -1647,11 +1663,11 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
               {/* Lyrics Preview Card (Spotify 1:1 Style with glowing active line) */}
               <div
-                className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 transition-all hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
+                className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 transition-all hover:bg-muted/60 dark:hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
                 onClick={() => playerUIStore.setLyricsOpen(true)}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-base font-bold text-white tracking-tight">
+                  <span className="text-base font-bold text-foreground tracking-tight">
                     Lyrics
                   </span>
                 </div>
@@ -1661,21 +1677,21 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     {[92, 78, 86, 64, 84].map((width, i) => (
                       <div
                         key={i}
-                        className="h-4 rounded-full bg-white/15 animate-pulse"
+                        className="h-4 rounded-full bg-foreground/10 animate-pulse"
                         style={{ width: `${width}%`, animationDelay: `${i * 120}ms` }}
                       />
                     ))}
                   </div>
                 ) : lyricsStatus === "error" || (lyricsStatus === "ready" && previewLyricsRows.length === 0) ? (
                   <div className="flex flex-col items-center justify-center gap-2.5 py-8 min-h-[160px] text-center">
-                    <span className="text-xs font-semibold text-[#b3b3b3]">No lyrics available for this song.</span>
+                    <span className="text-xs font-semibold text-muted-foreground">No lyrics available for this song.</span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         reloadLyrics();
                       }}
-                      className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-xs font-bold text-white hover:bg-white/20 transition-colors cursor-pointer"
+                      className="rounded-full border border-border bg-muted/60 px-4 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition-colors cursor-pointer"
                     >
                       Retry search
                     </button>
@@ -1718,18 +1734,16 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 )}
               </div>
 
-
-
               {/* Credits Card (Spotify style) */}
-              <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-4 flex flex-col gap-3.5 transition-all hover:bg-[#282828] shadow-md">
+              <div className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 flex flex-col gap-3.5 transition-all hover:bg-muted/60 dark:hover:bg-[#282828] shadow-md">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white">
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                     Credits
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowCreditsModal(true)}
-                    className="text-xs font-bold text-[#b3b3b3] hover:text-white underline cursor-pointer"
+                    className="text-xs font-bold text-muted-foreground hover:text-foreground underline cursor-pointer"
                   >
                     Show all
                   </button>
@@ -1738,7 +1752,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 <div className="flex flex-col gap-3 text-xs">
                   {/* Performed by */}
                   <div className="flex flex-col gap-1">
-                    <span className="font-bold text-[11px] uppercase tracking-wider text-[#b3b3b3]/80">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground/80">
                       Performed by
                     </span>
                     <div className="flex flex-col gap-1.5">
@@ -1750,12 +1764,12 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                               <button
                                 type="button"
                                 onClick={() => navigateArtist?.({ id: a.uri?.replace("spotify:artist:", "") || "", name: a.name }, false)}
-                                className="font-semibold text-white truncate hover:underline text-left cursor-pointer"
+                                className="font-semibold text-foreground truncate hover:underline text-left cursor-pointer"
                               >
                                 {a.name}
                               </button>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[11px] text-[#b3b3b3]">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
+                                <span className="text-[11px] text-muted-foreground">{a.role || (i === 0 ? "Main Artist" : "Featured Artist")}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1765,8 +1779,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                                   className={cn(
                                     "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
                                     isFollowed
-                                      ? "border-white bg-white text-black"
-                                      : "border-[#b3b3b3] text-white hover:border-white",
+                                      ? "border-foreground bg-foreground text-background"
+                                      : "border-border text-foreground hover:border-foreground",
                                   )}
                                 >
                                   {isFollowed ? "Following" : "Follow"}
@@ -1780,7 +1794,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                           <button
                             type="button"
                             onClick={() => navigateArtist?.({ id: primaryArtist.id || "", name: primaryArtist.name }, false)}
-                            className="font-semibold text-white truncate hover:underline text-left cursor-pointer"
+                            className="font-semibold text-foreground truncate hover:underline text-left cursor-pointer"
                           >
                             {primaryArtist.name}
                           </button>
@@ -1793,8 +1807,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                             className={cn(
                               "px-3 py-0.5 rounded-full border text-[11px] font-bold transition-all shrink-0 cursor-pointer",
                               isFollowingArtist
-                                ? "border-white bg-white text-black"
-                                : "border-[#b3b3b3] text-white hover:border-white",
+                                ? "border-foreground bg-foreground text-background"
+                                : "border-border text-foreground hover:border-foreground",
                             )}
                           >
                             {isFollowingArtist ? "Following" : "Follow"}
@@ -1806,8 +1820,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
                   {/* Written by */}
                   {credits?.writers?.length ? (
-                    <div className="flex flex-col gap-1 pt-1 border-t border-white/10">
-                      <span className="font-bold text-[11px] uppercase tracking-wider text-[#b3b3b3]/80">
+                    <div className="flex flex-col gap-1 pt-1 border-t border-border/40">
+                      <span className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground/80">
                         Written by
                       </span>
                       <div className="flex flex-col gap-0.5">
@@ -1816,11 +1830,11 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                             <button
                               type="button"
                               onClick={() => navigateArtist?.({ id: w.uri?.replace("spotify:artist:", "") || "", name: w.name }, false)}
-                              className="font-medium text-white truncate hover:underline text-left cursor-pointer"
+                              className="font-medium text-foreground truncate hover:underline text-left cursor-pointer"
                             >
                               {w.name}
                             </button>
-                            <span className="text-[11px] text-[#b3b3b3] shrink-0">{w.role || "Composer, Lyricist"}</span>
+                            <span className="text-[11px] text-muted-foreground shrink-0">{w.role || "Composer, Lyricist"}</span>
                           </div>
                         ))}
                       </div>
@@ -1829,8 +1843,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
                   {/* Produced by */}
                   {credits?.producers?.length ? (
-                    <div className="flex flex-col gap-1 pt-1 border-t border-white/10">
-                      <span className="font-bold text-[11px] uppercase tracking-wider text-[#b3b3b3]/80">
+                    <div className="flex flex-col gap-1 pt-1 border-t border-border/40">
+                      <span className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground/80">
                         Produced by
                       </span>
                       <div className="flex flex-col gap-0.5">
@@ -1839,33 +1853,23 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                             <button
                               type="button"
                               onClick={() => navigateArtist?.({ id: p.uri?.replace("spotify:artist:", "") || "", name: p.name }, false)}
-                              className="font-medium text-white truncate hover:underline text-left cursor-pointer"
+                              className="font-medium text-foreground truncate hover:underline text-left cursor-pointer"
                             >
                               {p.name}
                             </button>
-                            <span className="text-[11px] text-[#b3b3b3] shrink-0">{p.role || "Producer"}</span>
+                            <span className="text-[11px] text-muted-foreground shrink-0">{p.role || "Producer"}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : null}
-
-                  {/* Source / Label */}
-                  {(credits?.label || currentTrack.album) && (
-                    <div className="pt-1 border-t border-white/10 flex flex-col gap-0.5 text-[11px] text-[#b3b3b3]">
-                      <span className="font-bold uppercase tracking-wider text-[#b3b3b3]/80">
-                        Source
-                      </span>
-                      <span className="truncate">{credits?.label || `Released by ${currentTrack.album}`}</span>
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* From the album Card (Spotify-style) */}
               {currentTrack.album && (
                 <div
-                  className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-[#282828] transition-all group shadow-md"
+                  className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-muted/60 dark:hover:bg-[#282828] transition-all group shadow-md"
                   onClick={() => {
                     if (navigateAlbum) {
                       navigateAlbum({
@@ -1885,10 +1889,10 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                     />
                   </div>
                   <div className="flex flex-col min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#b3b3b3]">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       From the album
                     </span>
-                    <span className="font-semibold text-sm text-white truncate group-hover:underline transition-all">
+                    <span className="font-semibold text-sm text-foreground truncate group-hover:underline transition-all">
                       {currentTrack.album}
                     </span>
                   </div>
@@ -1910,7 +1914,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
               {/* Next in Queue Preview Card */}
               {(manual.length > 0 || automatic.length > 0) && (
-                <div className="relative shrink-0 overflow-hidden rounded-2xl bg-[#242424] border border-white/5 p-3.5 flex items-center justify-between gap-3 shadow-md">
+                <div className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-3.5 flex items-center justify-between gap-3 shadow-md">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-11 rounded-lg overflow-hidden bg-black/40 shrink-0">
                       <TrackArtwork
@@ -1921,13 +1925,13 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                       />
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#b3b3b3]">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                         Next in queue
                       </span>
-                      <span className="font-semibold text-sm text-white truncate">
+                      <span className="font-semibold text-sm text-foreground truncate">
                         {(manual[0]?.track || automatic[0]?.track)?.title}
                       </span>
-                      <span className="text-xs text-[#b3b3b3] truncate">
+                      <span className="text-xs text-muted-foreground truncate">
                         {(manual[0]?.track || automatic[0]?.track)?.artist}
                       </span>
                     </div>
@@ -1935,7 +1939,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                   <button
                     type="button"
                     onClick={() => void playerController.skipToNext()}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 hover:bg-foreground/20 text-foreground transition-colors cursor-pointer"
                     title="Play next track"
                     aria-label="Play next track"
                   >
@@ -2293,6 +2297,11 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
           onClose={() => setShowScannableModal(false)}
         />
       )}
+      <ArtworkLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        artworkUrl={effectiveArtwork}
+      />
     </aside>
   );
 }

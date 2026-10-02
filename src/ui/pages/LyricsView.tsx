@@ -24,6 +24,7 @@ import { playerController, shallowEqual, usePlayerSelector } from "../../player/
 import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
+import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
 import { CoverAmbienceCanvas } from "../components/CoverAmbienceCanvas";
 import { setAmbientArtwork } from "../stores/ambientArtworkStore";
 import { SpotifyService } from "../../services/SpotifyService";
@@ -819,14 +820,16 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                 onPointerDown={pauseFollow}
                 onTouchMove={pauseFollow}
               >
-                <div className={cn("max-w-xl", isSynced ? "py-[40vh]" : "pb-20 pt-8")}>
+                <div className={cn("max-w-xl w-full", hasLines ? (isSynced ? "py-[40vh]" : "pb-20 pt-8") : "py-8 flex flex-col items-center justify-center min-h-[50vh]")}>
                   {isLoading && <LyricsSkeleton />}
 
                   {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
 
                   {!isLoading && track && !hasLines && (
-                    <LyricsMessage
-                      text={emptyMessage}
+                    <LyricsEmptyShowcase
+                      track={track}
+                      artworkUrl={effectiveArtworkUrl}
+                      message={emptyMessage}
                       onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
                     />
                   )}
@@ -960,7 +963,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
             <div
               className={cn(
                 "mx-auto max-w-3xl w-full",
-                isSynced ? "py-[38vh]" : "pb-12 pt-8",
+                hasLines ? (isSynced ? "py-[38vh]" : "pb-12 pt-8") : "py-12 flex flex-col items-center justify-center min-h-[60vh]",
               )}
             >
               {isLoading && <LyricsSkeleton />}
@@ -968,8 +971,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
 
               {!isLoading && track && !hasLines && (
-                <LyricsMessage
-                  text={emptyMessage}
+                <LyricsEmptyShowcase
+                  track={track}
+                  artworkUrl={effectiveArtworkUrl}
+                  message={emptyMessage}
                   onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
                 />
               )}
@@ -1232,6 +1237,97 @@ function LyricsSkeleton() {
           style={{ width: `${width}%`, animationDelay: `${index * 90}ms` }}
         />
       ))}
+    </div>
+  );
+}
+
+interface LyricsEmptyShowcaseProps {
+  track: Track;
+  artworkUrl?: string;
+  message: string;
+  onRetry?: () => void;
+}
+
+function LyricsEmptyShowcase({ track, artworkUrl, message, onRetry }: LyricsEmptyShowcaseProps) {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col items-center justify-center gap-6 py-12 px-4 text-center my-auto w-full select-none" role="status">
+      {/* Album Artwork with smooth shadow & ambient hover */}
+      <div
+        className="group/hero relative size-52 sm:size-64 md:size-72 shrink-0 overflow-hidden rounded-2xl bg-black/40 shadow-2xl ring-1 ring-white/15 cursor-pointer transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          if (artworkUrl) setIsLightboxOpen(true);
+        }}
+        title="Click to preview cover art"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.key === "Enter" || e.key === " ") && artworkUrl) {
+            e.preventDefault();
+            setIsLightboxOpen(true);
+          }
+        }}
+      >
+        <TrackArtwork
+          className="size-full object-cover rounded-2xl"
+          size={500}
+          artworkUrl={artworkUrl}
+          iconSize={56}
+          loading="eager"
+          preferProxy
+        />
+        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/hero:opacity-100 transition-opacity flex items-center justify-center">
+          <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-semibold shadow-md">
+            Preview artwork
+          </span>
+        </div>
+      </div>
+
+      {/* Track Info (Title, Artists, Album) */}
+      <div className="flex flex-col items-center gap-1.5 max-w-lg">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight line-clamp-2">
+          {track.title}
+        </h2>
+        <div className="text-base sm:text-lg font-medium text-muted-foreground">
+          <ArtistLinks
+            artists={track.artists}
+            fallback={track.artist}
+            trackTitle={track.title}
+            className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
+          />
+        </div>
+        {track.album && (
+          <span className="text-xs sm:text-sm text-muted-foreground/75 font-medium line-clamp-1">
+            {track.album}
+          </span>
+        )}
+      </div>
+
+      {/* Status & Retry */}
+      <div className="flex flex-col items-center gap-3 mt-1">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-foreground/5 dark:bg-white/10 backdrop-blur-md border border-border/40 text-xs sm:text-sm font-semibold text-foreground/80 shadow-xs">
+          <LyricsIcon size={16} className="text-muted-foreground" aria-hidden="true" />
+          <span>{message}</span>
+        </div>
+
+        {onRetry && (
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full bg-foreground text-background px-5 py-2 text-xs font-bold transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer"
+            onClick={onRetry}
+          >
+            <RefreshIcon size={14} aria-hidden="true" />
+            Try again
+          </button>
+        )}
+      </div>
+
+      <ArtworkLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        artworkUrl={artworkUrl}
+      />
     </div>
   );
 }
