@@ -197,7 +197,7 @@ export function TitleBar({
         aria-current={isHomeActive ? "page" : undefined}
       >
         <img
-          className="h-5 w-auto object-contain select-none transition-opacity group-hover:opacity-85"
+          className="h-5 w-auto object-contain select-none transition-opacity group-hover:opacity-85 translate-y-1"
           src={openTuneText}
           alt="OpenTune"
         />

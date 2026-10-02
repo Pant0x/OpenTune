@@ -872,20 +872,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               </div>
 
               {renderPlaybackControls()}
-
-              {/* Subtle status badge without duplicate preview picture */}
-              <div className="flex items-center gap-2 mt-5 text-xs font-medium text-white/70 bg-white/10 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/15 shadow-sm">
-                <span>{emptyMessage}</span>
-                {isOnline && (
-                  <button
-                    type="button"
-                    onClick={() => setReloadToken((token) => token + 1)}
-                    className="ml-1 text-white hover:underline cursor-pointer font-semibold"
-                  >
-                    Try again
-                  </button>
-                )}
-              </div>
             </div>
           </div>
         ) : (
