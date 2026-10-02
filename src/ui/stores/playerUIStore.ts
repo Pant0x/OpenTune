@@ -79,7 +79,11 @@ class PlayerUIStore {
   }
 
   setLyricsFullscreen(isLyricsFullscreen: boolean) {
-    this.setState({ isLyricsFullscreen });
+    if (isLyricsFullscreen) {
+      this.setState({ isLyricsFullscreen, isQueueOpen: false });
+    } else {
+      this.setState({ isLyricsFullscreen });
+    }
   }
 
   setNowPlayingFullscreen(isNowPlayingFullscreen: boolean) {
@@ -91,7 +95,11 @@ class PlayerUIStore {
       });
       return;
     }
-    this.setState({ isNowPlayingFullscreen });
+    if (isNowPlayingFullscreen) {
+      this.setState({ isNowPlayingFullscreen, isQueueOpen: false });
+    } else {
+      this.setState({ isNowPlayingFullscreen });
+    }
   }
 
   openNowPlayingFromLyrics() {

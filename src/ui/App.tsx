@@ -1378,7 +1378,11 @@ export default function App() {
             && !playerUIState.isLyricsFullscreen
             && (currentView.view === "playlist" || currentView.view === "album")
           }
-          rightPanel={playerUIState.isQueueOpen ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} onOpenHistory={handleOpenHistory} /> : undefined}
+          rightPanel={
+            !playerUIState.isLyricsFullscreen && !playerUIState.isNowPlayingFullscreen && playerUIState.isQueueOpen
+              ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} onOpenHistory={handleOpenHistory} />
+              : undefined
+          }
           rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
           onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange}
           isQueuePanelCollapsed={isQueuePanelCollapsed}

@@ -351,7 +351,7 @@ export function Layout({
     <div
       className={cn(
         "relative flex min-h-0 flex-1 overflow-hidden",
-        fullBleedContent ? "p-0 m-0" : isLyricsOpen ? "px-2 pt-2 pb-0" : "px-2 pt-2",
+        fullBleedContent ? "p-0 m-0" : "px-2 pt-2",
       )}
     >
       <div
@@ -417,7 +417,7 @@ export function Layout({
             fullBleedContent
               ? "p-0 gap-0 rounded-none bg-black"
               : isLyricsOpen
-                ? "p-0 gap-0 rounded-t-2xl rounded-b-none bg-card overflow-hidden border-0"
+                ? "p-0 gap-0 rounded-2xl bg-card overflow-hidden border-0"
                 : "gap-3 px-4 pt-2 rounded-2xl bg-background",
           )}
         >
@@ -470,7 +470,7 @@ export function Layout({
                   fullBleedContent
                     ? "p-0 pb-0 scroll-pb-0 rounded-none overflow-hidden bg-black"
                     : isLyricsOpen
-                      ? "p-0 pb-0 scroll-pb-0 rounded-t-2xl rounded-b-none overflow-hidden bg-card"
+                      ? "p-0 pb-0 scroll-pb-0 rounded-2xl overflow-hidden bg-card"
                       : "rounded-xl px-4 pt-1 pb-28 scroll-pb-28",
                 )}
                 data-page-scroll-root

@@ -53,6 +53,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
     if (isFullscreen) {
       playerUIStore.setLyricsFullscreen(false);
     } else {
+      playerUIStore.setQueueOpen(false);
       playerUIStore.setLyricsOpen(true);
       playerUIStore.setLyricsFullscreen(true);
     }

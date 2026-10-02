@@ -151,7 +151,7 @@ export function TitleBar({
       <button
         type="button"
         className={cn(
-          "flex shrink-0 items-center gap-2.5 px-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset group cursor-pointer",
+          "flex shrink-0 items-center gap-2.5 pl-5 pr-3 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset group cursor-pointer",
           isHomeActive ? "text-primary" : "text-foreground",
         )}
         onClick={() => {

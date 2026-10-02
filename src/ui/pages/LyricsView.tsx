@@ -657,11 +657,146 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       ? "Lyrics could not be loaded."
       : "No lyrics found for this song.";
 
+  const renderPlaybackControls = () => {
+    if (!track) return null;
+    return (
+      <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
+        {/* Track Title, Artist, Love (Heart) & Download */}
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <div className="flex min-w-0 flex-col text-left">
+            <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
+            <span className="truncate text-sm text-white/70">
+              <ArtistLinks artists={track.artists} fallback={track.artist} />
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {canLikeCurrentTrack && (
+              <button
+                type="button"
+                className={cn(
+                  "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
+                  "hover:scale-110 active:scale-95 disabled:pointer-events-none disabled:opacity-50",
+                  isLiked ? "text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+                )}
+                onClick={() => void toggleTrackLike(track)}
+                disabled={isLikePending}
+                title={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                aria-label={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+              >
+                {isLiked ? (
+                  <span className="relative grid size-[18px] place-items-center">
+                    <HeartActiveIcon size={18} className="absolute group-hover/like:opacity-0" />
+                    <HeartBrokenIcon size={18} className="absolute opacity-0 group-hover/like:opacity-100" />
+                  </span>
+                ) : (
+                  <HeartIcon size={18} />
+                )}
+              </button>
+            )}
+            <DownloadButton className="text-white/60 hover:text-white hover:bg-white/10 hover:scale-110 active:scale-95" />
+          </div>
+        </div>
+
+        {/* Time progress bar without '-' */}
+        <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
+          <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
+          <span>{formatMinutesSeconds(track.durationSec || 0)}</span>
+        </div>
+
+        <input
+          type="range"
+          min={0}
+          max={track.durationSec || 100}
+          step="any"
+          value={currentPlaybackTime}
+          onChange={(e) => {
+            const t = parseFloat(e.target.value);
+            pendingSeekRef.current = { target: t, at: performance.now() };
+            setCurrentPlaybackTime(t);
+            void playerController.seekTo(t);
+          }}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 focus-visible:outline-none transition-all [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,#ffffff_var(--slider-progress),rgba(255,255,255,0.25)_var(--slider-progress))] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(255,255,255,0.9)]"
+          style={{
+            "--slider-progress": `${(track.durationSec && track.durationSec > 0) ? (currentPlaybackTime / track.durationSec) * 100 : 0}%`,
+          } as React.CSSProperties}
+          aria-label="Seek track"
+        />
+
+        {/* Dock Controls: Shuffle, Previous, Play/Pause, Next, Repeat */}
+        <div className="flex items-center justify-between px-1 mt-2 text-white">
+          <button
+            type="button"
+            onClick={() => playerController.toggleShuffle()}
+            className={cn(
+              "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
+              isShuffled ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+            )}
+            aria-label={isShuffled ? "Turn off shuffle" : "Shuffle"}
+            title={isShuffled ? "Shuffle is on" : "Shuffle"}
+          >
+            {isShuffled ? <ShuffleActiveIcon size={19} /> : <ShuffleIcon size={19} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void playerController.skipToPrevious()}
+            className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+            aria-label="Previous track"
+          >
+            <SkipPreviousIcon size={22} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void playerController.togglePlayPause()}
+            className="flex size-11 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? <PauseActiveIcon size={20} fill="currentColor" /> : <PlayActiveIcon size={20} fill="currentColor" className="ml-0.5" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void playerController.skipToNext()}
+            className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+            aria-label="Next track"
+          >
+            <SkipNextIcon size={22} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => playerController.cyclePlaybackOrderMode()}
+            className={cn(
+              "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
+              isRepeatActive ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+            )}
+            aria-label={
+              repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
+            }
+            title={
+              repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
+            }
+          >
+            {repeatMode === "repeat-one" ? (
+              <RepeatOneActiveIcon size={19} />
+            ) : repeatMode === "repeat-all" ? (
+              <RepeatActiveIcon size={19} />
+            ) : (
+              <RepeatIcon size={19} />
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "bg-black text-white",
+        isFullscreen ? "bg-black text-white" : "rounded-2xl",
       )}
       aria-label="Lyrics"
     >
@@ -691,7 +826,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
       {/* Top Header: Transparent Black Bar hosting Song / Video Switcher - Hidden in Fullscreen Mode */}
       {!isFullscreen && (
-        <header className="shrink-0 z-30 flex items-center justify-center py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full">
+        <header className="shrink-0 z-30 flex items-center justify-center py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full rounded-t-2xl">
           <div className="flex items-center rounded-full bg-black/60 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
             <button
               type="button"
@@ -722,190 +857,82 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       )}
 
       {isFullscreen ? (
-        /* Split Screen Fullscreen View (Pure lyrics, no video section) */
-        <div className="relative min-h-0 flex-1 flex flex-col justify-center">
-          <div className={cn(
-            "grid gap-8 lg:gap-14 items-center max-w-[1850px] w-full mx-auto px-6 md:px-10 lg:pl-10 lg:pr-8 py-8 overflow-hidden",
-            showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-5xl",
-          )}>
-            {/* Left Column: Artwork Card + Mini Transport Player (Only when showPlaybackCard is true) */}
-            {showPlaybackCard && (
-              <div className="lg:col-span-4 xl:col-span-4 flex flex-col items-center lg:items-start justify-center lg:pl-0 xl:pl-4">
-                <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
-                  <TrackArtwork
-                    artworkUrl={effectiveArtworkUrl}
-                    size={420}
-                    className="size-full object-cover"
-                    iconSize={64}
-                    loading="eager"
-                  />
-                </div>
+        !isLoading && !hasLines ? (
+          /* Centered Player in Fullscreen when there are no lyrics */
+          <div className="relative min-h-0 flex-1 flex flex-col items-center justify-center p-6 sm:p-10 select-none">
+            <div className="flex flex-col items-center justify-center max-w-sm sm:max-w-md w-full">
+              <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card shrink-0">
+                <TrackArtwork
+                  artworkUrl={effectiveArtworkUrl}
+                  size={420}
+                  className="size-full object-cover"
+                  iconSize={64}
+                  loading="eager"
+                />
+              </div>
 
-                {/* Mini Player Under Artwork with Dock Controls */}
-                {track && (
-                  <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
-                    {/* Track Title, Artist, Love (Heart) & Download */}
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <div className="flex min-w-0 flex-col text-left">
-                        <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
-                        <span className="truncate text-sm text-white/70">
-                          <ArtistLinks artists={track.artists} fallback={track.artist} />
-                        </span>
-                      </div>
+              {renderPlaybackControls()}
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        {canLikeCurrentTrack && (
-                          <button
-                            type="button"
-                            className={cn(
-                              "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
-                              "hover:scale-110 active:scale-95 disabled:pointer-events-none disabled:opacity-50",
-                              isLiked ? "text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
-                            )}
-                            onClick={() => void toggleTrackLike(track)}
-                            disabled={isLikePending}
-                            title={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
-                            aria-label={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
-                          >
-                            {isLiked ? (
-                              <span className="relative grid size-[18px] place-items-center">
-                                <HeartActiveIcon size={18} className="absolute group-hover/like:opacity-0" />
-                                <HeartBrokenIcon size={18} className="absolute opacity-0 group-hover/like:opacity-100" />
-                              </span>
-                            ) : (
-                              <HeartIcon size={18} />
-                            )}
-                          </button>
-                        )}
-                        <DownloadButton className="text-white/60 hover:text-white hover:bg-white/10 hover:scale-110 active:scale-95" />
-                      </div>
-                    </div>
-
-                    {/* Time progress bar without '-' */}
-                    <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
-                      <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
-                      <span>{formatMinutesSeconds(track.durationSec || 0)}</span>
-                    </div>
-
-                    <input
-                      type="range"
-                      min={0}
-                      max={track.durationSec || 100}
-                      step="any"
-                      value={currentPlaybackTime}
-                      onChange={(e) => {
-                        const t = parseFloat(e.target.value);
-                        pendingSeekRef.current = { target: t, at: performance.now() };
-                        setCurrentPlaybackTime(t);
-                        void playerController.seekTo(t);
-                      }}
-                      className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/20 focus-visible:outline-none transition-all [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[linear-gradient(to_right,#ffffff_var(--slider-progress),rgba(255,255,255,0.25)_var(--slider-progress))] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_12px_rgba(255,255,255,0.9)]"
-                      style={{
-                        "--slider-progress": `${(track.durationSec && track.durationSec > 0) ? (currentPlaybackTime / track.durationSec) * 100 : 0}%`,
-                      } as React.CSSProperties}
-                      aria-label="Seek track"
-                    />
-
-                    {/* Dock Controls: Shuffle, Previous, Play/Pause, Next, Repeat */}
-                    <div className="flex items-center justify-between px-1 mt-2 text-white">
-                      <button
-                        type="button"
-                        onClick={() => playerController.toggleShuffle()}
-                        className={cn(
-                          "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
-                          isShuffled ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
-                        )}
-                        aria-label={isShuffled ? "Turn off shuffle" : "Shuffle"}
-                        title={isShuffled ? "Shuffle is on" : "Shuffle"}
-                      >
-                        {isShuffled ? <ShuffleActiveIcon size={19} /> : <ShuffleIcon size={19} />}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => void playerController.skipToPrevious()}
-                        className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Previous track"
-                      >
-                        <SkipPreviousIcon size={22} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => void playerController.togglePlayPause()}
-                        className="flex size-11 items-center justify-center rounded-full bg-white text-black shadow-lg hover:scale-105 active:scale-95 transition-transform cursor-pointer"
-                        aria-label={isPlaying ? "Pause" : "Play"}
-                      >
-                        {isPlaying ? <PauseActiveIcon size={20} fill="currentColor" /> : <PlayActiveIcon size={20} fill="currentColor" className="ml-0.5" />}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => void playerController.skipToNext()}
-                        className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Next track"
-                      >
-                        <SkipNextIcon size={22} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => playerController.cyclePlaybackOrderMode()}
-                        className={cn(
-                          "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
-                          isRepeatActive ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
-                        )}
-                        aria-label={
-                          repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
-                        }
-                        title={
-                          repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
-                        }
-                      >
-                        {repeatMode === "repeat-one" ? (
-                          <RepeatOneActiveIcon size={19} />
-                        ) : repeatMode === "repeat-all" ? (
-                          <RepeatActiveIcon size={19} />
-                        ) : (
-                          <RepeatIcon size={19} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
+              {/* Subtle status badge without duplicate preview picture */}
+              <div className="flex items-center gap-2 mt-5 text-xs font-medium text-white/70 bg-white/10 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/15 shadow-sm">
+                <span>{emptyMessage}</span>
+                {isOnline && (
+                  <button
+                    type="button"
+                    onClick={() => setReloadToken((token) => token + 1)}
+                    className="ml-1 text-white hover:underline cursor-pointer font-semibold"
+                  >
+                    Try again
+                  </button>
                 )}
               </div>
-            )}
-
-            {/* Right Column: Synced Lyrics */}
+            </div>
+          </div>
+        ) : (
+          /* Split Screen Fullscreen View (Pure lyrics, no video section) */
+          <div className="relative min-h-0 flex-1 flex flex-col justify-center">
             <div className={cn(
-              "h-[70vh] lg:h-[80vh] relative",
-              showPlaybackCard ? "lg:col-span-8 xl:col-span-8" : "lg:col-span-12 flex justify-center w-full",
+              "grid gap-8 lg:gap-14 items-center max-w-[1850px] w-full mx-auto px-6 md:px-10 lg:pl-10 lg:pr-8 py-8 overflow-hidden",
+              showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-5xl",
             )}>
-              <div
-                ref={scrollerRef}
-                className={cn(
-                  "relative h-full overflow-y-auto overscroll-contain px-4 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                  !showPlaybackCard && "w-full max-w-4xl",
-                )}
-                onWheel={pauseFollow}
-                onPointerDown={pauseFollow}
-                onTouchMove={pauseFollow}
-              >
-                <div className={cn("max-w-4xl xl:max-w-5xl w-full", hasLines ? (isSynced ? "py-[40vh]" : "pb-20 pt-8") : "py-8 flex flex-col items-center justify-center min-h-[50vh]")}>
-                  {isLoading && <LyricsSkeleton />}
-
-                  {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
-
-                  {!isLoading && track && !hasLines && (
-                    <LyricsEmptyShowcase
-                      track={track}
+              {/* Left Column: Artwork Card + Mini Transport Player (Only when showPlaybackCard is true) */}
+              {showPlaybackCard && (
+                <div className="lg:col-span-4 xl:col-span-4 flex flex-col items-center lg:items-start justify-center lg:pl-0 xl:pl-4">
+                  <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
+                    <TrackArtwork
                       artworkUrl={effectiveArtworkUrl}
-                      message={emptyMessage}
-                      onRetry={isOnline ? () => setReloadToken((token) => token + 1) : undefined}
+                      size={420}
+                      className="size-full object-cover"
+                      iconSize={64}
+                      loading="eager"
                     />
-                  )}
+                  </div>
 
-                  {!isLoading && hasLines && (
+                  {renderPlaybackControls()}
+                </div>
+              )}
+
+              {/* Right Column: Synced Lyrics */}
+              <div className={cn(
+                "h-[70vh] lg:h-[80vh] relative",
+                showPlaybackCard ? "lg:col-span-8 xl:col-span-8" : "lg:col-span-12 flex justify-center w-full",
+              )}>
+                <div
+                  ref={scrollerRef}
+                  className={cn(
+                    "relative h-full overflow-y-auto overscroll-contain px-4 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    !showPlaybackCard && "w-full max-w-4xl",
+                  )}
+                  onWheel={pauseFollow}
+                  onPointerDown={pauseFollow}
+                  onTouchMove={pauseFollow}
+                >
+                  <div className={cn("max-w-4xl xl:max-w-5xl w-full", hasLines ? (isSynced ? "py-[40vh]" : "pb-20 pt-8") : "py-8 flex flex-col items-center justify-center min-h-[50vh]")}>
+                    {isLoading && <LyricsSkeleton />}
+
+                    {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
+
+                    {!isLoading && hasLines && (
                     <div
                       className="flex flex-col pl-5"
                       style={{
@@ -1009,6 +1036,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
             </div>
           </div>
         </div>
+        )
       ) : mediaMode === "video" ? (
         /* Video Mode View: positioned cleanly under the top header with proper padding */
         <div className="relative min-h-0 flex-1 w-full flex flex-col justify-start items-center p-4 sm:p-8 pt-4 pb-16 max-w-5xl mx-auto overflow-y-auto">
