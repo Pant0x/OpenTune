@@ -236,7 +236,7 @@ export default function App() {
       try {
         const [maximized, fullscreen] = await Promise.all([
           appWindow.isMaximized(),
-          appWindow.isFullscreen(),
+          invoke<boolean>("app_is_fullscreen").catch(() => appWindow.isFullscreen()),
         ]);
         if (disposed) return;
         setIsWindowMaximizedOrFullscreen(Boolean(maximized || fullscreen));
@@ -264,19 +264,25 @@ export default function App() {
   const isFullscreenActive = playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen;
 
   // Real OS fullscreen for both Lyrics fullscreen and Now Playing fullscreen:
-  // Handles unmaximizing before entering fullscreen so Windows does not constrain to the work-area,
-  // sets always-on-top so the OS taskbar is completely covered, and focuses the window.
+  // Uses custom native Win32 atomic fullscreen to eliminate the minimize/shrink artifact
+  // while ensuring the Windows taskbar is 100% covered.
   useEffect(() => {
     const win = getCurrentWindow();
     const syncFullscreen = async () => {
       try {
-        const isCurrentFs = await win.isFullscreen().catch(() => false);
+        const isCurrentFs = await invoke<boolean>("app_is_fullscreen")
+          .catch(() => win.isFullscreen().catch(() => false));
+
         if (isFullscreenActive) {
           if (!isCurrentFs) {
-            const isMax = await win.isMaximized().catch(() => false);
-            wasMaximizedBeforeFullscreenRef.current = isMax;
-            await win.setFullscreen(true).catch(() => {});
-            await win.setAlwaysOnTop(true).catch(() => {});
+            await invoke("app_set_fullscreen", { fullscreen: true })
+              .catch(async () => {
+                const isMax = await win.isMaximized().catch(() => false);
+                wasMaximizedBeforeFullscreenRef.current = isMax;
+                if (isMax) await win.unmaximize().catch(() => {});
+                await win.setFullscreen(true).catch(() => {});
+                await win.setAlwaysOnTop(true).catch(() => {});
+              });
             await win.setFocus().catch(() => {});
             if (typeof window !== "undefined") {
               window.focus();
@@ -285,12 +291,15 @@ export default function App() {
           }
         } else {
           if (isCurrentFs) {
-            await win.setAlwaysOnTop(false).catch(() => {});
-            await win.setFullscreen(false).catch(() => {});
-            if (wasMaximizedBeforeFullscreenRef.current) {
-              await win.maximize().catch(() => {});
-              wasMaximizedBeforeFullscreenRef.current = false;
-            }
+            await invoke("app_set_fullscreen", { fullscreen: false })
+              .catch(async () => {
+                await win.setAlwaysOnTop(false).catch(() => {});
+                await win.setFullscreen(false).catch(() => {});
+                if (wasMaximizedBeforeFullscreenRef.current) {
+                  await win.maximize().catch(() => {});
+                  wasMaximizedBeforeFullscreenRef.current = false;
+                }
+              });
             await win.setFocus().catch(() => {});
             if (typeof window !== "undefined") {
               window.focus();

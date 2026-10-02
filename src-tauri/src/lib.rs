@@ -44,6 +44,8 @@ mod macos_media;
 mod windows_media;
 #[cfg(target_os = "linux")]
 mod linux_media;
+#[cfg(target_os = "windows")]
+mod windows_fullscreen;
 
 mod audio;
 mod process_memory;
@@ -4700,6 +4702,42 @@ fn native_audio_set_output_device(
     state.set_output_device(id).map_err(cache_error)
 }
 
+/// Sets true OS borderless fullscreen seamlessly without visible unmaximize shrink.
+#[tauri::command]
+fn app_set_fullscreen(app: tauri::AppHandle, fullscreen: bool) -> Result<(), CommandError> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_fullscreen::implementation::set_fullscreen(&app, fullscreen)
+            .map_err(cache_error)?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri::Manager;
+        if let Some(window) = app.get_webview_window("main").or_else(|| app.webview_windows().values().next().cloned()) {
+            let _ = window.set_fullscreen(fullscreen);
+        }
+        Ok(())
+    }
+}
+
+/// Checks whether the app window is currently in true OS fullscreen mode.
+#[tauri::command]
+fn app_is_fullscreen(app: tauri::AppHandle) -> Result<bool, CommandError> {
+    #[cfg(target_os = "windows")]
+    {
+        if windows_fullscreen::implementation::is_fullscreen() {
+            return Ok(true);
+        }
+    }
+    use tauri::Manager;
+    if let Some(window) = app.get_webview_window("main").or_else(|| app.webview_windows().values().next().cloned()) {
+        Ok(window.is_fullscreen().unwrap_or(false))
+    } else {
+        Ok(false)
+    }
+}
+
 #[tauri::command]
 async fn fetch_youtube_music_audio(video_id: String) -> Result<AudioPayload, CommandError> {
     let started_at = Instant::now();
@@ -5722,6 +5760,8 @@ pub fn run() {
             prefetch_tracks,
             get_playback_status,
             cache_stream_url,
+            app_set_fullscreen,
+            app_is_fullscreen,
             media_server_release,
             proxy_http_request,
             load_youtube_music_cookie,
