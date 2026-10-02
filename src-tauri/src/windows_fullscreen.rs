@@ -78,35 +78,22 @@ pub mod implementation {
         } else {
             let was_max = WAS_MAXIMIZED.swap(false, Ordering::SeqCst);
 
-            unsafe {
-                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
-            }
-
             let _ = window.set_always_on_top(false);
             let _ = window.set_fullscreen(false);
 
             if was_max {
+                let _ = window.maximize();
                 unsafe {
                     if let Some(orig) = SAVED_PLACEMENT.lock().unwrap().take() {
-                        let _ = SetWindowPlacement(hwnd, &orig);
+                        let mut current = WINDOWPLACEMENT::default();
+                        current.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+                        let _ = GetWindowPlacement(hwnd, &mut current);
+                        current.rcNormalPosition = orig.rcNormalPosition;
+                        let _ = SetWindowPlacement(hwnd, &current);
                     }
                 }
-                let _ = window.maximize();
             }
             let _ = window.set_focus();
-
-            unsafe {
-                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
-                let _ = SetWindowPos(
-                    hwnd,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
-                );
-            }
         }
 
         Ok(())
