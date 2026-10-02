@@ -1,21 +1,14 @@
 #[cfg(target_os = "windows")]
 pub mod implementation {
-    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tauri::{AppHandle, Manager};
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    };
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongW, GetWindowPlacement, SetWindowLongW, SetWindowPlacement, SetWindowPos,
-        GWL_STYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOMOVE,
-        SWP_NOOWNERZORDER, SWP_NOSIZE, WINDOWPLACEMENT, WS_CAPTION, WS_MAXIMIZE, WS_POPUP,
-        WS_THICKFRAME,
+        SendMessageW, SetWindowPos, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        WM_SETREDRAW,
     };
 
-    static PREV_PLACEMENT: Mutex<Option<WINDOWPLACEMENT>> = Mutex::new(None);
-    static PREV_STYLE: Mutex<Option<u32>> = Mutex::new(None);
-    static IS_CUSTOM_FULLSCREEN: Mutex<bool> = Mutex::new(false);
+    static WAS_MAXIMIZED: AtomicBool = AtomicBool::new(false);
 
     pub fn set_fullscreen(app: &AppHandle, fullscreen: bool) -> Result<(), String> {
         let window = app
@@ -26,65 +19,59 @@ pub mod implementation {
         let hwnd_raw = window.hwnd().map_err(|e| e.to_string())?;
         let hwnd = HWND(hwnd_raw.0);
 
-        unsafe {
-            if fullscreen {
-                let mut placement = WINDOWPLACEMENT::default();
-                placement.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+        if fullscreen {
+            let is_max = window.is_maximized().unwrap_or(false);
+            WAS_MAXIMIZED.store(is_max, Ordering::SeqCst);
 
-                let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            unsafe {
+                // Freeze rendering so the unmaximize/fullscreen transition is completely invisible and atomic
+                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
+            }
 
-                let mut mi = MONITORINFO::default();
-                mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if is_max {
+                let _ = window.unmaximize();
+            }
+            let _ = window.set_fullscreen(true);
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_focus();
 
-                let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                let _ = GetWindowPlacement(hwnd, &mut placement);
-                let _ = GetMonitorInfoW(monitor, &mut mi);
-
-                // Save state to restore seamlessly
-                *PREV_PLACEMENT.lock().unwrap() = Some(placement);
-                *PREV_STYLE.lock().unwrap() = Some(style);
-                *IS_CUSTOM_FULLSCREEN.lock().unwrap() = true;
-
-                // Strip overlapped/maximized borders & titlebar
-                let new_style =
-                    (style & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_MAXIMIZE.0)) | WS_POPUP.0;
-                SetWindowLongW(hwnd, GWL_STYLE, new_style as i32);
-
-                let monitor_rect = mi.rcMonitor;
-                let width = monitor_rect.right - monitor_rect.left;
-                let height = monitor_rect.bottom - monitor_rect.top;
-
-                // Move directly to cover entire monitor (including taskbar) in ONE atomic call without shrink!
+            unsafe {
+                // Unfreeze and trigger frame update
+                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
                 let _ = SetWindowPos(
                     hwnd,
-                    Some(HWND_TOPMOST),
-                    monitor_rect.left,
-                    monitor_rect.top,
-                    width,
-                    height,
-                    SWP_FRAMECHANGED | SWP_NOOWNERZORDER,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
                 );
-            } else {
-                let prev_style = PREV_STYLE.lock().unwrap().take();
-                let prev_placement = PREV_PLACEMENT.lock().unwrap().take();
-                *IS_CUSTOM_FULLSCREEN.lock().unwrap() = false;
+            }
+        } else {
+            let was_max = WAS_MAXIMIZED.swap(false, Ordering::SeqCst);
 
-                if let Some(style) = prev_style {
-                    SetWindowLongW(hwnd, GWL_STYLE, style as i32);
-                }
+            unsafe {
+                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
+            }
 
-                if let Some(placement) = prev_placement {
-                    let _ = SetWindowPlacement(hwnd, &placement);
-                }
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_fullscreen(false);
+            if was_max {
+                let _ = window.maximize();
+            }
+            let _ = window.set_focus();
 
+            unsafe {
+                let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
                 let _ = SetWindowPos(
                     hwnd,
-                    Some(HWND_NOTOPMOST),
+                    None,
                     0,
                     0,
                     0,
                     0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_NOOWNERZORDER,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
                 );
             }
         }
@@ -92,7 +79,14 @@ pub mod implementation {
         Ok(())
     }
 
-    pub fn is_fullscreen() -> bool {
-        *IS_CUSTOM_FULLSCREEN.lock().unwrap()
+    pub fn is_fullscreen(app: &AppHandle) -> bool {
+        if let Some(window) = app
+            .get_webview_window("main")
+            .or_else(|| app.webview_windows().values().next().cloned())
+        {
+            window.is_fullscreen().unwrap_or(false)
+        } else {
+            false
+        }
     }
 }

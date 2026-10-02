@@ -4726,15 +4726,16 @@ fn app_set_fullscreen(app: tauri::AppHandle, fullscreen: bool) -> Result<(), Com
 fn app_is_fullscreen(app: tauri::AppHandle) -> Result<bool, CommandError> {
     #[cfg(target_os = "windows")]
     {
-        if windows_fullscreen::implementation::is_fullscreen() {
-            return Ok(true);
-        }
+        return Ok(windows_fullscreen::implementation::is_fullscreen(&app));
     }
-    use tauri::Manager;
-    if let Some(window) = app.get_webview_window("main").or_else(|| app.webview_windows().values().next().cloned()) {
-        Ok(window.is_fullscreen().unwrap_or(false))
-    } else {
-        Ok(false)
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri::Manager;
+        if let Some(window) = app.get_webview_window("main").or_else(|| app.webview_windows().values().next().cloned()) {
+            Ok(window.is_fullscreen().unwrap_or(false))
+        } else {
+            Ok(false)
+        }
     }
 }
 
