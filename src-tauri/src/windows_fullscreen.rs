@@ -24,13 +24,10 @@ pub mod implementation {
             WAS_MAXIMIZED.store(is_max, Ordering::SeqCst);
 
             unsafe {
-                // Freeze rendering so the unmaximize/fullscreen transition is completely invisible and atomic
+                // Freeze rendering so the fullscreen transition is completely invisible and atomic
                 let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
             }
 
-            if is_max {
-                let _ = window.unmaximize();
-            }
             let _ = window.set_fullscreen(true);
             let _ = window.set_always_on_top(true);
             let _ = window.set_focus();

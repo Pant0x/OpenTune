@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { MotionConfig } from "motion/react";
 import { cn } from "@/lib/utils";
 import { invoke } from "@tauri-apps/api/core";
@@ -279,7 +278,6 @@ export default function App() {
               .catch(async () => {
                 const isMax = await win.isMaximized().catch(() => false);
                 wasMaximizedBeforeFullscreenRef.current = isMax;
-                if (isMax) await win.unmaximize().catch(() => {});
                 await win.setFullscreen(true).catch(() => {});
                 await win.setAlwaysOnTop(true).catch(() => {});
               });
@@ -1392,12 +1390,17 @@ export default function App() {
             onDismiss={canNavigateBack ? handleNavigateBack : undefined}
           >
           <Suspense fallback={<div className="min-h-0 flex-1" />}>
-          {playerUIState.isLyricsOpen && !playerUIState.isLyricsFullscreen ? (
-            <LyricsView onClose={() => playerUIStore.setLyricsOpen(false)} />
-          ) : playerUIState.isNowPlayingFullscreen ? (
+          {playerUIState.isNowPlayingFullscreen ? (
             <NowPlayingFullscreenView
               onClose={() => {
                 playerUIStore.setNowPlayingFullscreen(false);
+              }}
+            />
+          ) : playerUIState.isLyricsOpen ? (
+            <LyricsView
+              onClose={() => {
+                playerUIStore.setLyricsFullscreen(false);
+                playerUIStore.setLyricsOpen(false);
               }}
             />
           ) : (
@@ -1613,19 +1616,6 @@ export default function App() {
         </>
       )}
 
-      {playerUIState.isLyricsOpen && playerUIState.isLyricsFullscreen && (
-        <Suspense fallback={null}>
-          {createPortal(
-            <LyricsView
-              onClose={() => {
-                playerUIStore.setLyricsFullscreen(false);
-                playerUIStore.setLyricsOpen(false);
-              }}
-            />,
-            document.body,
-          )}
-        </Suspense>
-      )}
 
 
 

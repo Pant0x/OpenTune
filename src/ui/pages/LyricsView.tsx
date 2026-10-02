@@ -661,24 +661,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     <section
       className={cn(
         "@container/lyrics relative flex h-full min-h-0 w-full flex-col overflow-hidden",
-        isFullscreen && "fixed inset-0 w-full h-full z-[9999] bg-black text-white overflow-hidden flex flex-col m-0 p-0 rounded-none border-none",
+        isFullscreen && "bg-black text-white",
       )}
-      style={
-        isFullscreen
-          ? {
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              width: "100%",
-              height: "100%",
-              zIndex: 9999,
-              margin: 0,
-              padding: 0,
-            }
-          : undefined
-      }
       aria-label="Lyrics"
     >
       {/* Dynamic moving ambient background ("Cover Ambience") */}
@@ -689,7 +673,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         <button
           type="button"
           onClick={() => playerUIStore.setLyricsFullscreen(false)}
-          className="fixed top-6 right-6 z-50 flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 group select-none"
+          className="absolute top-6 right-6 z-50 flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 group select-none"
           aria-label="Exit fullscreen"
           title="Exit fullscreen (Esc)"
         >
