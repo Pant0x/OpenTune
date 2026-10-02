@@ -9,10 +9,19 @@ import {
 import { useReduceMotion } from "../settings/renderEffects";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
+  HeartActiveIcon,
+  HeartBrokenIcon,
+  HeartIcon,
   LyricsIcon,
   PauseActiveIcon,
   PlayActiveIcon,
+  QuitFullScreenIcon,
   RefreshIcon,
+  RepeatActiveIcon,
+  RepeatIcon,
+  RepeatOneActiveIcon,
+  ShuffleActiveIcon,
+  ShuffleIcon,
   SkipNextIcon,
   SkipPreviousIcon,
 } from "@/ui/icons";
@@ -20,8 +29,10 @@ import type { Lyrics, LyricsSourceAttempt, LyricsSourceStatus, Track } from "../
 import { LYRICS_SOURCES } from "../../datasource/youtube/lyricsSources";
 import { FloatingPanel } from "../components/FloatingPanel";
 import { logInternalWarn } from "../../internal/logging";
-import { playerController, shallowEqual, usePlayerSelector } from "../../player/playerStore";
+import { playerController, shallowEqual, usePlayerSelector, useLibraryState } from "../../player/playerStore";
 import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
+import { useTrackContextMenu } from "../components/trackContextMenuContext";
+import { DownloadButton } from "../components/player/DownloadButton";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
@@ -99,11 +110,26 @@ interface LyricsViewProps {
 
 export function LyricsView({ onClose }: LyricsViewProps) {
   const playerState = usePlayerSelector(
-    (player) => ({ currentTrack: player.currentTrack, status: player.status }),
+    (player) => ({
+      currentTrack: player.currentTrack,
+      status: player.status,
+      shuffleEnabled: player.shuffleEnabled,
+      playbackOrderMode: player.playbackOrderMode,
+    }),
     shallowEqual,
   );
   const track = playerState.currentTrack;
   const isPlaying = playerState.status === "playing";
+  const libraryState = useLibraryState();
+  const { toggleTrackLike } = useTrackContextMenu();
+  const canLikeCurrentTrack = Boolean(track && track.source !== "local");
+  const isLikePending = Boolean(track && canLikeCurrentTrack && libraryState.pendingLikeTrackIds.has(track.id));
+  const isLiked = Boolean(track && canLikeCurrentTrack && (libraryState.library?.likedSongs.some(
+    (t: Track) => t.id === track.id,
+  ) ?? false));
+  const isShuffled = playerState.shuffleEnabled;
+  const isRepeatActive = playerState.playbackOrderMode !== "in-order";
+  const repeatMode = playerState.playbackOrderMode;
   const reduce = useReduceMotion();
   const playerUIState = usePlayerUIState();
   const isFullscreen = playerUIState.isLyricsFullscreen;
@@ -190,7 +216,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   };
   void toggleSplitMode;
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
-  const [showRemainingTime, setShowRemainingTime] = useState(true);
 
   const handleClose = () => {
     playerUIStore.setLyricsFullscreen(false);
@@ -668,6 +693,20 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       {/* Dynamic moving ambient background ("Cover Ambience") */}
       <CoverAmbienceCanvas artworkUrl={activeBackgroundUrl} className="!inset-0 !h-full !w-full" />
 
+      {/* Floating Exit Fullscreen Button in Fullscreen Mode */}
+      {isFullscreen && (
+        <button
+          type="button"
+          onClick={() => playerUIStore.setLyricsFullscreen(false)}
+          className="fixed top-6 right-6 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white text-xs font-semibold shadow-xl transition-all cursor-pointer group select-none"
+          aria-label="Exit fullscreen"
+          title="Exit fullscreen (Esc)"
+        >
+          <QuitFullScreenIcon size={15} className="transition-transform group-hover:scale-110" />
+          <span>Exit Fullscreen</span>
+        </button>
+      )}
+
       {/*
         The buttons below are navigable but never announced as they light up, so a listener
         using a screen reader would get a static sheet and no sense of where the song is.
@@ -712,12 +751,12 @@ export function LyricsView({ onClose }: LyricsViewProps) {
         /* Split Screen Fullscreen View (Pure lyrics, no video section) */
         <div className="relative min-h-0 flex-1 flex flex-col justify-center">
           <div className={cn(
-            "grid gap-8 lg:gap-14 items-center max-w-[1700px] w-full mx-auto px-6 md:px-12 lg:pl-16 lg:pr-10 py-8 overflow-hidden",
-            showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-4xl",
+            "grid gap-8 lg:gap-14 items-center max-w-[1850px] w-full mx-auto px-6 md:px-10 lg:pl-10 lg:pr-8 py-8 overflow-hidden",
+            showPlaybackCard ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1 max-w-5xl",
           )}>
             {/* Left Column: Artwork Card + Mini Transport Player (Only when showPlaybackCard is true) */}
             {showPlaybackCard && (
-              <div className="lg:col-span-5 flex flex-col items-center lg:items-start justify-center lg:pl-6 xl:pl-10">
+              <div className="lg:col-span-4 xl:col-span-4 flex flex-col items-center lg:items-start justify-center lg:pl-0 xl:pl-4">
                 <div className="relative size-64 sm:size-72 md:size-80 lg:size-[380px] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-card">
                   <TrackArtwork
                     artworkUrl={effectiveArtworkUrl}
@@ -728,29 +767,50 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                   />
                 </div>
 
-                {/* Mini Player Under Artwork */}
+                {/* Mini Player Under Artwork with Dock Controls */}
                 {track && (
                   <div className="w-full max-w-[380px] mt-6 flex flex-col gap-2.5">
-                    <div className="flex min-w-0 flex-col mb-1 text-center lg:text-left">
-                      <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
-                      <span className="truncate text-sm text-white/70">
-                        <ArtistLinks artists={track.artists} fallback={track.artist} />
-                      </span>
+                    {/* Track Title, Artist, Love (Heart) & Download */}
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <div className="flex min-w-0 flex-col text-left">
+                        <span className="truncate text-lg font-bold text-white tracking-tight">{track.title}</span>
+                        <span className="truncate text-sm text-white/70">
+                          <ArtistLinks artists={track.artists} fallback={track.artist} />
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {canLikeCurrentTrack && (
+                          <button
+                            type="button"
+                            className={cn(
+                              "group/like flex size-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
+                              "hover:scale-110 active:scale-95 disabled:pointer-events-none disabled:opacity-50",
+                              isLiked ? "text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+                            )}
+                            onClick={() => void toggleTrackLike(track)}
+                            disabled={isLikePending}
+                            title={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                            aria-label={isLiked ? "Remove from Liked Songs" : "Save to Liked Songs"}
+                          >
+                            {isLiked ? (
+                              <span className="relative grid size-[18px] place-items-center">
+                                <HeartActiveIcon size={18} className="absolute group-hover/like:opacity-0" />
+                                <HeartBrokenIcon size={18} className="absolute opacity-0 group-hover/like:opacity-100" />
+                              </span>
+                            ) : (
+                              <HeartIcon size={18} />
+                            )}
+                          </button>
+                        )}
+                        <DownloadButton className="text-white/60 hover:text-white hover:bg-white/10 hover:scale-110 active:scale-95" />
+                      </div>
                     </div>
 
+                    {/* Time progress bar without '-' */}
                     <div className="flex items-center justify-between text-xs text-white/60 tabular-nums font-medium">
                       <span>{formatMinutesSeconds(currentPlaybackTime)}</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowRemainingTime((prev) => !prev)}
-                        className="hover:text-white transition-colors cursor-pointer select-none font-medium tabular-nums focus-visible:outline-none"
-                        title={showRemainingTime ? "Click to show total length" : "Click to show remaining time"}
-                        aria-label={showRemainingTime ? "Click to show total length" : "Click to show remaining time"}
-                      >
-                        {showRemainingTime
-                          ? `-${formatMinutesSeconds(Math.max(0, (track.durationSec || 0) - currentPlaybackTime))}`
-                          : formatMinutesSeconds(track.durationSec || 0)}
-                      </button>
+                      <span>{formatMinutesSeconds(track.durationSec || 0)}</span>
                     </div>
 
                     <input
@@ -772,11 +832,25 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       aria-label="Seek track"
                     />
 
-                    <div className="flex items-center justify-center gap-5 mt-2 text-white">
+                    {/* Dock Controls: Shuffle, Previous, Play/Pause, Next, Repeat, Exit */}
+                    <div className="flex items-center justify-between mt-2 text-white">
+                      <button
+                        type="button"
+                        onClick={() => playerController.toggleShuffle()}
+                        className={cn(
+                          "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
+                          isShuffled ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+                        )}
+                        aria-label={isShuffled ? "Turn off shuffle" : "Shuffle"}
+                        title={isShuffled ? "Shuffle is on" : "Shuffle"}
+                      >
+                        {isShuffled ? <ShuffleActiveIcon size={19} /> : <ShuffleIcon size={19} />}
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => void playerController.skipToPrevious()}
-                        className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                         aria-label="Previous track"
                       >
                         <SkipPreviousIcon size={22} />
@@ -794,10 +868,43 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       <button
                         type="button"
                         onClick={() => void playerController.skipToNext()}
-                        className="flex size-10 items-center justify-center rounded-full hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        className="flex size-9 items-center justify-center rounded-full text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                         aria-label="Next track"
                       >
                         <SkipNextIcon size={22} />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => playerController.cyclePlaybackOrderMode()}
+                        className={cn(
+                          "flex size-9 items-center justify-center rounded-full transition-colors cursor-pointer",
+                          isRepeatActive ? "text-primary hover:text-primary" : "text-white/60 hover:text-white hover:bg-white/10",
+                        )}
+                        aria-label={
+                          repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
+                        }
+                        title={
+                          repeatMode === "repeat-one" ? "Loop current song" : repeatMode === "repeat-all" ? "Loop the queue" : "Repeat"
+                        }
+                      >
+                        {repeatMode === "repeat-one" ? (
+                          <RepeatOneActiveIcon size={19} />
+                        ) : repeatMode === "repeat-all" ? (
+                          <RepeatActiveIcon size={19} />
+                        ) : (
+                          <RepeatIcon size={19} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => playerUIStore.setLyricsFullscreen(false)}
+                        className="flex size-9 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                        aria-label="Exit fullscreen"
+                        title="Exit fullscreen (Esc)"
+                      >
+                        <QuitFullScreenIcon size={19} />
                       </button>
                     </div>
                   </div>
@@ -808,19 +915,19 @@ export function LyricsView({ onClose }: LyricsViewProps) {
             {/* Right Column: Synced Lyrics */}
             <div className={cn(
               "h-[70vh] lg:h-[80vh] relative",
-              showPlaybackCard ? "lg:col-span-7" : "lg:col-span-12 flex justify-center w-full",
+              showPlaybackCard ? "lg:col-span-8 xl:col-span-8" : "lg:col-span-12 flex justify-center w-full",
             )}>
               <div
                 ref={scrollerRef}
                 className={cn(
-                  "relative h-full overflow-y-auto overscroll-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                  !showPlaybackCard && "w-full max-w-3xl",
+                  "relative h-full overflow-y-auto overscroll-contain px-4 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  !showPlaybackCard && "w-full max-w-4xl",
                 )}
                 onWheel={pauseFollow}
                 onPointerDown={pauseFollow}
                 onTouchMove={pauseFollow}
               >
-                <div className={cn("max-w-xl w-full", hasLines ? (isSynced ? "py-[40vh]" : "pb-20 pt-8") : "py-8 flex flex-col items-center justify-center min-h-[50vh]")}>
+                <div className={cn("max-w-4xl xl:max-w-5xl w-full", hasLines ? (isSynced ? "py-[40vh]" : "pb-20 pt-8") : "py-8 flex flex-col items-center justify-center min-h-[50vh]")}>
                   {isLoading && <LyricsSkeleton />}
 
                   {!isLoading && !track && <LyricsMessage text="Play something to see its lyrics." />}
@@ -892,7 +999,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                             ref={(element) => registerLine(index, element)}
                             dir={isRtlText(displayText) ? "rtl" : "ltr"}
                             className={cn(
-                              "text-pretty py-1 leading-relaxed text-foreground/85 max-w-[88%]",
+                              "text-pretty py-1 leading-relaxed text-foreground/85 max-w-full",
                               alignment === "right" && "self-end text-right",
                               alignment === "center" && "self-center text-center",
                               (!alignment || alignment === "left") && "self-start text-start",

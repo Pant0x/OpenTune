@@ -374,7 +374,7 @@ export const LyricLineView = memo(function LyricLineView({
         aria-current={isActive ? "true" : undefined}
         onFocus={() => onFocusLine?.(index)}
         className={cn(
-          "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-[88%] synced-line lyrics-lyricsContent-lyric",
+          "group relative text-pretty font-bold leading-[1.16] tracking-[-0.035em] max-w-full synced-line lyrics-lyricsContent-lyric",
           alignClass,
           isArabic && "font-arabic tracking-normal font-black leading-snug",
           "transition-all duration-400 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",

@@ -919,13 +919,6 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                     </div>
                   ) : null}
 
-                  {/* Source / Label */}
-                  {(credits?.label || track?.album) && (
-                    <div className="flex flex-col border-t border-white/10 pt-3 text-xs text-white/60">
-                      <span className="font-semibold uppercase tracking-wider text-[10px] text-white/40 mb-0.5">Source</span>
-                      <span className="truncate">{credits?.label || `Released by ${track?.album}`}</span>
-                    </div>
-                  )}
                 </div>
               </div>
 
