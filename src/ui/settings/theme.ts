@@ -48,7 +48,15 @@ export function resolveTheme(preference = readThemePreference()): ResolvedTheme 
  * already correct — a flash of the wrong theme is the classic failure here.
  */
 export function applyTheme(preference = readThemePreference()): void {
-  document.documentElement.setAttribute("data-theme", resolveTheme(preference));
+  const resolved = resolveTheme(preference);
+  document.documentElement.setAttribute("data-theme", resolved);
+  if (resolved === "light") {
+    document.documentElement.classList.remove("dark");
+    document.documentElement.classList.add("light");
+  } else {
+    document.documentElement.classList.add("dark");
+    document.documentElement.classList.remove("light");
+  }
 }
 
 export function setThemePreference(preference: ThemePreference): void {

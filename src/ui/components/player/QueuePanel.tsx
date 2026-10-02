@@ -113,7 +113,7 @@ function SpotifyAboutArtistCard({
           );
         }
       }}
-      className="group relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 cursor-pointer transition-all duration-300 hover:bg-muted/70 dark:hover:bg-[#282828] shadow-lg flex flex-col"
+      className="group relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 cursor-pointer transition-all duration-300 hover:bg-card/80 shadow-lg flex flex-col"
     >
       {/* Top Banner / Hero */}
       <div className="relative h-44 sm:h-52 w-full overflow-hidden bg-black/40">
@@ -258,7 +258,7 @@ function RelatedShelfView({
   return (
     <div
       key={`related-tab-shelf-${sIdx}-${shelf.title}`}
-      className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 flex flex-col gap-3 shadow-md"
+      className="relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 p-4 flex flex-col gap-3 shadow-md"
     >
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -371,7 +371,7 @@ function RelatedShelfView({
                   </div>
                 )}
               </div>
-              <span className="truncate text-[11px] font-medium text-white/90 group-hover:text-white w-full">
+              <span className="truncate text-[11px] font-medium text-foreground/90 group-hover:text-foreground w-full">
                 {artist.name}
               </span>
             </button>
@@ -403,7 +403,7 @@ function RelatedShelfView({
                   iconSize={24}
                 />
               </div>
-              <span className="truncate text-[11px] font-semibold text-white/90 group-hover:text-white w-full text-center">
+              <span className="truncate text-[11px] font-semibold text-foreground/90 group-hover:text-foreground w-full text-center">
                 {album.title}
               </span>
             </button>
@@ -412,7 +412,7 @@ function RelatedShelfView({
       )}
 
       {hasDesc && (
-        <div className="text-xs text-white/80 leading-relaxed bg-white/5 p-3 rounded-xl border border-white/5">
+        <div className="text-xs text-muted-foreground leading-relaxed bg-muted/40 p-3 rounded-xl border border-border/40">
           <p className="line-clamp-6">{shelf.description}</p>
         </div>
       )}
@@ -1663,7 +1663,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
               {/* Lyrics Preview Card (Spotify 1:1 Style with glowing active line) */}
               <div
-                className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 transition-all hover:bg-muted/60 dark:hover:bg-[#282828] cursor-pointer group flex flex-col gap-3 shadow-md"
+                className="relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 p-4 transition-all hover:bg-card/80 cursor-pointer group flex flex-col gap-3 shadow-md"
                 onClick={() => playerUIStore.setLyricsOpen(true)}
               >
                 <div className="flex items-center justify-between">
@@ -1735,7 +1735,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
               </div>
 
               {/* Credits Card (Spotify style) */}
-              <div className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-4 flex flex-col gap-3.5 transition-all hover:bg-muted/60 dark:hover:bg-[#282828] shadow-md">
+              <div className="relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 p-4 flex flex-col gap-3.5 transition-all hover:bg-card/80 shadow-md">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-foreground">
                     Credits
@@ -1869,7 +1869,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
               {/* From the album Card (Spotify-style) */}
               {currentTrack.album && (
                 <div
-                  className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-muted/60 dark:hover:bg-[#282828] transition-all group shadow-md"
+                  className="relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 p-3.5 flex items-center gap-3 cursor-pointer hover:bg-card/80 transition-all group shadow-md"
                   onClick={() => {
                     if (navigateAlbum) {
                       navigateAlbum({
@@ -1914,7 +1914,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
               {/* Next in Queue Preview Card */}
               {(manual.length > 0 || automatic.length > 0) && (
-                <div className="relative shrink-0 overflow-hidden rounded-2xl bg-muted/40 dark:bg-[#242424] border border-border/40 p-3.5 flex items-center justify-between gap-3 shadow-md">
+                <div className="relative shrink-0 overflow-hidden rounded-2xl bg-card border border-border/40 p-3.5 flex items-center justify-between gap-3 shadow-md">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="size-11 rounded-lg overflow-hidden bg-black/40 shrink-0">
                       <TrackArtwork
@@ -2129,22 +2129,22 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
           {/* Recently Played Section in Queue */}
           {recentlyPlayed.length > 0 && (
-            <div className="flex flex-col gap-1 px-2 pt-3 pb-6 border-t border-white/10">
+            <div className="flex flex-col gap-1 px-2 pt-3 pb-6 border-t border-border/40">
               <div className="flex items-center justify-between px-1 py-1 mb-0.5">
                 <button
                   type="button"
                   onClick={() => onOpenHistory?.()}
-                  className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#b3b3b3] hover:text-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded px-1 py-0.5"
+                  className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded px-1 py-0.5"
                   title="Open listening history"
                 >
-                  <ClockIcon size={13} className="text-[#b3b3b3] group-hover:text-white transition-colors shrink-0" />
+                  <ClockIcon size={13} className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
                   <span className="group-hover:underline">Recently played</span>
                   <span className="text-xs opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">→</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => onOpenHistory?.()}
-                  className="text-[11px] font-medium text-[#b3b3b3] hover:text-white transition-colors cursor-pointer"
+                  className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   title="Open listening history"
                 >
                   View all ({recentlyPlayed.length})
@@ -2154,7 +2154,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                 {recentlyPlayed.slice(0, 15).map((track, idx) => (
                   <div
                     key={`queue-recent-${track.id}-${idx}`}
-                    className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-white/10"
+                    className="group flex items-center justify-between gap-2 w-full rounded-xl p-1.5 text-left transition-colors hover:bg-muted/50"
                   >
                     <button
                       type="button"
@@ -2173,10 +2173,10 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                         </span>
                       </div>
                       <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-xs font-semibold text-white group-hover:text-primary transition-colors">
+                        <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
                           {track.title}
                         </span>
-                        <span className="truncate text-[11px] text-[#b3b3b3]">
+                        <span className="truncate text-[11px] text-muted-foreground">
                           {track.artist}
                         </span>
                       </div>
@@ -2189,7 +2189,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                           playerController.addToQueue(track);
                         }}
                         aria-label="Add to queue"
-                        className="size-7 shrink-0 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white bg-white/5 hover:bg-white/15 border border-white/10 transition-all opacity-80 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
+                        className="size-7 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 border border-border/40 transition-all opacity-80 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer"
                       >
                         <PlusIcon size={14} />
                       </button>
@@ -2206,20 +2206,20 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
       {(activeTab === "related" || activeTab === "recent") && (
         <div className="flex flex-1 flex-col overflow-y-auto p-3 gap-3 overscroll-contain">
           {isRelatedLoading && !relatedShelves ? (
-            <div className="flex flex-col gap-2.5 p-4 rounded-2xl bg-[#242424] border border-white/5 animate-pulse">
-              <div className="h-4 w-28 rounded bg-white/10" />
+            <div className="flex flex-col gap-2.5 p-4 rounded-2xl bg-card border border-border/40 animate-pulse">
+              <div className="h-4 w-28 rounded bg-muted" />
               <div className="flex flex-col gap-2 pt-2">
-                <div className="h-10 w-full rounded-lg bg-white/5" />
-                <div className="h-10 w-full rounded-lg bg-white/5" />
-                <div className="h-10 w-full rounded-lg bg-white/5" />
+                <div className="h-10 w-full rounded-lg bg-muted/60" />
+                <div className="h-10 w-full rounded-lg bg-muted/60" />
+                <div className="h-10 w-full rounded-lg bg-muted/60" />
               </div>
             </div>
           ) : !currentTrack ? (
-            <p className="px-4 py-12 text-center text-sm text-[#b3b3b3]">
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
               Play a track to discover related songs and artists.
             </p>
           ) : !relatedShelves || relatedShelves.length === 0 ? (
-            <p className="px-4 py-12 text-center text-sm text-[#b3b3b3]">
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
               No related songs or artists found for this track.
             </p>
           ) : (

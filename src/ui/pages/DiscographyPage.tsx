@@ -172,7 +172,7 @@ export function DiscographyPage({
             </button>
 
             {isSortDropdownOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1.5 min-w-[190px] rounded-xl border border-white/10 bg-[#1e1e1e]/95 p-1.5 shadow-2xl backdrop-blur-md">
+              <div className="absolute right-0 top-full z-50 mt-1.5 min-w-[190px] rounded-xl border border-border/50 bg-popover/95 p-1.5 shadow-2xl backdrop-blur-md text-popover-foreground">
                 <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Sort by
                 </div>
@@ -180,7 +180,7 @@ export function DiscographyPage({
                   type="button"
                   onClick={() => { setSort("date"); setIsSortDropdownOpen(false); }}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-white/10",
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-muted",
                     sort === "date" ? "text-primary font-semibold" : "text-foreground"
                   )}
                 >
@@ -191,7 +191,7 @@ export function DiscographyPage({
                   type="button"
                   onClick={() => { setSort("title"); setIsSortDropdownOpen(false); }}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-white/10",
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-muted",
                     sort === "title" ? "text-primary font-semibold" : "text-foreground"
                   )}
                 >
@@ -199,7 +199,7 @@ export function DiscographyPage({
                   {sort === "title" && <CheckIcon size={14} className="text-primary" />}
                 </button>
 
-                <div className="my-1.5 border-t border-white/10" />
+                <div className="my-1.5 border-t border-border/40" />
 
                 <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   View as
@@ -208,7 +208,7 @@ export function DiscographyPage({
                   type="button"
                   onClick={() => { setViewMode("list"); setIsSortDropdownOpen(false); }}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-white/10",
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-muted",
                     viewMode === "list" ? "text-primary font-semibold" : "text-foreground"
                   )}
                 >
@@ -222,7 +222,7 @@ export function DiscographyPage({
                   type="button"
                   onClick={() => { setViewMode("grid"); setIsSortDropdownOpen(false); }}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-white/10",
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-muted",
                     viewMode === "grid" ? "text-primary font-semibold" : "text-foreground"
                   )}
                 >

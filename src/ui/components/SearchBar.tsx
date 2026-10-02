@@ -72,7 +72,7 @@ function SearchTopArtistRow({
       <button
         type="button"
         onClick={() => onSelect(artist)}
-        className="group flex items-center gap-3.5 w-full rounded-xl p-2.5 text-left transition-colors hover:bg-white/[0.07] focus-visible:outline-none"
+        className="group flex items-center gap-3.5 w-full rounded-xl p-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none"
       >
         <div className="size-12 shrink-0 overflow-hidden rounded-full bg-muted/40 ring-1 ring-border/20 shadow-md">
           <TrackArtwork
@@ -384,7 +384,7 @@ export function SearchBar({
             onClick={onBack}
             disabled={!canGoBack}
             aria-label="Go back"
-            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/10"
+            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <ArrowLeftIcon size={16} aria-hidden="true" />
           </Button>
@@ -398,7 +398,7 @@ export function SearchBar({
             onClick={onForward}
             disabled={!canGoForward}
             aria-label="Go forward"
-            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
+            className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
           >
             <ArrowRightIcon size={16} aria-hidden="true" />
           </Button>
@@ -470,7 +470,7 @@ export function SearchBar({
                               "flex items-center gap-3 w-full rounded-xl px-3 py-1.5 text-left text-sm transition-colors",
                               isSelected
                                 ? "bg-primary/15 text-primary font-medium"
-                                : "text-foreground hover:bg-white/5",
+                                : "text-foreground hover:bg-muted/60",
                             )}
                           >
                             <SearchIcon size={14} className={cn("shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
@@ -501,7 +501,7 @@ export function SearchBar({
                           key={`alb-${album.id}`}
                           type="button"
                           onClick={() => handleSelectAlbum(album)}
-                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-muted/60"
                         >
                           <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
                             <TrackArtwork artworkUrl={album.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
@@ -522,7 +522,7 @@ export function SearchBar({
                           key={`pl-${playlist.id}`}
                           type="button"
                           onClick={() => handleSelectPlaylist(playlist)}
-                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-muted/60"
                         >
                           <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
                             <TrackArtwork artworkUrl={playlist.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
@@ -543,7 +543,7 @@ export function SearchBar({
                           key={`trk-${track.id}`}
                           type="button"
                           onClick={() => handlePlayTrack(track)}
-                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-white/[0.06]"
+                          className="group flex items-center gap-3 w-full rounded-xl p-2 text-left transition-colors hover:bg-muted/60"
                         >
                           <div className="relative size-10 shrink-0 overflow-hidden rounded-lg bg-muted/30 ring-1 ring-border/20">
                             <TrackArtwork artworkUrl={track.artworkUrl} size={40} className="size-full object-cover" iconSize={18} />
@@ -568,7 +568,7 @@ export function SearchBar({
                   <button
                     type="button"
                     onClick={() => handleExecuteSearch(query)}
-                    className="flex items-center justify-center gap-2 w-full rounded-xl py-2 mt-1 bg-white/[0.04] text-xs font-semibold text-foreground transition-colors hover:bg-white/[0.09]"
+                    className="flex items-center justify-center gap-2 w-full rounded-xl py-2 mt-1 bg-muted/40 text-xs font-semibold text-foreground transition-colors hover:bg-muted/80 cursor-pointer"
                   >
                     <SearchIcon size={13} className="text-primary" />
                     <span>See all results for &quot;{query}&quot;</span>

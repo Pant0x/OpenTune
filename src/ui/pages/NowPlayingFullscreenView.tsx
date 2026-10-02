@@ -387,7 +387,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       }
 
       if (next >= 0 && lyricsLineRefs.current[next]) {
-        const rawProgress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current);
+        const rawProgress = getLineProgress(lines, next, effectiveTime, trackDurationRef.current, true);
         const multiplier = getDynamicVocalMultiplier(
           lines[next],
           lines[next + 1],

@@ -48,6 +48,7 @@ export function getLineProgress(
   index: number,
   timeSec: number,
   trackDurationSec?: number,
+  clampLongGaps: boolean = false,
 ): number {
   const line = lines[index];
   const start = line?.startTimeSec;
@@ -56,22 +57,22 @@ export function getLineProgress(
   const isLast = index === lines.length - 1;
   const nextStart = lines[index + 1]?.startTimeSec;
 
+  if (line.endTimeSec !== undefined) {
+    if (line.endTimeSec <= start) return 1;
+    return Math.min(1, Math.max(0, (timeSec - start) / (line.endTimeSec - start)));
+  }
+
   let duration: number;
-  if (line.endTimeSec !== undefined && line.endTimeSec > start) {
-    duration = line.endTimeSec - start;
+  if (clampLongGaps && nextStart !== undefined && nextStart > start && nextStart - start > 6.5) {
+    // Long intro / instrumental gap: do NOT stretch the lyric sweep slowly across 20-30s!
+    // Keep singing pace natural (2.8s to 5.5s) and let it stay fully sung through the rest of the break.
+    const textLen = (line.text || "").trim().length;
+    duration = Math.max(2.8, Math.min(5.5, textLen * 0.12 + 1.2));
   } else if (nextStart !== undefined && nextStart > start) {
-    const rawGap = nextStart - start;
-    if (rawGap > 6.5) {
-      // Long intro / instrumental gap: do NOT stretch the lyric sweep slowly across 20-30s!
-      // Keep singing pace natural (2.8s to 5.5s) and let it stay fully sung through the rest of the break.
-      const textLen = (line.text || "").trim().length;
-      duration = Math.max(2.8, Math.min(5.5, textLen * 0.12 + 1.2));
-    } else {
-      duration = rawGap;
-    }
+    duration = nextStart - start;
   } else if (isLast && trackDurationSec && trackDurationSec > start) {
     const rawGap = trackDurationSec - start;
-    duration = rawGap > 6.5 ? 5.0 : rawGap;
+    duration = clampLongGaps && rawGap > 6.5 ? 5.0 : rawGap;
   } else {
     duration = FALLBACK_LINE_SEC;
   }

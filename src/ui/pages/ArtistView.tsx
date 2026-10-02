@@ -927,19 +927,19 @@ export function ArtistView({
       </div>
 
       {/* Action Controls Bar Below Hero Banner */}
-      <div className="flex flex-wrap items-center gap-5 px-1 py-1 -mt-4">
+      <div className="flex flex-wrap items-center gap-5 px-4 sm:px-6 py-2 -mt-3">
         {/* Play/Pause Button */}
         <button
           type="button"
           onClick={togglePlayCollection}
           disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-          className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl shadow-primary/30 transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+          className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md hover:shadow-lg transition-transform duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
           aria-label={isCurrentCollection && isPlaying ? "Pause" : "Play"}
         >
           {isCurrentCollection && isPlaying ? (
             <PauseIcon size={26} fill="currentColor" />
           ) : (
-            <PlayIcon size={26} fill="currentColor" className="ml-1" />
+            <PlayIcon size={26} fill="currentColor" className="translate-x-0.5" />
           )}
         </button>
 
@@ -948,7 +948,7 @@ export function ArtistView({
           type="button"
           onClick={() => void playShuffled()}
           disabled={isLoading || Boolean(error) || !page?.allSongs.length}
-          className="flex size-10 items-center justify-center rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          className="flex size-10 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
           aria-label="Shuffle play"
         >
           <ShuffleIcon size={22} />
@@ -959,7 +959,7 @@ export function ArtistView({
           <button
             type="button"
             onClick={() => onOpenSettings?.()}
-            className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase text-white shadow-lg backdrop-blur-md transition-all duration-200 cursor-pointer select-none active:scale-95"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card hover:bg-muted px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase text-foreground shadow-sm backdrop-blur-md transition-all duration-200 cursor-pointer select-none active:scale-95"
           >
             <SettingsIcon size={16} />
             <span>Settings</span>
@@ -972,8 +972,8 @@ export function ArtistView({
             className={cn(
               "inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs md:text-sm font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer select-none",
               isSubscribed
-                ? "bg-white hover:bg-white/90 text-black shadow-lg active:scale-95"
-                : "border border-white/40 bg-black/30 text-white hover:border-white hover:bg-white/10 active:scale-95",
+                ? "bg-foreground hover:bg-foreground/90 text-background shadow-md active:scale-95"
+                : "border border-border bg-card text-foreground hover:border-foreground/50 hover:bg-muted active:scale-95",
             )}
           >
             <span>
@@ -992,7 +992,7 @@ export function ArtistView({
         <button
           type="button"
           onClick={() => void copyArtistShareLink()}
-          className="flex items-center gap-2 rounded-full border border-white/20 bg-black/40 px-4 py-2 text-xs md:text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+          className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs md:text-sm font-semibold text-foreground hover:border-foreground/50 hover:bg-muted transition-colors cursor-pointer"
           title="Share artist link"
         >
           <ShareIcon size={15} />
@@ -1004,14 +1004,14 @@ export function ArtistView({
           <button
             type="button"
             onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
-            className="flex size-10 items-center justify-center rounded-full border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/10 transition-colors cursor-pointer"
+            className="flex size-10 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 hover:bg-muted transition-colors cursor-pointer"
             aria-label="More artist options"
           >
             <MenuDotsIcon size={20} />
           </button>
 
           {isHeaderMenuOpen && (
-            <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute left-0 top-full mt-2 z-50 w-56 rounded-xl bg-popover border border-border/50 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 text-popover-foreground">
               {isOwnChannel ? (
                 <button
                   type="button"
@@ -1019,7 +1019,7 @@ export function ArtistView({
                     setIsHeaderMenuOpen(false);
                     onOpenSettings?.();
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
                 >
                   <SettingsIcon size={16} />
                   <span>Channel settings</span>
@@ -1031,9 +1031,9 @@ export function ArtistView({
                     setIsHeaderMenuOpen(false);
                     void toggleArtistSubscription();
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
                 >
-                  {isSubscribed ? <CheckIcon size={16} className="text-emerald-400" /> : <UserPlusIcon size={16} />}
+                  {isSubscribed ? <CheckIcon size={16} className="text-emerald-500" /> : <UserPlusIcon size={16} />}
                   <span>{isCreator ? (isSubscribed ? "Unsubscribe" : "Subscribe") : (isSubscribed ? "Unfollow" : "Follow")}</span>
                 </button>
               )}
@@ -1044,13 +1044,13 @@ export function ArtistView({
                   setIsHeaderMenuOpen(false);
                   toggleBlockArtist();
                 }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
               >
-                <CloseIcon size={16} className="text-red-400" />
+                <CloseIcon size={16} className="text-red-500" />
                 <span>{isBlockedArtist ? "Allow playing this artist" : "Don't play this artist"}</span>
               </button>
 
-              <div className="my-1 h-px bg-white/10" />
+              <div className="my-1 h-px bg-border/40" />
 
               <button
                 type="button"
@@ -1058,7 +1058,7 @@ export function ArtistView({
                   setIsHeaderMenuOpen(false);
                   void copyArtistShareLink();
                 }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
               >
                 <ShareIcon size={16} />
                 <span>Share artist link</span>
@@ -1243,7 +1243,7 @@ export function ArtistView({
                           <button
                             type="button"
                             onClick={() => setActiveSongMenuId(activeSongMenuId === item.id ? null : item.id)}
-                            className="flex size-7 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-white hover:bg-white/10 transition-all focus-visible:opacity-100 cursor-pointer"
+                            className="flex size-7 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground hover:bg-muted transition-all focus-visible:opacity-100 cursor-pointer"
                             aria-label="Track options"
                           >
                             <MenuDotsIcon size={16} />
@@ -1251,7 +1251,7 @@ export function ArtistView({
                           {activeSongMenuId === item.id && (
                             <div
                               ref={songMenuRef}
-                              className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl bg-zinc-900/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
+                              className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl bg-popover border border-border/50 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150 text-popover-foreground"
                             >
                               <button
                                 type="button"
@@ -1259,7 +1259,7 @@ export function ArtistView({
                                   setActiveSongMenuId(null);
                                   handleAddToQueue(item);
                                 }}
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
                               >
                                 <ListIcon size={14} />
                                 <span>Add to queue</span>
@@ -1270,7 +1270,7 @@ export function ArtistView({
                                   setActiveSongMenuId(null);
                                   void handleStartSongRadio(item);
                                 }}
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
                               >
                                 <RadioIcon size={14} className="text-sky-400" />
                                 <span>Go to song radio</span>
@@ -1289,7 +1289,7 @@ export function ArtistView({
                                       releaseDate: raw?.releaseDate,
                                     });
                                   }}
-                                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
                                 >
                                   <AlbumIcon size={14} />
                                   <span>Go to album</span>
@@ -1307,21 +1307,21 @@ export function ArtistView({
                                       setActiveSongMenuId(null);
                                       onOpenArtist?.({ id: art.id || "", name: art.name });
                                     }}
-                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
                                   >
                                     <UserPlusIcon size={14} />
                                     <span className="truncate">Go to {art.name}</span>
                                   </button>
                                 ));
                               })()}
-                              <div className="my-1 h-px bg-white/10" />
+                              <div className="my-1 h-px bg-border/40" />
                               <button
                                 type="button"
                                 onClick={() => {
                                   setActiveSongMenuId(null);
                                   void copySongShareLink(item);
                                 }}
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-white hover:bg-white/10 transition-colors cursor-pointer"
+                                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium hover:bg-muted transition-colors cursor-pointer"
                               >
                                 <CopyIcon size={14} />
                                 <span>Share</span>
@@ -1666,7 +1666,7 @@ export function ArtistView({
           onClick={() => setIsAboutModalOpen(false)}
         >
           <div
-            className="relative flex flex-col max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-zinc-900 border border-white/10 shadow-2xl text-foreground"
+            className="relative flex flex-col max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-card border border-border/50 shadow-2xl text-foreground"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Close Button */}
@@ -1685,7 +1685,7 @@ export function ArtistView({
                 alt={displayedArtist.name}
                 className="max-h-full max-w-full w-auto h-auto object-contain object-center select-none"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent pointer-events-none" />
             </div>
 
             {/* Scrollable Content Body */}
@@ -1695,7 +1695,7 @@ export function ArtistView({
                 <div className="md:col-span-2 flex flex-col gap-6">
                   {/* Monthly Listeners */}
                   <div>
-                    <div className="text-3xl font-extrabold text-white tracking-tight">
+                    <div className="text-3xl font-extrabold text-foreground tracking-tight">
                       {spotifyOverview?.monthlyListeners
                         ? spotifyOverview.monthlyListeners.toLocaleString()
                         : subCount || "—"}
@@ -1708,7 +1708,7 @@ export function ArtistView({
                   {/* Followers */}
                   {spotifyOverview?.followers ? (
                     <div>
-                      <div className="text-2xl font-bold text-white/90">
+                      <div className="text-2xl font-bold text-foreground/90">
                         {spotifyOverview.followers.toLocaleString()}
                       </div>
                       <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mt-1">
@@ -1724,7 +1724,7 @@ export function ArtistView({
                         <span className="text-xl md:text-2xl font-black tracking-tight">#{spotifyOverview.worldRank}</span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm md:text-base font-bold text-white tracking-wide">in the world</span>
+                        <span className="text-sm md:text-base font-bold text-foreground tracking-wide">in the world</span>
                         <span className="text-xs text-muted-foreground">Spotify Global Rank</span>
                       </div>
                     </div>
@@ -1739,7 +1739,7 @@ export function ArtistView({
                       <div className="flex flex-col gap-2.5">
                         {spotifyOverview.topCities.map((city, idx) => (
                           <div key={idx} className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-white/90">
+                            <span className="font-medium text-foreground/90">
                               {city.city}, {city.country}
                             </span>
                             <span className="text-xs text-muted-foreground tabular-nums">
@@ -1763,7 +1763,7 @@ export function ArtistView({
                             key={link.url}
                             type="button"
                             onClick={() => void openUrl(link.url)}
-                            className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.18] active:scale-95 px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer shadow-sm"
+                            className="inline-flex items-center gap-2 rounded-full bg-muted hover:bg-muted/80 active:scale-95 px-4 py-2 text-xs font-semibold text-foreground transition-all cursor-pointer shadow-sm"
                           >
                             {getSocialIcon(link.name)}
                             <span>{formatSocialName(link.name)}</span>
@@ -1773,9 +1773,9 @@ export function ArtistView({
                         <button
                           type="button"
                           onClick={() => void openUrl(spotifyOverview.instagramUrl!)}
-                          className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] hover:bg-white/[0.18] active:scale-95 px-4 py-2 text-xs font-semibold text-white transition-all cursor-pointer shadow-sm"
+                          className="inline-flex items-center gap-2 rounded-full bg-muted hover:bg-muted/80 active:scale-95 px-4 py-2 text-xs font-semibold text-foreground transition-all cursor-pointer shadow-sm"
                         >
-                          <InstagramIcon size={16} className="text-white shrink-0" />
+                          <InstagramIcon size={16} className="text-foreground shrink-0" />
                           <span>Instagram</span>
                         </button>
                       ) : (
@@ -1788,21 +1788,21 @@ export function ArtistView({
                 {/* Right Column: Bio (Sanitized, no raw code!) & Posted By Avatar */}
                 <div className="md:col-span-3 flex flex-col justify-between gap-6">
                   <div className="space-y-4">
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-300">
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/80">
                       {spotifyOverview?.cleanBio || (spotifyOverview?.bio ? sanitizeSpotifyBio(spotifyOverview.bio) : "No biography available for this artist.")}
                     </p>
                   </div>
 
                   {/* "Posted by [Artist Name]" */}
-                  <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+                  <div className="flex items-center gap-3 pt-4 border-t border-border/40">
                     <img
                       src={artistAvatar}
                       alt={displayedArtist.name}
-                      className="size-10 rounded-full object-cover ring-1 ring-white/20"
+                      className="size-10 rounded-full object-cover ring-1 ring-border"
                     />
                     <div className="flex flex-col">
                       <span className="text-xs text-muted-foreground">Posted By</span>
-                      <span className="text-sm font-semibold text-white">{displayedArtist.name}</span>
+                      <span className="text-sm font-semibold text-foreground">{displayedArtist.name}</span>
                     </div>
                   </div>
                 </div>

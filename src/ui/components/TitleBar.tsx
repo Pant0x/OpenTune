@@ -345,7 +345,7 @@ export function TitleBar({
               </p>
               <button
                 type="button"
-                className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mt-3 w-full rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 onClick={() => {
                   setIsAccountPanelOpen(false);
                   setIsAuthModalOpen(true);

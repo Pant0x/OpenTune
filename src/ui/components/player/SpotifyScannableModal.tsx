@@ -108,12 +108,12 @@ export function SpotifyScannableModal({
       aria-modal="true"
       aria-label="Spotify Scannable Code"
     >
-      <div className="relative flex flex-col items-center max-w-sm w-full bg-card/90 border border-white/10 rounded-2xl p-6 shadow-2xl backdrop-blur-xl text-foreground">
+      <div className="relative flex flex-col items-center max-w-sm w-full bg-card/95 border border-border/50 rounded-2xl p-6 shadow-2xl backdrop-blur-xl text-foreground">
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 size-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 size-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           aria-label="Close"
         >
           <CloseIcon size={18} />
@@ -172,7 +172,7 @@ export function SpotifyScannableModal({
               "flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors cursor-pointer",
               copiedLink
                 ? "bg-[#1ed760] text-black"
-                : "bg-white/10 hover:bg-white/15 text-foreground"
+                : "bg-muted hover:bg-muted/80 text-foreground"
             )}
           >
             {copiedLink ? (

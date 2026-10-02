@@ -193,13 +193,13 @@ export function SpotifyCreditsModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-lg rounded-2xl bg-[#282828] border border-white/10 p-6 shadow-2xl flex flex-col gap-6 text-white cursor-default max-h-[85vh] overflow-hidden"
+        className="relative w-full max-w-lg rounded-2xl bg-card border border-border/50 p-6 shadow-2xl flex flex-col gap-6 text-foreground cursor-default max-h-[85vh] overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-white/10 pb-4 shrink-0">
+        <div className="flex items-start justify-between border-b border-border/40 pb-4 shrink-0">
           <div className="flex flex-col gap-0.5">
-            <h2 className="text-xl font-bold tracking-tight text-white">Credits</h2>
-            <span className="text-sm font-semibold text-white/70 line-clamp-1">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Credits</h2>
+            <span className="text-sm font-semibold text-muted-foreground line-clamp-1">
               {credits?.trackTitle || track.title}
             </span>
           </div>
@@ -207,7 +207,7 @@ export function SpotifyCreditsModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-8 items-center justify-center rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
+            className="flex size-8 items-center justify-center rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             aria-label="Close"
           >
             <CloseIcon size={18} />
@@ -215,9 +215,9 @@ export function SpotifyCreditsModal({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex flex-col gap-6 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.2)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20">
+        <div className="flex flex-col gap-6 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.2)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-white/60">
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
               <SpinnerSteps size={24} color="currentColor" />
               <span className="text-sm font-medium">Loading credits...</span>
             </div>
@@ -225,7 +225,7 @@ export function SpotifyCreditsModal({
             <>
               {/* 1. Performed by */}
               <div className="flex flex-col gap-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Performed by
                 </span>
 
@@ -239,26 +239,26 @@ export function SpotifyCreditsModal({
                       <div
                         key={artist.name + i}
                         onClick={() => handleOpenArtist(artist)}
-                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer group"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {avatar ? (
                             <img
                               src={avatar}
                               alt={artist.name}
-                              className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                              className="size-11 rounded-full object-cover ring-1 ring-border shrink-0 group-hover:ring-foreground/30 transition-all"
                             />
                           ) : (
-                            <div className="size-11 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                            <div className="size-11 rounded-full bg-muted flex items-center justify-center font-bold text-sm shrink-0 text-muted-foreground group-hover:bg-muted/80 transition-all">
                               {artist.name[0]?.toUpperCase() || "A"}
                             </div>
                           )}
 
                           <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-bold text-white truncate group-hover:underline">
+                            <span className="text-sm font-bold text-foreground truncate group-hover:underline">
                               {artist.name}
                             </span>
-                            <span className="text-xs text-white/60 font-medium">
+                            <span className="text-xs text-muted-foreground font-medium">
                               {artist.role}
                             </span>
                           </div>
@@ -274,8 +274,8 @@ export function SpotifyCreditsModal({
                           className={cn(
                             "rounded-full px-4 py-1.5 text-xs font-bold border transition-all cursor-pointer shrink-0",
                             isFollowed
-                              ? "border-white/60 bg-white text-black hover:bg-white/90"
-                              : "border-white/40 text-white hover:bg-white/15",
+                              ? "border-foreground bg-foreground text-background hover:bg-foreground/90"
+                              : "border-border text-foreground hover:bg-muted",
                           )}
                         >
                           {isFollowed ? "Following" : "Follow"}
@@ -287,8 +287,8 @@ export function SpotifyCreditsModal({
               </div>
 
               {/* 2. Written by */}
-              <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+              <div className="flex flex-col gap-3 border-t border-border/40 pt-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Written by
                 </span>
 
@@ -299,26 +299,26 @@ export function SpotifyCreditsModal({
                       <div
                         key={w.name + i}
                         onClick={() => handleOpenArtist(w)}
-                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                        className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer group"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           {avatar ? (
                             <img
                               src={avatar}
                               alt={w.name}
-                              className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                              className="size-10 rounded-full object-cover ring-1 ring-border shrink-0 group-hover:ring-foreground/30 transition-all"
                             />
                           ) : (
-                            <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                            <div className="size-10 rounded-full bg-muted flex items-center justify-center font-bold text-sm shrink-0 text-muted-foreground group-hover:bg-muted/80 transition-all">
                               {w.name[0]?.toUpperCase() || "W"}
                             </div>
                           )}
 
                           <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-bold text-white truncate group-hover:underline">
+                            <span className="text-sm font-bold text-foreground truncate group-hover:underline">
                               {w.name}
                             </span>
-                            <span className="text-xs text-white/60 font-medium">
+                            <span className="text-xs text-muted-foreground font-medium">
                               {w.role}
                             </span>
                           </div>
@@ -331,8 +331,8 @@ export function SpotifyCreditsModal({
 
               {/* 3. Produced by */}
               {Boolean(splitProducers.length) && (
-                <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white/50">
+                <div className="flex flex-col gap-3 border-t border-border/40 pt-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Produced by
                   </span>
 
@@ -343,26 +343,26 @@ export function SpotifyCreditsModal({
                         <div
                           key={p.name + i}
                           onClick={() => handleOpenArtist(p)}
-                          className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
+                          className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-muted transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             {avatar ? (
                               <img
                                 src={avatar}
                                 alt={p.name}
-                                className="size-10 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
+                                className="size-10 rounded-full object-cover ring-1 ring-border shrink-0 group-hover:ring-foreground/30 transition-all"
                               />
                             ) : (
-                              <div className="size-10 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm shrink-0 text-white/90 group-hover:bg-white/20 transition-all">
+                              <div className="size-10 rounded-full bg-muted flex items-center justify-center font-bold text-sm shrink-0 text-muted-foreground group-hover:bg-muted/80 transition-all">
                                 {p.name[0]?.toUpperCase() || "P"}
                               </div>
                             )}
 
                             <div className="flex flex-col min-w-0">
-                              <span className="text-sm font-bold text-white truncate group-hover:underline">
+                              <span className="text-sm font-bold text-foreground truncate group-hover:underline">
                                 {p.name}
                               </span>
-                              <span className="text-xs text-white/60 font-medium">
+                              <span className="text-xs text-muted-foreground font-medium">
                                 {p.role}
                               </span>
                             </div>

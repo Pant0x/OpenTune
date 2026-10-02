@@ -467,7 +467,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       if (reduce || next < 0) return;
       /* The sweep is written straight onto the node. It changes every frame by definition,
          so routing it through state would undo the optimisation directly above. */
-      const rawProgress = getLineProgress(currentLines, next, time, durationRef.current);
+      const rawProgress = getLineProgress(currentLines, next, time, durationRef.current, true);
       const multiplier = getDynamicVocalMultiplier(
         currentLines[next],
         currentLines[next + 1],
@@ -1393,19 +1393,19 @@ function LyricsEmptyShowcase({ track, artworkUrl, message, onRetry }: LyricsEmpt
 
       {/* Track Info (Title, Artists, Album) */}
       <div className="flex flex-col items-center gap-1.5 max-w-lg">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight line-clamp-2">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight line-clamp-2 drop-shadow-md">
           {track.title}
         </h2>
-        <div className="text-base sm:text-lg font-medium text-muted-foreground">
+        <div className="text-base sm:text-lg font-medium text-white/80 drop-shadow-sm">
           <ArtistLinks
             artists={track.artists}
             fallback={track.artist}
             trackTitle={track.title}
-            className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
+            className="text-white/80 hover:text-white hover:underline transition-colors"
           />
         </div>
         {track.album && (
-          <span className="text-xs sm:text-sm text-muted-foreground/75 font-medium line-clamp-1">
+          <span className="text-xs sm:text-sm text-white/60 font-medium line-clamp-1 drop-shadow-sm">
             {track.album}
           </span>
         )}
@@ -1413,15 +1413,15 @@ function LyricsEmptyShowcase({ track, artworkUrl, message, onRetry }: LyricsEmpt
 
       {/* Status & Retry */}
       <div className="flex flex-col items-center gap-3 mt-1">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-foreground/5 dark:bg-white/10 backdrop-blur-md border border-border/40 text-xs sm:text-sm font-semibold text-foreground/80 shadow-xs">
-          <LyricsIcon size={16} className="text-muted-foreground" aria-hidden="true" />
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs sm:text-sm font-semibold text-white/90 shadow-md">
+          <LyricsIcon size={16} className="text-white/70" aria-hidden="true" />
           <span>{message}</span>
         </div>
 
         {onRetry && (
           <button
             type="button"
-            className="flex items-center gap-2 rounded-full bg-foreground text-background px-5 py-2 text-xs font-bold transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer"
+            className="flex items-center gap-2 rounded-full bg-white text-black px-5 py-2 text-xs font-bold transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer hover:bg-white/90"
             onClick={onRetry}
           >
             <RefreshIcon size={14} aria-hidden="true" />

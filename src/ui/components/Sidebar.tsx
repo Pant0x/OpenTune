@@ -1265,8 +1265,8 @@ export function Sidebar({
                         "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         isActive
-                          ? "bg-white text-black font-bold shadow-xs"
-                          : "bg-white/[0.08] text-white/85 hover:bg-white/[0.14] hover:text-white",
+                          ? "bg-foreground text-background font-bold shadow-xs"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
                       )}
                       aria-pressed={isActive}
                       aria-label={view.label}
@@ -1282,7 +1282,7 @@ export function Sidebar({
                   type="button"
                   onClick={() => toggleSidebarMode()}
                   aria-label="Collapse sidebar"
-                  className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
                   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -1299,7 +1299,7 @@ export function Sidebar({
                   type="button"
                   onClick={() => toggleSidebarMode()}
                   aria-label="Expand sidebar"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
                   <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
