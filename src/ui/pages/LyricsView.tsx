@@ -16,7 +16,6 @@ import {
   LyricsIcon,
   PauseActiveIcon,
   PlayActiveIcon,
-  QuitFullScreenIcon,
   RefreshIcon,
   RepeatActiveIcon,
   RepeatIcon,
@@ -225,8 +224,15 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   };
 
   useEffect(() => {
+    if (isFullscreen && typeof window !== "undefined") {
+      window.focus();
+      document.body?.focus();
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" || e.code === "Escape") {
         e.preventDefault();
         e.stopPropagation();
         if (isFullscreen) {
@@ -643,22 +649,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     scrollToLine(nextIndex, !reduce);
   };
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (isFullscreen) {
-          playerUIStore.setLyricsFullscreen(false);
-        } else {
-          onClose();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [isFullscreen, onClose]);
-
   // sourceLabel & timingLabel hidden per user request
   void lyrics?.sourceLabel;
   const emptyMessage = !isOnline
@@ -832,8 +822,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                       aria-label="Seek track"
                     />
 
-                    {/* Dock Controls: Shuffle, Previous, Play/Pause, Next, Repeat, Exit */}
-                    <div className="flex items-center justify-between mt-2 text-white">
+                    {/* Dock Controls: Shuffle, Previous, Play/Pause, Next, Repeat */}
+                    <div className="flex items-center justify-between px-1 mt-2 text-white">
                       <button
                         type="button"
                         onClick={() => playerController.toggleShuffle()}
@@ -895,16 +885,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         ) : (
                           <RepeatIcon size={19} />
                         )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => playerUIStore.setLyricsFullscreen(false)}
-                        className="flex size-9 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
-                        aria-label="Exit fullscreen"
-                        title="Exit fullscreen (Esc)"
-                      >
-                        <QuitFullScreenIcon size={19} />
                       </button>
                     </div>
                   </div>

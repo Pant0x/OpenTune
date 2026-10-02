@@ -275,12 +275,13 @@ export default function App() {
           if (!isCurrentFs) {
             const isMax = await win.isMaximized().catch(() => false);
             wasMaximizedBeforeFullscreenRef.current = isMax;
-            if (isMax) {
-              await win.unmaximize().catch(() => {});
-            }
             await win.setFullscreen(true).catch(() => {});
             await win.setAlwaysOnTop(true).catch(() => {});
             await win.setFocus().catch(() => {});
+            if (typeof window !== "undefined") {
+              window.focus();
+              document.body?.focus();
+            }
           }
         } else {
           if (isCurrentFs) {
@@ -291,6 +292,9 @@ export default function App() {
               wasMaximizedBeforeFullscreenRef.current = false;
             }
             await win.setFocus().catch(() => {});
+            if (typeof window !== "undefined") {
+              window.focus();
+            }
           }
         }
       } catch (error) {
@@ -1153,22 +1157,9 @@ export default function App() {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.repeat) return;
       if (event.defaultPrevented) return;
-      const textEntry = isTextEntry(event.target);
-      if (textEntry) return;
 
-      if (event.key === "F11") {
-        event.preventDefault();
-        if (isFullscreenActive) {
-          playerUIStore.setLyricsFullscreen(false);
-          playerUIStore.setNowPlayingFullscreen(false);
-        } else {
-          playerUIStore.setLyricsOpen(true);
-          playerUIStore.setLyricsFullscreen(true);
-        }
-        return;
-      }
-
-      if (event.key === "Escape") {
+      // Fullscreen exit via Escape or F11 must ALWAYS work regardless of what element currently has focus
+      if (event.key === "Escape" || event.code === "Escape") {
         if (playerUIState.isNowPlayingFullscreen) {
           event.preventDefault();
           playerUIStore.setNowPlayingFullscreen(false);
@@ -1185,6 +1176,21 @@ export default function App() {
           return;
         }
       }
+
+      if (event.key === "F11") {
+        event.preventDefault();
+        if (isFullscreenActive) {
+          playerUIStore.setLyricsFullscreen(false);
+          playerUIStore.setNowPlayingFullscreen(false);
+        } else {
+          playerUIStore.setLyricsOpen(true);
+          playerUIStore.setLyricsFullscreen(true);
+        }
+        return;
+      }
+
+      const textEntry = isTextEntry(event.target);
+      if (textEntry) return;
 
       if (
         eventMatchesShortcut(event, keyboardShortcuts.search)
