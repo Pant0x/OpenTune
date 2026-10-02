@@ -1258,28 +1258,56 @@ class SpotifyServiceManager {
       // 1. Performers
       let artists: Array<{ name: string; role: string; avatarUrl?: string; uri?: string }> = [];
       if (Array.isArray(performersSection?.artists) && performersSection.artists.length > 0) {
-        artists = performersSection.artists.map((a: any, index: number) => ({
-          name: a.name || cleanArtist,
-          role: a.subroles?.join(", ") || (index === 0 ? "Main Artist" : "Featured Artist"),
-          avatarUrl: a.imageUri || (index === 0 ? (artistAvatar || undefined) : undefined),
-          uri: a.uri,
-        }));
+        artists = await Promise.all(
+          performersSection.artists.map(async (a: any) => {
+            const name = a.name?.trim() || cleanArtist;
+            const uri = a.uri;
+            // Always fetch the authentic, high-res artist profile avatar by URI/name
+            let avatar: string | undefined;
+            if (uri || name) {
+              avatar = (await this.getArtistAvatar(uri || name)) || undefined;
+            }
+            if (!avatar && a.imageUri) {
+              avatar = a.imageUri;
+            }
+            return {
+              name,
+              role: a.subroles?.join(", ") || "Main Artist",
+              avatarUrl: avatar,
+              uri,
+            };
+          }),
+        );
       } else {
         const rawArtists: any[] = Array.isArray(trackData.artists?.items)
           ? trackData.artists.items
           : [];
         artists = await Promise.all(
           rawArtists.map(async (a, index) => {
-            const name = a?.profile?.name || cleanArtist;
-            const avatar = index === 0 ? (artistAvatar || undefined) : (await this.getArtistAvatar(name) || undefined);
+            const name = a?.profile?.name?.trim() || cleanArtist;
+            const uri = a?.uri;
+            const avatar = (await this.getArtistAvatar(uri || name)) || (index === 0 ? (artistAvatar || undefined) : undefined);
             return {
               name,
               role: index === 0 ? "Main Artist" : "Featured Artist",
               avatarUrl: avatar,
-              uri: a?.uri,
+              uri,
             };
           }),
         );
+      }
+
+      // Safeguard against duplicate avatars on distinct artists (e.g. Spotify returning identical placeholder/collab thumbnails)
+      const seenAvatars = new Map<string, string>();
+      for (const a of artists) {
+        if (a.avatarUrl) {
+          const prevArtist = seenAvatars.get(a.avatarUrl);
+          if (prevArtist && prevArtist.toLowerCase() !== a.name.toLowerCase()) {
+            a.avatarUrl = undefined;
+          } else {
+            seenAvatars.set(a.avatarUrl, a.name);
+          }
+        }
       }
 
       if (artists.length === 0) {
@@ -1295,22 +1323,27 @@ class SpotifyServiceManager {
       if (Array.isArray(writersSection?.artists) && writersSection.artists.length > 0) {
         writers = await Promise.all(
           writersSection.artists.map(async (w: any) => {
-            const name = w.name || cleanArtist;
+            const name = w.name?.trim() || cleanArtist;
+            const uri = w.uri;
             const existingArtist = artists.find((a) => a.name.toLowerCase() === name.toLowerCase());
-            let avatar = w.imageUri || existingArtist?.avatarUrl;
-            if (!avatar) {
-              avatar = (await this.getArtistAvatar(name)) || undefined;
+            let avatar = existingArtist?.avatarUrl;
+            if (!avatar && (uri || name)) {
+              avatar = (await this.getArtistAvatar(uri || name)) || undefined;
+            }
+            if (!avatar && w.imageUri) {
+              avatar = w.imageUri;
             }
             return {
               name,
               role: w.subroles?.join(", ") || "Composer, Lyricist",
               avatarUrl: avatar,
-              uri: w.uri,
+              uri,
             };
           }),
         );
       } else {
-        writers = [{ name: cleanArtist, role: "Composer, Lyricist", avatarUrl: artists[0]?.avatarUrl }];
+        const existing = artists.find((a) => a.name.toLowerCase() === cleanArtist.toLowerCase());
+        writers = [{ name: cleanArtist, role: "Composer, Lyricist", avatarUrl: existing?.avatarUrl }];
       }
 
       // 3. Producers
@@ -1318,20 +1351,26 @@ class SpotifyServiceManager {
       if (Array.isArray(producersSection?.artists) && producersSection.artists.length > 0) {
         producers = await Promise.all(
           producersSection.artists.map(async (p: any) => {
-            const name = p.name;
+            const name = p.name?.trim();
+            if (!name) return null;
+            const uri = p.uri;
             const existingArtist = artists.find((a) => a.name.toLowerCase() === name.toLowerCase());
-            let avatar = p.imageUri || existingArtist?.avatarUrl;
-            if (!avatar) {
-              avatar = (await this.getArtistAvatar(name)) || undefined;
+            let avatar = existingArtist?.avatarUrl;
+            if (!avatar && (uri || name)) {
+              avatar = (await this.getArtistAvatar(uri || name)) || undefined;
+            }
+            if (!avatar && p.imageUri) {
+              avatar = p.imageUri;
             }
             return {
               name,
               role: p.subroles?.join(", ") || "Producer",
               avatarUrl: avatar,
-              uri: p.uri,
+              uri,
             };
           }),
         );
+        producers = producers.filter((p): p is NonNullable<typeof p> => Boolean(p));
       }
 
       // 4. Source & Label

@@ -337,23 +337,6 @@ export const LyricLineView = memo(function LyricLineView({
           const rawText = item.text;
           const cleanText = cleanAdlibBrackets(rawText);
           if (!cleanText) return null;
-
-          if (isActive && !reduceMotion) {
-            return (
-              <span key={item.id} className="inline-block whitespace-nowrap">
-                {cleanText.split("").map((ch, cIdx) => (
-                  <span
-                    key={cIdx}
-                    className="adlib-letter-rumble"
-                    style={{ animationDelay: `${((cIdx % 10) * 0.14).toFixed(2)}s` }}
-                  >
-                    {ch === " " ? "\u00A0" : ch}
-                  </span>
-                ))}
-              </span>
-            );
-          }
-
           return <span key={item.id}>{cleanText}</span>;
         });
 
@@ -398,7 +381,7 @@ export const LyricLineView = memo(function LyricLineView({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
           isActive && "is-active lyrics-lyricsContent-active",
           sweeps ? "lyric-sweep font-black" : "text-foreground font-semibold",
-          adlibLine && isActive && "adlib-wobble-active opacity-90",
+          adlibLine && isActive && "opacity-90",
           adlibLine && !isActive && "opacity-50 italic",
           !isActive && "hover:opacity-95 hover:filter-none hover:scale-100",
         )}

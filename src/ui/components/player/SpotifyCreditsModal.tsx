@@ -85,12 +85,11 @@ export function SpotifyCreditsModal({
             {
               name: track.artist,
               role: "Main Artist",
-              avatarUrl: track.artworkUrl,
+              avatarUrl: undefined,
             },
           ],
-          writers: [{ name: track.artist, role: "Composer, Lyricist", avatarUrl: track.artworkUrl }],
+          writers: [{ name: track.artist, role: "Composer, Lyricist", avatarUrl: undefined }],
           producers: [],
-          label: track.album ? `Released by ${track.album}` : undefined,
         });
       }
       setIsLoading(false);
@@ -131,16 +130,17 @@ export function SpotifyCreditsModal({
   }, [rawProducers, splitArtists]);
 
   useEffect(() => {
-    const missing = [...splitWriters, ...splitProducers].filter(
-      (p) => !p.avatarUrl && !extraAvatars[p.name.toLowerCase()],
+    const allPeople = [...splitArtists, ...splitWriters, ...splitProducers];
+    const missing = allPeople.filter(
+      (p) => !p.avatarUrl && !extraAvatars[p.name.trim().toLowerCase()],
     );
     if (missing.length === 0) return;
     let active = true;
 
     for (const p of missing) {
-      void SpotifyService.getArtistAvatar(p.name).then((url) => {
+      void SpotifyService.getArtistAvatar(p.uri || p.name).then((url) => {
         if (active && url) {
-          setExtraAvatars((prev) => ({ ...prev, [p.name.toLowerCase()]: url }));
+          setExtraAvatars((prev) => ({ ...prev, [p.name.trim().toLowerCase()]: url }));
         }
       });
     }
@@ -148,7 +148,7 @@ export function SpotifyCreditsModal({
     return () => {
       active = false;
     };
-  }, [splitWriters, splitProducers, extraAvatars]);
+  }, [splitArtists, splitWriters, splitProducers, extraAvatars]);
 
   if (!isOpen) return null;
 
@@ -170,6 +170,20 @@ export function SpotifyCreditsModal({
     if (isFirst) {
       onToggleFollowArtist();
     }
+  };
+
+  // Resolve avatar for a person, ensuring no two different people display identical avatar images
+  const getAvatarFor = (name: string, explicitUrl?: string) => {
+    const raw = explicitUrl || extraAvatars[name.trim().toLowerCase()];
+    if (!raw) return undefined;
+    // Check if another artist in splitArtists already claimed this URL under a different name
+    const conflictingPerformer = splitArtists.find(
+      (a) => a.name.trim().toLowerCase() !== name.trim().toLowerCase() && (a.avatarUrl || extraAvatars[a.name.trim().toLowerCase()]) === raw,
+    );
+    if (conflictingPerformer) {
+      return undefined;
+    }
+    return raw;
   };
 
   return (
@@ -219,6 +233,7 @@ export function SpotifyCreditsModal({
                   {splitArtists.map((artist, i) => {
                     const artistId = artist.uri?.replace("spotify:artist:", "") || "";
                     const isFollowed = isArtistFollowedLocally(artist.name, artistId) || (i === 0 && isFollowingArtist);
+                    const avatar = getAvatarFor(artist.name, artist.avatarUrl);
 
                     return (
                       <div
@@ -227,9 +242,9 @@ export function SpotifyCreditsModal({
                         className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer group"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          {artist.avatarUrl ? (
+                          {avatar ? (
                             <img
-                              src={artist.avatarUrl}
+                              src={avatar}
                               alt={artist.name}
                               className="size-11 rounded-full object-cover ring-1 ring-white/10 shrink-0 group-hover:ring-white/30 transition-all"
                             />
@@ -279,7 +294,7 @@ export function SpotifyCreditsModal({
 
                 <div className="flex flex-col gap-1.5">
                   {splitWriters.map((w, i) => {
-                    const avatar = w.avatarUrl || extraAvatars[w.name.trim().toLowerCase()];
+                    const avatar = getAvatarFor(w.name, w.avatarUrl);
                     return (
                       <div
                         key={w.name + i}
@@ -323,7 +338,7 @@ export function SpotifyCreditsModal({
 
                   <div className="flex flex-col gap-1.5">
                     {splitProducers.map((p, i) => {
-                      const avatar = p.avatarUrl || extraAvatars[p.name.trim().toLowerCase()];
+                      const avatar = getAvatarFor(p.name, p.avatarUrl);
                       return (
                         <div
                           key={p.name + i}
@@ -356,25 +371,6 @@ export function SpotifyCreditsModal({
                       );
                     })}
                   </div>
-                </div>
-              )}
-
-              {/* 4. Source / Record Label */}
-              {(credits?.label || credits?.releaseDate) && (
-                <div className="flex flex-col gap-1.5 border-t border-white/10 pt-4">
-                  <span className="text-xs font-bold uppercase tracking-wider text-white/50">
-                    Source
-                  </span>
-                  {credits.label && (
-                    <span className="text-xs text-white/70 leading-relaxed font-medium">
-                      {credits.label}
-                    </span>
-                  )}
-                  {credits.releaseDate && (
-                    <span className="text-[11px] text-white/50">
-                      Released: {credits.releaseDate}
-                    </span>
-                  )}
                 </div>
               )}
             </>
