@@ -15,6 +15,16 @@ import {
 
 export const dataSource = new YouTubeMusicDataSource();
 
+/*
+ * Warm attestation + clients during boot, not after the first library load.
+ *
+ * `warmPlayback` mints the BotGuard PO token (~3s cold) and builds the download client;
+ * both were otherwise paid in full on the first click. Memoized upstream, so the later
+ * post-library call costs nothing extra.
+ */
+dataSource.warmPlayback?.();
+dataSource.warmDiscovery?.();
+
 export const libraryController = new LibraryController(dataSource);
 export const searchController = new SearchController(dataSource);
 /*

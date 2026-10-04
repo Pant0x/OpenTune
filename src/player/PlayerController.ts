@@ -1880,24 +1880,25 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     const next = this.peekNextTrack();
     const prev = this.peekPreviousTrack();
 
-    // Pre-resolve previous track in the background so backward skip is instant
+    /*
+     * Metadata-only for non-adjacent tracks. A full `getStreamData` here takes the same
+     * serial download-client lock (PO token field) and the same Rust fill permit as the
+     * interactive load, so warming prev + next-next with streams queued a real click
+     * behind up to two background resolves. Metadata (`getTrack`) is stale-while-revalidate
+     * and lock-free; the stream for the *immediate* next below is the only one worth the
+     * lock contention.
+     */
     if (prev && prev.source === "youtube") {
       void this.dataSource.getTrack(prev.id).catch(() => {});
-      if (this.dataSource.getStreamData) {
-        void this.dataSource.getStreamData(prev).catch(() => {});
-      }
     }
 
     if (!next) return;
 
-    // Warm N+2 as well so continuous queue advancement never stalls on network requests
+    // Warm N+2 metadata as well so continuous queue advancement never stalls on metadata.
     const nextIdx = this.queue.currentIndex + 1;
     const nextNext = nextIdx + 1 < this.queue.all.length ? this.queue.all[nextIdx + 1] : undefined;
     if (nextNext && nextNext.source === "youtube") {
       void this.dataSource.getTrack(nextNext.id).catch(() => {});
-      if (this.dataSource.getStreamData) {
-        void this.dataSource.getStreamData(nextNext).catch(() => {});
-      }
     }
 
     // Trigger background chunk prefetching in Rust for upcoming queue tracks

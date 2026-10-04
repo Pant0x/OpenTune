@@ -7040,6 +7040,70 @@ export class YouTubeMusicDataSource extends DataSource {
   private topicArtworkCache = new Map<string, string>();
   private topicAlbumCache = new Map<string, string>();
   private resolvedStreamUrlCache = new Map<string, { url: string; mimeType: string; cookie?: string; expiresAt: number }>();
+  /**
+   * In-flight stream resolves, keyed like `resolvedStreamUrlCache`.
+   *
+   * `resolveStream` serializes download-client work through a single queue (the PO token
+   * lives on one mutable client field). Without dedupe, an interactive click queues behind
+   * up to three background warms for the same track and pays their latency too. Sharing
+   * the promise keeps one network resolve per track no matter how many callers arrive.
+   */
+  private readonly resolveInflight = new Map<string, Promise<{ url: string; mimeType: string; cookie?: string }>>();
+
+  /**
+   * Synchronous topic-cache peek for the playback hot path.
+   *
+   * `resolveTopicSongTargetId` can spend up to 2.5s on two network searches on a cache
+   * miss — before stream resolution even starts. A click already holds a valid video id,
+   * so playback uses the cached official id when present (or the original id) and warms
+   * the cache in the background instead of blocking sound on it.
+   */
+  private peekCachedTopicId(track: Track): string | null {
+    if (
+      track.source === "local" ||
+      !track.title ||
+      !track.artist ||
+      track.artist === "Unknown artist" ||
+      track.artist.toLowerCase().endsWith("- topic") ||
+      this.isSpecialAudioVersion(track.title)
+    ) {
+      return null;
+    }
+    const cleanTitle = cleanSongTitle(track.title);
+    const cleanArtist = cleanArtistName(track.artist);
+    if (!cleanTitle || !cleanArtist) return null;
+    const key = `${cleanTitle.toLowerCase()}::${cleanArtist.toLowerCase()}`;
+    const mem = this.topicSongCache.get(key);
+    if (mem) return mem;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`yt_topic_${key}`);
+        if (cached) {
+          this.topicSongCache.set(key, cached);
+          return cached;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  /** True when a track would benefit from a background topic-cache warm. */
+  private needsTopicLookup(track: Track): boolean {
+    return !(
+      track.source === "local" ||
+      !track.title ||
+      !track.artist ||
+      track.artist === "Unknown artist" ||
+      track.artist.toLowerCase().endsWith("- topic") ||
+      this.isSpecialAudioVersion(track.title)
+    ) && this.peekCachedTopicId(track) === null;
+  }
+
+  /** Fire-and-forget topic warm so the *next* play for this song hits the cache. */
+  private warmTopicCache(track: Track): void {
+    if (!this.needsTopicLookup(track)) return;
+    void this.resolveTopicSongTargetId(track).catch(() => {});
+  }
 
   private async findOfficialTopicSongId(
     title: string,
@@ -7304,7 +7368,8 @@ export class YouTubeMusicDataSource extends DataSource {
   async getStreamUrl(track: Track): Promise<string> {
     logInternalInfo("YouTubeMusicDataSource.getStreamUrl start", { trackId: track.id });
 
-    const targetId = await this.resolveTopicSongTargetId(track);
+    const targetId = this.peekCachedTopicId(track) ?? track.id;
+    this.warmTopicCache(track);
     const resolved = await this.resolveStream(
       { ...track, id: targetId },
       "high",
@@ -7321,6 +7386,27 @@ export class YouTubeMusicDataSource extends DataSource {
    * would produce offline copies that sound different from the stream they replace.
    */
   private async resolveStream(
+    track: Track,
+    quality: AudioQuality,
+    clientOrder: readonly ClientLabel[],
+  ): Promise<{ url: string; mimeType: string; cookie?: string }> {
+    const cacheKey = `${track.id}:${quality}`;
+    const cached = this.resolvedStreamUrlCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return { url: cached.url, mimeType: cached.mimeType, cookie: cached.cookie };
+    }
+    const inflight = this.resolveInflight.get(cacheKey);
+    if (inflight) return inflight;
+    const task = this.resolveStreamUncached(track, quality, clientOrder);
+    this.resolveInflight.set(cacheKey, task);
+    try {
+      return await task;
+    } finally {
+      if (this.resolveInflight.get(cacheKey) === task) this.resolveInflight.delete(cacheKey);
+    }
+  }
+
+  private async resolveStreamUncached(
     track: Track,
     quality: AudioQuality,
     clientOrder: readonly ClientLabel[],
@@ -7470,7 +7556,8 @@ export class YouTubeMusicDataSource extends DataSource {
     quality: AudioQuality = getStreamingQuality(),
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
     const order: ClientLabel[] = ["download", "music", "web"];
-    const targetId = await this.resolveTopicSongTargetId(track);
+    const targetId = this.peekCachedTopicId(track) ?? track.id;
+    this.warmTopicCache(track);
     return this.resolveStream({ ...track, id: targetId }, quality, order);
   }
 
@@ -7486,7 +7573,8 @@ export class YouTubeMusicDataSource extends DataSource {
     track: Track,
     quality: AudioQuality = getDownloadQuality(),
   ): Promise<{ url: string; mimeType: string; cookie?: string }> {
-    const targetId = await this.resolveTopicSongTargetId(track);
+    const targetId = this.peekCachedTopicId(track) ?? track.id;
+    this.warmTopicCache(track);
     return this.resolveStream({ ...track, id: targetId }, quality, ["download", "music", "web"]);
   }
 
@@ -8125,9 +8213,10 @@ export class YouTubeMusicDataSource extends DataSource {
       return { mimeType, rustSource: { kind: "offline", trackId: track.id, mimeType } };
     }
 
-    // resolveTopicSongTargetId applies its own skips (local, specials, unknown artists) —
-    // passed through for video ids too, so songs play the official release, not the upload.
-    const targetId = await this.resolveTopicSongTargetId(track);
+    // Topic cache is read synchronously here so a click never waits on its two
+    // network searches; a miss plays the original id and warms the cache behind it.
+    const targetId = this.peekCachedTopicId(track) ?? track.id;
+    this.warmTopicCache(track);
 
     const { url, mimeType, cookie } = await this.resolveStream(
       { ...track, id: targetId },
