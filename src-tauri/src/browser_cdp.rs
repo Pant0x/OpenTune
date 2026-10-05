@@ -1,80 +1,67 @@
 /*!
- * Session import through the browser's own DevTools door.
+ * YouTube sign-in through a real browser window, with zero app popups.
  *
- * Chromium's app-bound encryption (v20 blobs) makes cookie *files* unreadable to
- * anyone but the browser, so instead of reading files the app asks the RUNNING
- * browser for its cookies over the DevTools protocol — where the browser decrypts
- * for us, HttpOnly cookies included. Same trust as reading the file (explicit user
- * click, loopback only, nothing leaves the machine), none of the SYSTEM-level
- * tricks malware uses to fight app-bound encryption.
+ * The app launches an installed Chromium with an APP-MANAGED profile directory
+ * (under the app data dir — never the user's own browser profile, so their tabs,
+ * sessions and settings are never touched, restarted, or even read) plus a
+ * debugging port, and opens the YouTube login there. The user signs in once, in
+ * a real browser window; the app polls the session over DevTools, and the moment
+ * login cookies appear it kills its own window and stores the session as an
+ * ordinary slot. Afterwards the profile persists, so later sign-ins are an
+ * account chooser instead of typing.
  *
- * The price is a restart: a normally launched browser has no debugging port, and a
- * second instance cannot share the locked profile. Import therefore restarts the
- * browser once with `--remote-debugging-port` on the SAME profile, grabs the
- * cookies, then restarts it normally again. Tabs survive the round trip only when
- * the browser is set to restore them — checked up front from Preferences, so the
- * UI can warn before anything closes. The debug port is never left open behind us:
- * every exit path relaunches the browser normally first.
+ * Why this shape and not the alternatives:
+ * - Cookie *files* are app-bound encrypted (v20) and unreadable to anyone but
+ *   the browser itself — asking the RUNNING browser over DevTools has it decrypt
+ *   for us, HttpOnly cookies included.
+ * - The user's own profile is never launched, killed, restarted, or read. The
+ *   only window that ever closes is one this module opened.
+ * - No extensions, no registry keys, no admin, no secrets, no verification:
+ *   the loopback port is picked fresh per run and nothing listens when idle.
  */
 
 use std::path::{Path, PathBuf};
 
-use crate::browser_cookies::{is_session_host, BrowserKind, BrowserProfile, SessionCookie};
-
-/// Everything the destructive import needs, verified without touching the browser.
-pub(crate) struct CdpImportPlan {
-    pub browser: &'static str,
-    pub browser_exe: PathBuf,
-    pub user_data_dir: PathBuf,
-    pub profile_dir_name: String,
-    /// `Preferences` says sessions restore (`session.restore_on_startup == 1`).
-    /// False means a restart loses open tabs — the UI must say so out loud.
-    pub restores_tabs: bool,
+/// One session cookie. Values never touch a log line.
+pub(crate) struct SessionCookie {
+    pub name: String,
+    pub value: String,
 }
 
-/// Resolves how an import would run. Reads files only: no kills, no launches.
-pub(crate) fn plan_chromium_import(profile: &BrowserProfile) -> Result<CdpImportPlan, String> {
-    if profile.kind != BrowserKind::Chromium {
-        return Err("DevTools import is Chromium-only".to_string());
-    }
-    let user_data_dir = profile
-        .profile_dir
-        .parent()
-        .ok_or_else(|| "browser profile has no parent directory".to_string())?
-        .to_path_buf();
-    let browser_exe =
-        find_browser_exe(profile.browser).ok_or_else(|| format!("{} is not installed", profile.browser))?;
-    let restores_tabs = browser_restores_tabs(&user_data_dir);
-    Ok(CdpImportPlan {
-        browser: profile.browser,
-        browser_exe,
-        user_data_dir,
-        profile_dir_name: profile.profile_name.clone(),
-        restores_tabs,
-    })
+/// Hosts whose cookies make up a YouTube Music session.
+pub(crate) fn is_session_host(host: &str) -> bool {
+    let host = host.trim_start_matches('.').to_ascii_lowercase();
+    host == "youtube.com"
+        || host == "music.youtube.com"
+        || host == "accounts.youtube.com"
+        || host == "google.com"
+        || host.ends_with(".youtube.com")
+        || host.ends_with(".google.com")
 }
 
-/// Whether the browser reopens the previous session on launch.
-///
-/// Read from `<User Data>/Preferences` (`session.restore_on_startup == 1`).
-/// Missing file or key means "does not restore" — the safe direction to err in,
-/// because the import restarts the browser and tabs are the thing at stake.
-fn browser_restores_tabs(user_data_dir: &Path) -> bool {
-    let text = match std::fs::read_to_string(user_data_dir.join("Preferences")) {
-        Ok(text) => text,
-        Err(_) => return false,
-    };
-    let parsed: serde_json::Value = match serde_json::from_str(&text) {
-        Ok(parsed) => parsed,
-        Err(_) => return false,
-    };
-    parsed
-        .pointer("/session/restore_on_startup")
-        .and_then(|value| value.as_u64())
-        == Some(1)
+/// Cookie names proving a human completed a Google login (vs consent/measurement).
+fn is_login_cookie_name(name: &str) -> bool {
+    matches!(
+        name,
+        "SID" | "HSID" | "SSID" | "APISID" | "SAPISID" | "SIDCC"
+            | "__Secure-1PSID" | "__Secure-3PSID" | "__Secure-1PAPISID" | "__Secure-3PAPISID"
+            | "__Secure-1PSIDTS" | "__Secure-3PSIDTS" | "__Secure-1PSIDCC" | "__Secure-3PSIDCC"
+    )
 }
 
-fn find_browser_exe(browser: &str) -> Option<PathBuf> {
+/// Browsers this flow can drive, preferred first.
+const SUPPORTED_BROWSERS: &[&str] = &["Brave", "Edge", "Chrome", "Opera", "Vivaldi"];
+
+/// First installed Chromium, preferred order. `None` means no supported browser —
+/// the caller falls back to the classic window instead of failing silently.
+pub(crate) fn pick_signin_browser() -> Option<&'static str> {
+    SUPPORTED_BROWSERS
+        .iter()
+        .find(|browser| find_browser_exe(browser).is_some())
+        .copied()
+}
+
+pub(crate) fn find_browser_exe(browser: &str) -> Option<PathBuf> {
     let program_files = std::env::var_os("PROGRAMFILES").map(PathBuf::from);
     let program_files_x86 = std::env::var_os("PROGRAMFILES(X86)").map(PathBuf::from);
     let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
@@ -111,8 +98,8 @@ fn find_browser_exe(browser: &str) -> Option<PathBuf> {
     if let Some(found) = candidates.into_iter().find(|path| path.is_file()) {
         return Some(found);
     }
-    // PATH fallback (`where.exe brave`, …). Output is trusted no further than
-    // "a file exists here" — it is launched with explicit flags below, never bare.
+    // PATH fallback. Output is trusted no further than "a file exists here" —
+    // it is launched with explicit flags below, never bare.
     let binary = match browser {
         "Brave" => "brave",
         "Chrome" => "chrome",
@@ -127,223 +114,150 @@ fn find_browser_exe(browser: &str) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Process image name for a browser, for the restart dance.
-fn browser_image_name(browser: &str) -> Option<&'static str> {
-    match browser {
-        "Brave" => Some("brave.exe"),
-        "Chrome" => Some("chrome.exe"),
-        "Edge" => Some("msedge.exe"),
-        "Opera" => Some("opera.exe"),
-        "Vivaldi" => Some("vivaldi.exe"),
-        _ => None,
-    }
-}
-
-fn process_is_running(image: &str) -> bool {
-    std::process::Command::new("tasklist")
-        .args(["/FI", &format!("IMAGENAME eq {image}"), "/NH"])
-        .output()
-        .map(|output| {
-            let text = String::from_utf8_lossy(&output.stdout);
-            text.lines().any(|line| line.to_ascii_lowercase().starts_with(&image.to_ascii_lowercase()))
-        })
-        .unwrap_or(false)
-}
-
-fn wait_for_exit(image: &str, timeout_ms: u64) -> bool {
-    let rounds = timeout_ms / 250;
-    for _ in 0..rounds {
-        if !process_is_running(image) {
-            return true;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(250));
-    }
-    !process_is_running(image)
-}
-
-/// Runs the full import cycle. DESTRUCTIVE: restarts the browser twice.
+/// Launches OUR OWN browser window: app-managed profile, debugging port, login page.
 ///
-/// Contract: the caller confirmed with the user (including the tab warning when
-/// `!plan.restores_tabs`). On success the browser is back to a normal launch and
-/// the cookies are returned. On ANY failure the browser is still relaunched
-/// normally first — the function never leaves a debugging port open or a browser
-/// closed that it found open.
-pub(crate) async fn import_session_via_cdp(plan: &CdpImportPlan, port: u16) -> Result<Vec<SessionCookie>, String> {
-    let image = browser_image_name(plan.browser).ok_or_else(|| "unknown browser".to_string())?;
-    let was_running = process_is_running(image);
-
-    // The profile is locked by a running instance; a second one would either join
-    // it (no debugging port) or fail. So the running one goes first.
-    if was_running {
-        std::process::Command::new("taskkill")
-            .args(["/F", "/IM", image])
-            .output()
-            .map_err(|error| format!("could not close {image}: {error}"))?;
-        if !wait_for_exit(image, 15_000) {
-            return Err(format!("{image} would not close; import cancelled"));
-        }
-    }
-
-    // Whatever happens below, the browser ends up launched normally again.
-    let result = import_via_cdp_inner(plan, port).await;
-    relaunch_normally(plan);
-    result
-}
-
-fn relaunch_normally(plan: &CdpImportPlan) {
-    let _ = std::process::Command::new(&plan.browser_exe)
-        .arg(format!("--user-data-dir={}", plan.user_data_dir.display()))
-        .arg(format!("--profile-directory={}", plan.profile_dir_name))
-        .arg("--no-first-run")
-        .arg("--no-default-browser-check")
-        .spawn();
-}
-
-async fn import_via_cdp_inner(plan: &CdpImportPlan, port: u16) -> Result<Vec<SessionCookie>, String> {
-    use futures_util::{SinkExt, StreamExt};
-    use tokio::time::{sleep, timeout};
-
-    let mut debug_child = std::process::Command::new(&plan.browser_exe)
-        .arg(format!("--user-data-dir={}", plan.user_data_dir.display()))
-        .arg(format!("--profile-directory={}", plan.profile_dir_name))
+/// Same profile directory every call, so the Google session persists between
+/// sign-ins. Same executable the user already has — no downloads, no bundled
+/// browser. The returned child is ours to kill; nothing else is ever touched.
+pub(crate) fn launch_managed_browser(
+    browser_exe: &Path,
+    profile_dir: &Path,
+    port: u16,
+    login_url: &str,
+) -> Result<std::process::Child, String> {
+    std::fs::create_dir_all(profile_dir)
+        .map_err(|error| format!("browser profile directory unavailable: {error}"))?;
+    std::process::Command::new(browser_exe)
+        .arg(format!("--user-data-dir={}", profile_dir.display()))
         .arg(format!("--remote-debugging-port={port}"))
         .arg("--no-first-run")
         .arg("--no-default-browser-check")
-        .arg("about:blank")
+        .arg("--disable-features=Translate")
+        .arg(login_url)
         .spawn()
-        .map_err(|error| format!("could not launch browser for import: {error}"))?;
+        .map_err(|error| format!("could not open the browser: {error}"))
+}
 
-    let cleanup_child = |child: &mut std::process::Child| {
-        let _ = child.kill();
-        let _ = child.wait();
-    };
+/// Reads the session cookies the managed window currently holds.
+///
+/// `Storage.getCookies` is browser-wide for that window's profile; the caller
+/// filters to session hosts. Values cross loopback only, straight into the
+/// account store — never a log line.
+pub(crate) async fn read_cookies_via_cdp(port: u16) -> Result<Vec<SessionCookie>, String> {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::time::{sleep, timeout};
 
-    let outcome: Result<Vec<SessionCookie>, String> = async {
-        // Wait for the DevTools HTTP endpoint.
-        let client = reqwest::Client::builder()
-            .build()
-            .map_err(|error| format!("http client failed: {error}"))?;
-        let mut targets_url = String::new();
-        for _ in 0..80 {
-            match client.get(format!("http://127.0.0.1:{port}/json/version")).send().await {
-                Ok(response) if response.status().is_success() => {
-                    targets_url = format!("http://127.0.0.1:{port}/json/list");
-                    break;
-                }
-                _ => sleep(std::time::Duration::from_millis(250)).await,
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|error| format!("http client failed: {error}"))?;
+    let mut targets_url = String::new();
+    for _ in 0..80 {
+        match client.get(format!("http://127.0.0.1:{port}/json/version")).send().await {
+            Ok(response) if response.status().is_success() => {
+                targets_url = format!("http://127.0.0.1:{port}/json/list");
+                break;
             }
+            _ => sleep(std::time::Duration::from_millis(250)).await,
         }
-        if targets_url.is_empty() {
-            return Err("browser debugging port never came up".to_string());
-        }
-
-        let targets_text: String = client
-            .get(&targets_url)
-            .send()
-            .await
-            .map_err(|error| format!("DevTools target list failed: {error}"))?
-            .text()
-            .await
-            .map_err(|error| format!("DevTools target list read failed: {error}"))?;
-        let targets: serde_json::Value = serde_json::from_str(&targets_text)
-            .map_err(|error| format!("DevTools target list parse failed: {error}"))?;
-        let ws_url = targets
-            .as_array()
-            .and_then(|list| list.iter().find_map(|target| target.get("webSocketDebuggerUrl")?.as_str()))
-            .ok_or_else(|| "browser exposed no debuggable target".to_string())?
-            .to_string();
-
-        let (mut socket, _) = timeout(
-            std::time::Duration::from_secs(15),
-            tokio_tungstenite::connect_async(&ws_url),
-        )
-        .await
-        .map_err(|_| "DevTools socket timed out".to_string())
-        .map_err(|error| format!("DevTools socket failed: {error}"))?
-        .map_err(|error| format!("DevTools socket failed: {error}"))?;
-
-        let request = serde_json::json!({ "id": 1, "method": "Storage.getCookies" });
-        socket
-            .send(tokio_tungstenite::tungstenite::Message::Text(request.to_string().into()))
-            .await
-            .map_err(|error| format!("DevTools request failed: {error}"))?;
-
-        let deadline = std::time::Duration::from_secs(20);
-        let cookies_value: serde_json::Value = timeout(deadline, async {
-            while let Some(message) = socket.next().await {
-                let message = message.map_err(|error| format!("DevTools read failed: {error}"))?;
-                let text = match message {
-                    tokio_tungstenite::tungstenite::Message::Text(text) => text.to_string(),
-                    tokio_tungstenite::tungstenite::Message::Close(_) => {
-                        return Err("DevTools socket closed".to_string())
-                    }
-                    _ => continue,
-                };
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&text).map_err(|error| format!("DevTools parse failed: {error}"))?;
-                if parsed.get("id") == Some(&serde_json::Value::from(1)) {
-                    if let Some(error) = parsed.get("error") {
-                        return Err(format!("DevTools error: {error}"));
-                    }
-                    return parsed
-                        .pointer("/result/cookies")
-                        .cloned()
-                        .ok_or_else(|| "DevTools returned no cookies".to_string());
-                }
-            }
-            Err("DevTools gave no answer".to_string())
-        })
-        .await
-        .map_err(|_| "DevTools answer timed out".to_string())??;
-
-        let mut session = Vec::new();
-        for entry in cookies_value.as_array().cloned().unwrap_or_default() {
-            let name = entry.get("name").and_then(|value| value.as_str()).unwrap_or("").to_string();
-            let value = entry.get("value").and_then(|value| value.as_str()).unwrap_or("").to_string();
-            let domain = entry.get("domain").and_then(|value| value.as_str()).unwrap_or("").to_string();
-            if name.trim().is_empty() || value.is_empty() || !is_session_host(&domain) {
-                continue;
-            }
-            session.push(SessionCookie { name, value });
-        }
-        Ok(session)
     }
-    .await;
+    if targets_url.is_empty() {
+        return Err("browser debugging port never came up".to_string());
+    }
 
-    cleanup_child(&mut debug_child);
-    outcome
+    let targets_text: String = client
+        .get(&targets_url)
+        .send()
+        .await
+        .map_err(|error| format!("DevTools target list failed: {error}"))?
+        .text()
+        .await
+        .map_err(|error| format!("DevTools target list read failed: {error}"))?;
+    let targets: serde_json::Value = serde_json::from_str(&targets_text)
+        .map_err(|error| format!("DevTools target list parse failed: {error}"))?;
+    let ws_url = targets
+        .as_array()
+        .and_then(|list| list.iter().find_map(|target| target.get("webSocketDebuggerUrl")?.as_str()))
+        .ok_or_else(|| "browser exposed no debuggable target".to_string())?
+        .to_string();
+
+    let (mut socket, _) = timeout(
+        std::time::Duration::from_secs(15),
+        tokio_tungstenite::connect_async(&ws_url),
+    )
+    .await
+    .map_err(|_| "DevTools socket timed out".to_string())
+    .map_err(|error| format!("DevTools socket failed: {error}"))?
+    .map_err(|error| format!("DevTools socket failed: {error}"))?;
+
+    let request = serde_json::json!({ "id": 1, "method": "Storage.getCookies" });
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(request.to_string().into()))
+        .await
+        .map_err(|error| format!("DevTools request failed: {error}"))?;
+
+    let deadline = std::time::Duration::from_secs(20);
+    let cookies_value: serde_json::Value = timeout(deadline, async {
+        while let Some(message) = socket.next().await {
+            let message = message.map_err(|error| format!("DevTools read failed: {error}"))?;
+            let text = match message {
+                tokio_tungstenite::tungstenite::Message::Text(text) => text.to_string(),
+                tokio_tungstenite::tungstenite::Message::Close(_) => {
+                    return Err("DevTools socket closed".to_string())
+                }
+                _ => continue,
+            };
+            let parsed: serde_json::Value =
+                serde_json::from_str(&text).map_err(|error| format!("DevTools parse failed: {error}"))?;
+            if parsed.get("id") == Some(&serde_json::Value::from(1)) {
+                if let Some(error) = parsed.get("error") {
+                    return Err(format!("DevTools error: {error}"));
+                }
+                return parsed
+                    .pointer("/result/cookies")
+                    .cloned()
+                    .ok_or_else(|| "DevTools returned no cookies".to_string());
+            }
+        }
+        Err("DevTools gave no answer".to_string())
+    })
+    .await
+    .map_err(|_| "DevTools answer timed out".to_string())??;
+
+    let mut session = Vec::new();
+    for entry in cookies_value.as_array().cloned().unwrap_or_default() {
+        let name = entry.get("name").and_then(|value| value.as_str()).unwrap_or("").to_string();
+        let value = entry.get("value").and_then(|value| value.as_str()).unwrap_or("").to_string();
+        let domain = entry.get("domain").and_then(|value| value.as_str()).unwrap_or("").to_string();
+        if name.trim().is_empty() || value.is_empty() || !is_session_host(&domain) {
+            continue;
+        }
+        session.push(SessionCookie { name, value });
+    }
+    Ok(session)
+}
+
+/// Whether cookies amount to a completed Google login (vs consent/measurement).
+pub(crate) fn cookies_hold_login(cookies: &[SessionCookie]) -> bool {
+    cookies.iter().any(|cookie| is_login_cookie_name(&cookie.name))
 }
 
 #[cfg(test)]
 mod cdp_probe {
-    //! Safe probe: resolves import plans without touching any browser process.
-    //! No kills, no launches, no ports — pure file reads.
+    //! Safe probes: no browser is ever launched or touched.
     //! Run: `cargo test cdp_probe -- --nocapture`.
 
-    use super::{browser_image_name, find_browser_exe, plan_chromium_import};
-    use crate::browser_cookies::{detect_browser_profiles, BrowserKind};
+    use super::{find_browser_exe, pick_signin_browser};
 
     #[test]
-    fn import_plans_resolve_without_touching_processes() {
-        let profiles = detect_browser_profiles();
-        let mut chromium = 0;
-        for profile in profiles.iter().filter(|profile| profile.kind == BrowserKind::Chromium) {
-            chromium += 1;
-            match plan_chromium_import(profile) {
-                Ok(plan) => {
-                    eprintln!(
-                        "[probe] {} / {} : exe_found=true restores_tabs={}",
-                        plan.browser, plan.profile_dir_name, plan.restores_tabs
-                    );
-                    assert!(browser_image_name(plan.browser).is_some());
-                }
-                Err(error) => {
-                    eprintln!("[probe] {} / {} : plan failed: {}", profile.browser, profile.profile_name, error);
-                }
-            }
-        }
-        eprintln!("[probe] {} chromium profile(s) examined", chromium);
-        // find_browser_exe is also exercised for unknown names (must be None, never panic).
+    fn signin_browser_resolution_is_sane() {
+        // Unknown names resolve to nothing, never panic.
         assert!(find_browser_exe("Netscape").is_none());
+        match pick_signin_browser() {
+            Some(browser) => {
+                eprintln!("[probe] sign-in browser: {browser}");
+                assert!(find_browser_exe(browser).is_some());
+            }
+            None => eprintln!("[probe] no supported browser installed"),
+        }
     }
 }

@@ -3377,40 +3377,36 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   /**
-   * Signs in with a live browser session: no typing, no popup window.
+   * Signs in through a real browser window owned by the app.
    *
-   * The backend stores the session as an ordinary slot and seeds the live jar
-   * itself, so no credential crosses IPC — this re-reads the active cookie the
-   * same way boot does, then runs the exact same post-sign-in landing as `signIn`
+   * The backend launches an installed Chromium with an app-managed profile on
+   * the YouTube login, polls its session, and stores it as an ordinary slot —
+   * so no credential crosses IPC. This re-reads the active cookie the same way
+   * boot does, then runs the exact same post-sign-in landing as `signIn`
    * (cache policy, channel selection, profile capture).
    */
-  async signInWithBrowserSession(
-    browser: string,
-    profileName: string,
+  async signInWithManagedBrowser(
     onPrompt: (prompt: AuthPrompt) => void,
     onStage?: (stage: AuthStage) => void,
   ): Promise<void> {
-    logInternalInfo("YouTubeMusicDataSource.signInWithBrowserSession start", { browser });
+    logInternalInfo("YouTubeMusicDataSource.signInWithManagedBrowser start");
     onPrompt({
       verificationUrl: "https://music.youtube.com/",
-      userCode: `Importing session from ${browser}`,
-      expiresInSec: 180,
+      userCode: "Signing in with Google",
+      expiresInSec: 300,
     });
     onStage?.("browser");
-    const { slotId, accountChanged } = await invoke<BrowserImportResult>("import_browser_session", {
-      browser,
-      profileName,
-    });
+    const { slotId, accountChanged } = await invoke<BrowserImportResult>("browser_profile_signin");
     const cookie = await invoke<string | null>("load_youtube_music_cookie");
     if (!cookie) {
-      throw new Error("The import finished without a session.");
+      throw new Error("The sign-in finished without a session.");
     }
     onStage?.("session");
-    logInternalInfo("YouTubeMusicDataSource.signInWithBrowserSession command completed", {
+    logInternalInfo("YouTubeMusicDataSource.signInWithManagedBrowser command completed", {
       credentialBytes: cookie.length,
       accountChanged,
     });
-    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithBrowserSession");
+    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithManagedBrowser");
   }
 
   /**

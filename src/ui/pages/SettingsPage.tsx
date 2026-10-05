@@ -31,7 +31,6 @@ import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
   BugIcon,
-  CheckIcon,
   DiscordIcon,
   DownloadIcon,
   FolderIcon,
@@ -49,7 +48,6 @@ import {
   TrashIcon,
   UserIcon,
 } from "@/ui/icons";
-import { useDiscordIdentity, setDiscordIdentity, type DiscordIdentity } from "../settings/discordIdentity";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -601,48 +599,16 @@ export function SettingsPage({
   const [resetSettingsConfirming, setResetSettingsConfirming] = useState(false);
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
-  // Identity comes from connected services, not an OpenTune password account:
-  // the YouTube session (library account) and the linked Discord identity.
-  const discordIdentity = useDiscordIdentity();
-
-  const hasAppAccount = Boolean(discordIdentity || libraryState.status === "ready");
+  // Identity comes from the connected YouTube session.
+  const hasAppAccount = libraryState.status === "ready";
 
   const handleSignOutAll = async () => {
     try {
       if (libraryState.status === "ready") {
         await libraryController.signOut();
       }
-      await invoke("discord_oauth_disconnect").catch(() => {});
-      setDiscordIdentity(null);
     } catch (err) {
       console.error("Sign out error:", err);
-    }
-  };
-
-  const [discordBusy, setDiscordBusy] = useState(false);
-  const [discordError, setDiscordError] = useState<string | null>(null);
-
-  /** Direct loopback OAuth in the system browser. Replaces the Supabase popup. */
-  const handleDiscordConnect = async () => {
-    setDiscordBusy(true);
-    setDiscordError(null);
-    try {
-      const identity = await invoke<DiscordIdentity>("discord_oauth_connect");
-      setDiscordIdentity(identity);
-    } catch (err) {
-      setDiscordError(err instanceof Error ? err.message : "Discord sign-in failed.");
-    } finally {
-      setDiscordBusy(false);
-    }
-  };
-
-  const handleDiscordDisconnect = async () => {
-    setDiscordBusy(true);
-    try {
-      await invoke("discord_oauth_disconnect").catch(() => {});
-      setDiscordIdentity(null);
-    } finally {
-      setDiscordBusy(false);
     }
   };
 
@@ -1043,7 +1009,7 @@ export function SettingsPage({
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="relative group/avatar shrink-0">
                   <AccountAvatar
-                    artworkUrl={discordIdentity?.avatarUrl || account?.artworkUrl}
+                    artworkUrl={account?.artworkUrl}
                     className="size-14 ring-2 ring-border/60"
                     iconSize={30}
                   />
@@ -1052,24 +1018,17 @@ export function SettingsPage({
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-base font-semibold text-foreground">
-                      {discordIdentity?.displayName || discordIdentity?.username || account?.name || "Music Explorer"}
+                      {account?.name || "Music Explorer"}
                     </span>
                   </div>
                   <span className="truncate text-xs text-muted-foreground">
-                    {discordIdentity?.email || (isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Connect a browser or Discord to personalize")}
+                    {isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Connect to personalize"}
                   </span>
-                  <span className="mt-1 inline-flex w-fit items-center gap-1.5">
-                    {isSignedIn && (
-                      <span className="inline-flex items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        YouTube
-                      </span>
-                    )}
-                    {discordIdentity && (
-                      <span className="inline-flex items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        Discord • {discordIdentity.username}
-                      </span>
-                    )}
-                  </span>
+                  {isSignedIn && (
+                    <span className="mt-1 inline-flex w-fit items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      YouTube
+                    </span>
+                  )}
                 </div>
 
                 {hasAppAccount ? (
@@ -1123,53 +1082,6 @@ export function SettingsPage({
             />
 
             <div className="flex flex-col gap-3">
-              {/* Discord Account Row */}
-              <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
-                <div className="flex items-center gap-3">
-                  <span className="grid size-10 place-items-center rounded-xl bg-card">
-                    <DiscordIcon size={22} />
-                  </span>
-                  <div className="flex flex-col">
-                    <strong className="text-sm font-semibold text-foreground">Discord Account</strong>
-                    <span className="text-xs text-muted-foreground">
-                      {discordIdentity
-                        ? `Connected — Linked to ${discordIdentity.displayName || discordIdentity.username}`
-                        : "Connect your Discord account to link your OpenTune profile"}
-                    </span>
-                  </div>
-                </div>
-
-                {discordError && (
-                  <p className="text-xs text-destructive">{discordError}</p>
-                )}
-
-                {discordIdentity ? (
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
-                      <CheckIcon size={13} />
-                      Connected
-                    </span>
-                    <button
-                      type="button"
-                      disabled={discordBusy}
-                      onClick={() => void handleDiscordDisconnect()}
-                      className="rounded-full border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={discordBusy}
-                    onClick={() => void handleDiscordConnect()}
-                    className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {discordBusy ? "Connecting…" : "Connect"}
-                  </button>
-                )}
-              </div>
-
               {/* Preferences Box under Discord RPC */}
               <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4">
                 <strong className="text-sm font-semibold text-foreground">Preferences</strong>

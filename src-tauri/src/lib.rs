@@ -49,7 +49,6 @@ mod windows_fullscreen;
 
 mod audio;
 mod browser_cdp;
-mod browser_cookies;
 mod process_memory;
 mod discord_rpc;
 mod opus_source;
@@ -139,7 +138,7 @@ const YOUTUBE_COOKIE_ENCRYPTION_KEY_USER: &str = "youtube-music-cookie-encryptio
 #[cfg(target_os = "macos")]
 const YOUTUBE_COOKIE_ENCRYPTED_FILE: &str = "youtube-music-session-v1.bin";
 const YOUTUBE_LOGIN_WINDOW: &str = "youtube-music-login";
-const YOUTUBE_LOGIN_URL: &str = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F";
+pub(crate) const YOUTUBE_LOGIN_URL: &str = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F";
 /// Storage partition for the sign-in webview, so clearing it cannot touch the app's own.
 ///
 /// `clear_all_browsing_data` is a *profile*-wide operation on every platform — WebView2 calls
@@ -2224,113 +2223,119 @@ fn update_youtube_music_account_profile(
     save_account_store(&app, &store)
 }
 
-/// One importable browser session. Carries no secret material: `has_session` is
-/// answered from cookie NAMES only (names are plaintext in every store), and values
-/// are never read for the listing.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BrowserImportCandidate {
-    browser: String,
-    profile_name: String,
-    /// "chromium" or "firefox" — the Chromium path restarts the browser once.
-    kind: String,
-    has_session: bool,
-    /// Chromium only: the browser reopens its tabs after the import restart.
-    /// False means the UI must warn about tab loss out loud before proceeding.
-    restores_tabs: bool,
-}
-
-/// Whether a cookie name belongs to a Google login session (vs consent/measurement).
-fn is_login_cookie_name(name: &str) -> bool {
-    matches!(
-        name,
-        "SID" | "HSID" | "SSID" | "APISID" | "SAPISID" | "SIDCC"
-            | "__Secure-1PSID" | "__Secure-3PSID" | "__Secure-1PAPISID" | "__Secure-3PAPISID"
-            | "__Secure-1PSIDTS" | "__Secure-3PSIDTS" | "__Secure-1PSIDCC" | "__Secure-3PSIDCC"
-    )
-}
-
-#[tauri::command]
-fn browser_import_candidates() -> Result<Vec<BrowserImportCandidate>, CommandError> {
-    let mut candidates = Vec::new();
-    for profile in browser_cookies::detect_browser_profiles() {
-        let (kind, restores_tabs) = match profile.kind {
-            browser_cookies::BrowserKind::Chromium => {
-                let restores = browser_cdp::plan_chromium_import(&profile)
-                    .map(|plan| plan.restores_tabs)
-                    .unwrap_or(false);
-                ("chromium", restores)
-            }
-            browser_cookies::BrowserKind::Firefox => ("firefox", true),
-        };
-        // Names only — values stay on disk until the user confirms the import.
-        let has_session = browser_cookies::read_session_cookies(&profile)
-            .map(|cookies| cookies.iter().any(|cookie| is_login_cookie_name(&cookie.name)))
-            .unwrap_or(false);
-        candidates.push(BrowserImportCandidate {
-            browser: profile.browser.to_string(),
-            profile_name: profile.profile_name.clone(),
-            kind: kind.to_string(),
-            has_session,
-            restores_tabs,
-        });
-    }
-    Ok(candidates)
-}
-
-/// What an import produced. Deliberately NOT the cookie: Rust seeds the live jar
-/// itself (like `sign_in_youtube_music`), and the frontend re-reads its mirror the
-/// same way boot does (`load_youtube_music_cookie`).
+/// What a browser sign-in produced. Deliberately NOT the cookie: Rust seeds the
+/// live jar itself (like `sign_in_youtube_music`), and the frontend re-reads its
+/// mirror the same way boot does (`load_youtube_music_cookie`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BrowserImportResult {
     slot_id: String,
     account_changed: bool,
+    browser: String,
 }
 
-/// Signs in with a browser's live session: no typing, no popup.
+/// Stores an imported header as an ordinary slot: its own slot when new, a
+/// refresh in place when the identity is already stored (repeating never
+/// duplicates). Shared by every session origin — popup harvest, browser import,
+/// extension receiver — so all of them behave identically downstream.
+fn store_imported_header(
+    app: &tauri::AppHandle,
+    jar: &YoutubeCookieJar,
+    account_lock: &AccountStoreLock,
+    cookie_header: &str,
+    origin: &str,
+) -> Result<(String, bool), CommandError> {
+    let candidate_slot_id = generate_slot_id();
+    let (slot_id, account_changed) = {
+        let _guard = account_lock.0.lock().map_err(|_| CommandError {
+            message: "account store lock unavailable".to_string(),
+        })?;
+        let mut store = load_account_store(app)?;
+        let (slot_id, account_changed) =
+            store.upsert_signed_in_account(cookie_header, candidate_slot_id);
+        save_account_store(app, &store)?;
+        (slot_id, account_changed)
+    };
+    if let Ok(mut state) = jar.0.lock() {
+        state.cookie = Some(cookie_header.to_string());
+        state.persisted_at = Some(Instant::now());
+    }
+    eprintln!(
+        "[internal][tauri][info] {origin} success slot={slot_id} account_changed={account_changed} credential_bytes={}",
+        cookie_header.len()
+    );
+    Ok((slot_id, account_changed))
+}
+
+/// Signs in through a real browser window owned by the app — no in-app popup.
 ///
-/// Firefox is read straight from its cookie store (plaintext). Chromium stores are
-/// app-bound encrypted, so the running browser is asked over DevTools instead —
-/// which restarts it once on the same profile (see `browser_cdp`). Either way the
-/// resulting header flows through the exact same slot upsert, durable save, and
-/// live-jar seeding as an interactive sign-in, so caching, multi-account, and the
-/// frontend refresh below all behave identically.
+/// Launches an installed Chromium with an APP-MANAGED profile (never the user's
+/// own — their tabs, sessions and settings are untouched) on the YouTube login,
+/// polls its session over DevTools, and the moment login cookies appear kills
+/// its own window and stores the session as an ordinary slot. First run types
+/// once in a real browser window; afterwards the persisted profile makes it an
+/// account chooser. Nothing listens when idle: the port is picked fresh per run.
 #[tauri::command]
-async fn import_browser_session(
+async fn browser_profile_signin(
     app: tauri::AppHandle,
     jar: tauri::State<'_, YoutubeCookieJar>,
     account_lock: tauri::State<'_, AccountStoreLock>,
-    browser: String,
-    profile_name: String,
 ) -> Result<BrowserImportResult, CommandError> {
-    eprintln!("[internal][tauri][info] import_browser_session browser={browser} profile={profile_name}");
-    let profile = browser_cookies::detect_browser_profiles()
-        .into_iter()
-        .find(|profile| profile.browser == browser && profile.profile_name == profile_name)
-        .ok_or_else(|| CommandError {
-            message: "That browser profile is no longer available.".to_string(),
+    use tokio::time::{sleep, Duration};
+
+    let browser = browser_cdp::pick_signin_browser().ok_or_else(|| CommandError {
+        message: "Install Brave, Chrome or Edge first, then sign in again.".to_string(),
+    })?;
+    let browser_exe = browser_cdp::find_browser_exe(browser).ok_or_else(|| CommandError {
+        message: format!("{browser} is not installed"),
+    })?;
+    let profile_dir = app
+        .path()
+        .app_data_dir()
+        .map(|dir| dir.join("browser-login"))
+        .map_err(|error| CommandError {
+            message: format!("application data directory unavailable: {error}"),
         })?;
+    let port = portpicker::pick_unused_port()
+        .ok_or_else(|| cache_error("no free localhost port for sign-in".to_string()))?;
 
-    let cookies = match profile.kind {
-        browser_cookies::BrowserKind::Firefox => browser_cookies::read_session_cookies(&profile)
-            .map_err(|error| cache_error(format!("Firefox session read failed: {error}")))?,
-        browser_cookies::BrowserKind::Chromium => {
-            let plan = browser_cdp::plan_chromium_import(&profile)
-                .map_err(|error| cache_error(format!("browser import unavailable: {error}")))?;
-            let port = portpicker::pick_unused_port().ok_or_else(|| {
-                cache_error("no free localhost port for the browser import".to_string())
-            })?;
-            browser_cdp::import_session_via_cdp(&plan, port).await
-                .map_err(cache_error)?
+    eprintln!("[internal][tauri][info] browser_profile_signin browser={browser} port={port}");
+    let mut child = browser_cdp::launch_managed_browser(&browser_exe, &profile_dir, port, YOUTUBE_LOGIN_URL)
+        .map_err(cache_error)?;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(300);
+    let cookies = loop {
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CommandError {
+                message: "Browser sign-in timed out.".to_string(),
+            });
         }
+        // The window going away is the cancel button: no waiting out a dead flow.
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let _ = child.wait();
+                return Err(CommandError {
+                    message: "Browser sign-in was closed.".to_string(),
+                });
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                return Err(cache_error(format!("browser watch failed: {error}")));
+            }
+        }
+        match browser_cdp::read_cookies_via_cdp(port).await {
+            Ok(cookies) if browser_cdp::cookies_hold_login(&cookies) => break cookies,
+            Ok(_) => {}
+            Err(_) => {}
+        }
+        sleep(Duration::from_millis(2500)).await;
     };
+    let _ = child.kill();
+    let _ = child.wait();
 
-    if !cookies.iter().any(|cookie| is_login_cookie_name(&cookie.name)) {
-        return Err(CommandError {
-            message: "No YouTube login in that profile. Sign into YouTube Music there first, then import again.".to_string(),
-        });
-    }
     let pairs: Vec<(String, String)> = cookies
         .into_iter()
         .map(|cookie| (cookie.name, cookie.value))
@@ -2338,32 +2343,33 @@ async fn import_browser_session(
     let cookie_header = serialize_cookie_pairs(&pairs);
     if cookie_header.trim().is_empty() {
         return Err(CommandError {
-            message: "That profile's YouTube session came back empty.".to_string(),
+            message: "The browser session came back empty.".to_string(),
         });
     }
+    let (slot_id, account_changed) =
+        store_imported_header(&app, &jar, &account_lock, &cookie_header, "browser_profile_signin")?;
+    Ok(BrowserImportResult { slot_id, account_changed, browser: browser.to_string() })
+}
 
-    // Same landing as an interactive sign-in: its own slot when new, a refresh in
-    // place when the identity is already stored (re-importing never duplicates).
-    let candidate_slot_id = generate_slot_id();
-    let (slot_id, account_changed) = {
-        let _guard = account_lock.0.lock().map_err(|_| CommandError {
-            message: "account store lock unavailable".to_string(),
+/// Removes the app-managed browser profiles (full-data wipe path).
+///
+/// Session cookies live there; "delete all app data" that left them behind
+/// would be a privacy lie, and a stale profile would silently re-seed the next
+/// sign-in with a dead session.
+#[tauri::command]
+fn browser_login_data_clear(app: tauri::AppHandle) -> Result<(), CommandError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map(|dir| dir.join("browser-login"))
+        .map_err(|error| CommandError {
+            message: format!("application data directory unavailable: {error}"),
         })?;
-        let mut store = load_account_store(&app)?;
-        let (slot_id, account_changed) =
-            store.upsert_signed_in_account(&cookie_header, candidate_slot_id);
-        save_account_store(&app, &store)?;
-        (slot_id, account_changed)
-    };
-    if let Ok(mut state) = jar.0.lock() {
-        state.cookie = Some(cookie_header.clone());
-        state.persisted_at = Some(Instant::now());
+    if dir.is_dir() {
+        std::fs::remove_dir_all(&dir)
+            .map_err(|error| cache_error(format!("browser login data clear failed: {error}")))?;
     }
-    eprintln!(
-        "[internal][tauri][info] import_browser_session success slot={slot_id} account_changed={account_changed} credential_bytes={}",
-        cookie_header.len()
-    );
-    Ok(BrowserImportResult { slot_id, account_changed })
+    Ok(())
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -5596,242 +5602,6 @@ async fn proxy_http_request(
     })
 }
 
-/**
- * Direct Discord identity sign-in: system browser, no Supabase, no popup window.
- *
- * The loopback door, same shape as a native app should use: the registered
- * redirect is fixed (`http://localhost:8000/callback`), the port is bound BEFORE
- * any browser opens so a busy port fails fast instead of stranding a consent,
- * and the listener lives exactly for this call. Tokens land in the OS keyring;
- * only the public identity crosses IPC, never a secret.
- *
- * Credentials are baked at compile time from `DISCORD_CLIENT_ID` /
- * `DISCORD_CLIENT_SECRET` (local builds export them from `.env.local`, CI
- * provides repo secrets). A desktop binary cannot keep a secret — accepted
- * openly: it only ever mints tokens for a user who just consented in their own
- * browser, for this app's own scopes.
- */
-const DISCORD_KEYRING_USER: &str = "discord-oauth-session";
-const DISCORD_CALLBACK_PORT: u16 = 8000;
-const DISCORD_REDIRECT_URI: &str = "http://localhost:8000/callback";
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DiscordIdentity {
-    id: String,
-    username: String,
-    display_name: Option<String>,
-    avatar_url: Option<String>,
-    email: Option<String>,
-}
-
-fn discord_client_credentials() -> Result<(String, String), CommandError> {
-    let id = option_env!("DISCORD_CLIENT_ID").unwrap_or("").trim().to_string();
-    let secret = option_env!("DISCORD_CLIENT_SECRET").unwrap_or("").trim().to_string();
-    if id.is_empty() || secret.is_empty() {
-        return Err(cache_error("Discord sign-in is not configured in this build."));
-    }
-    Ok((id, secret))
-}
-
-fn discord_keyring_entry() -> Result<keyring::Entry, CommandError> {
-    keyring::Entry::new(KEYRING_SERVICE, DISCORD_KEYRING_USER).map_err(|error| CommandError {
-        message: format!("credential store unavailable: {error}"),
-    })
-}
-
-/// Reads one HTTP request head from a loopback callback connection.
-///
-/// Enough HTTP to find `?code=` — request line plus headers, 16 KiB cap, no body
-/// parsing, no keep-alive. Anything malformed is a failed attempt, not a crash.
-async fn read_callback_request(
-    stream: &mut tokio::net::TcpStream,
-) -> Result<String, CommandError> {
-    use tokio::io::AsyncReadExt;
-    use tokio::time::{sleep, Duration};
-
-    let mut head = Vec::new();
-    for _ in 0..64 {
-        let mut chunk = [0u8; 1024];
-        let read = tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk))
-            .await
-            .map_err(|_| cache_error("browser callback timed out"))?
-            .map_err(|error| cache_error(format!("browser callback read failed: {error}")))?;
-        if read == 0 {
-            break;
-        }
-        head.extend_from_slice(&chunk[..read]);
-        if head.len() > 16 * 1024 {
-            return Err(cache_error("browser callback request too large"));
-        }
-        if head.windows(4).any(|window| window == b"\r\n\r\n") {
-            break;
-        }
-        sleep(Duration::from_millis(10)).await;
-    }
-    String::from_utf8(head).map_err(|_| cache_error("browser callback was not HTTP"))
-}
-
-#[tauri::command]
-async fn discord_oauth_connect(_app: tauri::AppHandle) -> Result<DiscordIdentity, CommandError> {
-    use tokio::time::{timeout, Duration};
-
-    let (client_id, client_secret) = discord_client_credentials()?;
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{DISCORD_CALLBACK_PORT}"))
-        .await
-        .map_err(|error| {
-            cache_error(format!("local callback unavailable (port {DISCORD_CALLBACK_PORT} busy?): {error}"))
-        })?;
-
-    let authorize = format!(
-        "https://discord.com/oauth2/authorize?client_id={client_id}&redirect_uri={}&response_type=code&scope=identify%20email&prompt=consent",
-        urlencoding(DISCORD_REDIRECT_URI),
-    );
-    tauri_plugin_opener::open_url(authorize, None::<&str>)
-        .map_err(|error| cache_error(format!("could not open the browser: {error}")))?;
-    eprintln!("[internal][tauri][info] discord_oauth_connect waiting for browser consent");
-
-    let code = timeout(Duration::from_secs(300), async {
-        let (mut stream, _) = listener
-            .accept()
-            .await
-            .map_err(|error| cache_error(format!("browser callback accept failed: {error}")))?;
-        let head = read_callback_request(&mut stream).await?;
-        let request_line = head.lines().next().unwrap_or("");
-        let target = request_line.split_whitespace().nth(1).unwrap_or("/");
-        // Answered on the same connection: opening a second one would wait behind
-        // this very accept, which already moved on.
-        use tokio::io::AsyncWriteExt;
-        let answer = |ok: bool| async move {
-            let body = if ok {
-                "<html><body><h2>Signed in. Return to OpenTune.</h2></body></html>"
-            } else {
-                "<html><body><h2>Sign-in cancelled. Return to OpenTune.</h2></body></html>"
-            };
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-            let _ = stream.shutdown().await;
-        };
-        if target.contains("error=") {
-            answer(false).await;
-            return Err(cache_error("Discord sign-in was cancelled."));
-        }
-        let query = target.split_once('?').map(|(_, query)| query).unwrap_or("");
-        let code = url::form_urlencoded::parse(query.as_bytes())
-            .find(|(key, _)| key == "code")
-            .map(|(_, value)| value.into_owned())
-            .ok_or_else(|| cache_error("browser callback carried no code"))?;
-        answer(true).await;
-        Ok::<String, CommandError>(code)
-    })
-    .await
-    .map_err(|_| cache_error("Discord sign-in timed out."))??;
-
-    let http = reqwest::Client::new();
-    let token_text = http
-        .post("https://discord.com/api/oauth2/token")
-        .form(&[
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
-            ("grant_type", "authorization_code"),
-            ("code", code.as_str()),
-            ("redirect_uri", DISCORD_REDIRECT_URI),
-        ])
-        .send()
-        .await
-        .map_err(|error| cache_error(format!("Discord token exchange failed: {error}")))?
-        .text()
-        .await
-        .map_err(|error| cache_error(format!("Discord token exchange read failed: {error}")))?;
-    let token: serde_json::Value =
-        serde_json::from_str(&token_text).map_err(|_| cache_error("Discord token exchange was refused."))?;
-    let access_token = token
-        .get("access_token")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| cache_error("Discord token exchange was refused."))?
-        .to_string();
-    let refresh_token = token
-        .get("refresh_token")
-        .and_then(|value| value.as_str())
-        .unwrap_or("")
-        .to_string();
-    if refresh_token.is_empty() {
-        return Err(cache_error("Discord did not return a refresh token."));
-    }
-
-    let me_text = http
-        .get("https://discord.com/api/users/@me")
-        .header("Authorization", format!("Bearer {access_token}"))
-        .send()
-        .await
-        .map_err(|error| cache_error(format!("Discord identity fetch failed: {error}")))?
-        .text()
-        .await
-        .map_err(|error| cache_error(format!("Discord identity read failed: {error}")))?;
-    let me: serde_json::Value =
-        serde_json::from_str(&me_text).map_err(|_| cache_error("Discord identity fetch was refused."))?;
-    let id = me
-        .get("id")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| cache_error("Discord identity fetch was refused."))?
-        .to_string();
-    let username = me
-        .get("username")
-        .and_then(|value| value.as_str())
-        .unwrap_or("Discord user")
-        .to_string();
-    let display_name = me
-        .get("global_name")
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string());
-    let avatar_url = me
-        .get("avatar")
-        .and_then(|value| value.as_str())
-        .map(|hash| format!("https://cdn.discordapp.com/avatars/{id}/{hash}.png"));
-    let email = me.get("email").and_then(|value| value.as_str()).map(|value| value.to_string());
-
-    let session = serde_json::json!({
-        "accessToken": access_token,
-        "refreshToken": refresh_token,
-        "obtainedAtMs": now_ms(),
-    });
-    discord_keyring_entry()?.set_password(&session.to_string()).map_err(|error| CommandError {
-        message: format!("Discord session save failed: {error}"),
-    })?;
-
-    eprintln!("[internal][tauri][info] discord_oauth_connect success id_len={}", id.len());
-    Ok(DiscordIdentity { id, username, display_name, avatar_url, email })
-}
-
-/// Forgets the Discord identity. The token revocation is best-effort — the
-/// keyring entry going away is what actually signs out on this device.
-#[tauri::command]
-fn discord_oauth_disconnect() -> Result<(), CommandError> {
-    if let Ok(entry) = discord_keyring_entry() {
-        let _ = entry.delete_credential();
-    }
-    eprintln!("[internal][tauri][info] discord_oauth_disconnect");
-    Ok(())
-}
-
-/// Percent-encodes one query value. `url` has no single-value encoder that fits
-/// here, and hand-rolling the unreserved set wrong would corrupt the redirect.
-fn urlencoding(value: &str) -> String {
-    const UNRESERVED: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
-    let mut out = String::new();
-    for byte in value.bytes() {
-        if UNRESERVED.contains(&byte) {
-            out.push(byte as char);
-        } else {
-            out.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    out
-}
 
 #[tauri::command]
 fn discord_rpc_update(
@@ -6154,8 +5924,8 @@ pub fn run() {
             switch_youtube_music_account,
             remove_youtube_music_account,
             update_youtube_music_account_profile,
-            browser_import_candidates,
-            import_browser_session,
+            browser_profile_signin,
+            browser_login_data_clear,
             cache_get,
             cache_set,
             cache_stats,
@@ -6174,8 +5944,6 @@ pub fn run() {
             local_audio_unwatch,
             discord_rpc_update,
             discord_rpc_clear,
-            discord_oauth_connect,
-            discord_oauth_disconnect,
             discord_rpc_init,
             discord_rpc_pause,
             discord_rpc_resume,
