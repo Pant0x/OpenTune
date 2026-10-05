@@ -5604,8 +5604,11 @@ fn desktop_environment() -> String {
 #[serde(rename_all = "camelCase")]
 pub struct OAuthPayload {
     pub code: Option<String>,
+    #[serde(alias = "access_token")]
     pub access_token: Option<String>,
+    #[serde(alias = "refresh_token")]
     pub refresh_token: Option<String>,
+    #[serde(alias = "error_description")]
     pub error: Option<String>,
 }
 
@@ -5698,15 +5701,29 @@ async fn run_oauth_loopback_server(
         error: params.get('error') || params.get('error_description')
       };
 
-      fetch('/token_handshake', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(() => {
-        document.getElementById('status').innerText = 'Connected! You may close this tab.';
-        setTimeout(() => { try { window.close(); } catch(e){} }, 2000);
-      }).catch(() => {
-        document.getElementById('status').innerText = 'Connected! Return to OpenTune.';
+      const raw = hash || search;
+      const handshakeUrl = '/token_handshake' + (raw ? ('?' + raw) : '');
+
+      function sendHandshake() {
+        return fetch(handshakeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function(res) {
+          if (!res.ok) throw new Error('status ' + res.status);
+          return res.json();
+        }).catch(function() {
+          return fetch(handshakeUrl, { method: 'GET' });
+        });
+      }
+
+      sendHandshake().then(function() {
+        const el = document.getElementById('status');
+        if (el) el.innerText = 'Connected! You may close this tab.';
+        setTimeout(function() { try { window.close(); } catch(e){} }, 2000);
+      }).catch(function() {
+        const el = document.getElementById('status');
+        if (el) el.innerText = 'Connected! Return to OpenTune.';
       });
     })();
   </script>
@@ -5732,13 +5749,52 @@ async fn run_oauth_loopback_server(
                 Err(_) => break,
             };
 
-            let mut buf = [0u8; 8192];
-            let n = match stream.read(&mut buf).await {
-                Ok(n) if n > 0 => n,
-                _ => continue,
-            };
+            let mut buf = Vec::new();
+            let mut temp = [0u8; 4096];
+            let mut content_length: Option<usize> = None;
+            let mut header_end_pos: Option<usize> = None;
 
-            let request_str = String::from_utf8_lossy(&buf[..n]);
+            loop {
+                let n = match stream.read(&mut temp).await {
+                    Ok(n) if n > 0 => n,
+                    _ => break,
+                };
+                buf.extend_from_slice(&temp[..n]);
+
+                if header_end_pos.is_none() {
+                    if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        header_end_pos = Some(pos);
+                        let headers = String::from_utf8_lossy(&buf[..pos]);
+                        for line in headers.lines() {
+                            if let Some((k, v)) = line.split_once(':') {
+                                if k.trim().eq_ignore_ascii_case("content-length") {
+                                    if let Ok(cl) = v.trim().parse::<usize>() {
+                                        content_length = Some(cl);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(pos) = header_end_pos {
+                    let body_len = buf.len().saturating_sub(pos + 4);
+                    let target_len = content_length.unwrap_or(0);
+                    if body_len >= target_len {
+                        break;
+                    }
+                }
+
+                if buf.len() > 65536 {
+                    break;
+                }
+            }
+
+            if buf.is_empty() {
+                continue;
+            }
+
+            let request_str = String::from_utf8_lossy(&buf);
             let first_line = request_str.lines().next().unwrap_or("");
             let parts: Vec<&str> = first_line.split_whitespace().collect();
             let method = parts.first().copied().unwrap_or("GET");
@@ -5760,36 +5816,64 @@ async fn run_oauth_loopback_server(
 
             if path.starts_with("/token_handshake") {
                 let mut payload = OAuthPayload::default();
-                if method == "POST" {
-                    let body = request_str.split("\r\n\r\n").nth(1).unwrap_or("");
-                    if let Ok(parsed) = serde_json::from_str::<OAuthPayload>(body) {
-                        payload = parsed;
+
+                if let Some((_, query)) = path.split_once('?') {
+                    for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+                        let k = k.as_ref();
+                        if k == "code" {
+                            payload.code = Some(v.into_owned());
+                        } else if k == "access_token" || k == "accessToken" {
+                            payload.access_token = Some(v.into_owned());
+                        } else if k == "refresh_token" || k == "refreshToken" {
+                            payload.refresh_token = Some(v.into_owned());
+                        } else if k == "error" || k == "error_description" {
+                            payload.error = Some(v.into_owned());
+                        }
                     }
                 }
-                if payload.code.is_none() && payload.access_token.is_none() {
-                    if let Some((_, query)) = path.split_once('?') {
-                        for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
-                            if k == "code" {
-                                payload.code = Some(v.into_owned());
-                            } else if k == "access_token" {
-                                payload.access_token = Some(v.into_owned());
-                            } else if k == "refresh_token" {
-                                payload.refresh_token = Some(v.into_owned());
-                            } else if k == "error" || k == "error_description" {
-                                payload.error = Some(v.into_owned());
+
+                if let Some(pos) = header_end_pos {
+                    let body = &request_str[(pos + 4)..];
+                    if !body.trim().is_empty() {
+                        if let Ok(parsed) = serde_json::from_str::<OAuthPayload>(body.trim()) {
+                            if payload.code.is_none() { payload.code = parsed.code; }
+                            if payload.access_token.is_none() { payload.access_token = parsed.access_token; }
+                            if payload.refresh_token.is_none() { payload.refresh_token = parsed.refresh_token; }
+                            if payload.error.is_none() { payload.error = parsed.error; }
+                        } else {
+                            for (k, v) in url::form_urlencoded::parse(body.as_bytes()) {
+                                let k = k.as_ref();
+                                if k == "code" && payload.code.is_none() {
+                                    payload.code = Some(v.into_owned());
+                                } else if (k == "access_token" || k == "accessToken") && payload.access_token.is_none() {
+                                    payload.access_token = Some(v.into_owned());
+                                } else if (k == "refresh_token" || k == "refreshToken") && payload.refresh_token.is_none() {
+                                    payload.refresh_token = Some(v.into_owned());
+                                } else if (k == "error" || k == "error_description") && payload.error.is_none() {
+                                    payload.error = Some(v.into_owned());
+                                }
                             }
                         }
                     }
                 }
 
-                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let has_auth = payload.code.is_some() || payload.access_token.is_some() || payload.error.is_some();
+
+                let resp = if has_auth {
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n{\"ok\":true}"
+                } else {
+                    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n{\"ok\":false,\"error\":\"no_tokens\"}"
+                };
                 let _ = stream.write_all(resp.as_bytes()).await;
                 let _ = stream.shutdown().await;
 
-                if let Some(tx) = result_tx.take() {
-                    let _ = tx.send(Ok(payload));
+                if has_auth {
+                    if let Some(tx) = result_tx.take() {
+                        let _ = tx.send(Ok(payload));
+                    }
+                    break;
                 }
-                break;
+                continue;
             }
 
             // It's GET /callback or similar
@@ -5803,22 +5887,29 @@ async fn run_oauth_loopback_server(
 
             if let Some((_, query)) = path.split_once('?') {
                 let mut code = None;
+                let mut access_token = None;
+                let mut refresh_token = None;
                 let mut error = None;
                 for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+                    let k = k.as_ref();
                     if k == "code" {
                         code = Some(v.into_owned());
+                    } else if k == "access_token" || k == "accessToken" {
+                        access_token = Some(v.into_owned());
+                    } else if k == "refresh_token" || k == "refreshToken" {
+                        refresh_token = Some(v.into_owned());
                     } else if k == "error" || k == "error_description" {
                         error = Some(v.into_owned());
                     }
                 }
 
-                if code.is_some() || error.is_some() {
+                if code.is_some() || access_token.is_some() || error.is_some() {
                     if let Some(tx) = result_tx.take() {
                         let _ = tx.send(Ok(OAuthPayload {
                             code,
                             error,
-                            access_token: None,
-                            refresh_token: None,
+                            access_token,
+                            refresh_token,
                         }));
                     }
                     break;

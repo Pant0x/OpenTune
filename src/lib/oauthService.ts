@@ -64,17 +64,21 @@ export async function signInWithOAuthBrowser(provider: "google" | "discord"): Pr
       }
 
       // 5. Exchange code or save session
-      if (payload.code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(payload.code);
+      const code = payload.code || ((payload as unknown) as Record<string, string>).code;
+      const accessToken = payload.accessToken || ((payload as unknown) as Record<string, string>).access_token;
+      const refreshToken = payload.refreshToken || ((payload as unknown) as Record<string, string>).refresh_token;
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) throw exchangeError;
-      } else if (payload.accessToken && payload.refreshToken) {
+      } else if (accessToken) {
         const { error: setSessionError } = await supabase.auth.setSession({
-          access_token: payload.accessToken,
-          refresh_token: payload.refreshToken,
+          access_token: accessToken,
+          refresh_token: refreshToken || "",
         });
         if (setSessionError) throw setSessionError;
       } else {
-        throw new Error("No authentication tokens or authorization code received.");
+        throw new Error(payload.error || "No authentication tokens or authorization code received.");
       }
 
       // 6. Refresh active session
