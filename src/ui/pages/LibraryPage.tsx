@@ -22,7 +22,9 @@ import {
 } from "@/components/motion/select";
 import type { Album, Artist, Playlist, Track } from "../../datasource/types";
 import type { LibraryState } from "../../player/LibraryController";
-import type { PlayerControllerActions } from "../../player/playerStore";
+import { libraryController, type PlayerControllerActions } from "../../player/playerStore";
+import { useAuthProfile } from "@/lib/authProfile";
+import { requestAuthModal } from "../components/AuthModal";
 import { queueDownloads, useOfflineState } from "../../player/offlineStore";
 import { getLocalPlaylistItems, subscribeToLocalPlaylists } from "../../player/localPlaylists";
 import {
@@ -141,6 +143,7 @@ export function LibraryPage({
   onOpenArtist: (artist: Artist) => void;
   onOpenPlaylist: (playlist: Playlist) => void;
 }) {
+  const { profile: cloudProfile } = useAuthProfile();
   const [tab, setTab] = useState<LibraryTab>("songs");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LibrarySort>("recent");
@@ -395,11 +398,30 @@ export function LibraryPage({
 
   if (!library && tab !== "downloads" && tab !== "local-files") {
     return (
-      <p className="px-2 py-16 text-center text-sm text-muted-foreground">
-        {libraryState.status === "signed-out"
-          ? "Sign in to see your library."
-          : "Loading your library..."}
-      </p>
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <p className="text-sm text-muted-foreground">
+          {libraryState.status === "signed-out"
+            ? (cloudProfile
+                ? "Connect YouTube Music to sync your YouTube library."
+                : "Sign in to see your library.")
+            : "Loading your library..."}
+        </p>
+        {libraryState.status === "signed-out" && (
+          <button
+            type="button"
+            onClick={() => {
+              if (cloudProfile) {
+                void libraryController.signIn();
+              } else {
+                requestAuthModal();
+              }
+            }}
+            className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 active:scale-95 cursor-pointer"
+          >
+            {cloudProfile ? "Connect YouTube Music" : "Sign In"}
+          </button>
+        )}
+      </div>
     );
   }
 

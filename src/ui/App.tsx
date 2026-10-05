@@ -1641,13 +1641,8 @@ export default function App() {
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={async () => {
+        onAuthSuccess={() => {
           setIsAuthModalOpen(false);
-          if (libraryState.status !== "ready") {
-            try {
-              await libraryController.signIn();
-            } catch {}
-          }
         }}
       />
 
