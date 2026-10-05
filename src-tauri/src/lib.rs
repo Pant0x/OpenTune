@@ -48,7 +48,6 @@ mod linux_media;
 mod windows_fullscreen;
 
 mod audio;
-mod browser_cdp;
 mod process_memory;
 mod discord_rpc;
 mod opus_source;
@@ -2223,181 +2222,6 @@ fn update_youtube_music_account_profile(
     save_account_store(&app, &store)
 }
 
-/// What a browser sign-in produced. Deliberately NOT the cookie: Rust seeds the
-/// live jar itself (like `sign_in_youtube_music`), and the frontend re-reads its
-/// mirror the same way boot does (`load_youtube_music_cookie`).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BrowserImportResult {
-    slot_id: String,
-    account_changed: bool,
-    browser: String,
-}
-
-/// Stores an imported header as an ordinary slot: its own slot when new, a
-/// refresh in place when the identity is already stored (repeating never
-/// duplicates). Shared by every session origin — popup harvest, browser import,
-/// extension receiver — so all of them behave identically downstream.
-fn store_imported_header(
-    app: &tauri::AppHandle,
-    jar: &YoutubeCookieJar,
-    account_lock: &AccountStoreLock,
-    cookie_header: &str,
-    origin: &str,
-) -> Result<(String, bool), CommandError> {
-    let candidate_slot_id = generate_slot_id();
-    let (slot_id, account_changed) = {
-        let _guard = account_lock.0.lock().map_err(|_| CommandError {
-            message: "account store lock unavailable".to_string(),
-        })?;
-        let mut store = load_account_store(app)?;
-        let (slot_id, account_changed) =
-            store.upsert_signed_in_account(cookie_header, candidate_slot_id);
-        save_account_store(app, &store)?;
-        (slot_id, account_changed)
-    };
-    if let Ok(mut state) = jar.0.lock() {
-        state.cookie = Some(cookie_header.to_string());
-        state.persisted_at = Some(Instant::now());
-    }
-    eprintln!(
-        "[internal][tauri][info] {origin} success slot={slot_id} account_changed={account_changed} credential_bytes={}",
-        cookie_header.len()
-    );
-    Ok((slot_id, account_changed))
-}
-
-/// Where a browser sign-in would run. Lets the UI name the browser and warn
-/// about tab loss BEFORE anything closes. Pure reads, no processes touched.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct BrowserSigninTarget {
-    browser: String,
-    profile_name: String,
-    restores_tabs: bool,
-}
-
-#[tauri::command]
-fn browser_signin_target() -> Result<BrowserSigninTarget, CommandError> {
-    let profile = browser_cdp::detect_user_profile().ok_or_else(|| CommandError {
-        message: "Install Brave, Chrome or Edge first, then sign in again.".to_string(),
-    })?;
-    Ok(BrowserSigninTarget {
-        browser: profile.browser.to_string(),
-        profile_name: profile.profile_dir_name,
-        restores_tabs: profile.restores_tabs,
-    })
-}
-
-/// Signs in through the user's own browser — no in-app popup.
-///
-/// Restarts their Chromium once on its own profile with a debugging port, opens
-/// the YouTube login there, polls the session over DevTools (the browser
-/// decrypts for us, HttpOnly cookies included), and the moment login cookies
-/// appear kills the debug instance and relaunches the browser normally. Tabs
-/// survive when the browser restores its session — the UI confirms that first.
-/// Already signed in means zero typing: the login page lands straight through.
-/// Nothing listens when idle: the port is picked fresh per run, and every exit
-/// path relaunches normally first.
-#[tauri::command]
-async fn browser_google_signin(
-    app: tauri::AppHandle,
-    jar: tauri::State<'_, YoutubeCookieJar>,
-    account_lock: tauri::State<'_, AccountStoreLock>,
-) -> Result<BrowserImportResult, CommandError> {
-    use tokio::time::{sleep, Duration};
-
-    let profile = browser_cdp::detect_user_profile().ok_or_else(|| CommandError {
-        message: "Install Brave, Chrome or Edge first, then sign in again.".to_string(),
-    })?;
-    let browser_exe = browser_cdp::find_browser_exe(profile.browser).ok_or_else(|| CommandError {
-        message: format!("{} is not installed", profile.browser),
-    })?;
-    let port = portpicker::pick_unused_port()
-        .ok_or_else(|| cache_error("no free localhost port for sign-in".to_string()))?;
-    let image = match profile.browser {
-        "Brave" => "brave.exe",
-        "Chrome" => "chrome.exe",
-        "Edge" => "msedge.exe",
-        "Opera" => "opera.exe",
-        "Vivaldi" => "vivaldi.exe",
-        _ => "chrome.exe",
-    };
-
-    eprintln!("[internal][tauri][info] browser_google_signin browser={} port={port}", profile.browser);
-    // The profile is locked by a running instance; a second one would join it
-    // (no debugging port) or fail. So the running one goes first.
-    if browser_cdp::process_is_running(image) {
-        std::process::Command::new("taskkill")
-            .args(["/F", "/IM", image])
-            .output()
-            .map_err(|error| cache_error(format!("could not restart the browser: {error}")))?;
-        if !browser_cdp::wait_for_exit(image, 15_000) {
-            return Err(CommandError {
-                message: "The browser would not close; sign-in cancelled.".to_string(),
-            });
-        }
-    }
-    let mut child = browser_cdp::launch_debug_browser(
-        &browser_exe,
-        &profile.user_data_dir,
-        &profile.profile_dir_name,
-        port,
-        YOUTUBE_LOGIN_URL,
-    )
-    .map_err(cache_error)?;
-
-    let deadline = std::time::Instant::now() + Duration::from_secs(300);
-    let cookies = loop {
-        if std::time::Instant::now() >= deadline {
-            break None;
-        }
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                let _ = child.wait();
-                browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
-                return Err(CommandError {
-                    message: "Browser sign-in was closed.".to_string(),
-                });
-            }
-            Ok(None) => {}
-            Err(error) => {
-                let _ = child.kill();
-                browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
-                return Err(cache_error(format!("browser watch failed: {error}")));
-            }
-        }
-        match browser_cdp::read_cookies_via_cdp(port).await {
-            Ok(cookies) if browser_cdp::cookies_hold_login(&cookies) => break Some(cookies),
-            Ok(_) => {}
-            Err(_) => {}
-        }
-        sleep(Duration::from_millis(2500)).await;
-    };
-    let _ = child.kill();
-    let _ = child.wait();
-    // Normal again before anything else: no debug port left behind, whatever
-    // the outcome below.
-    browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
-
-    let cookies = cookies.ok_or_else(|| CommandError {
-        message: "Browser sign-in timed out.".to_string(),
-    })?;
-    let pairs: Vec<(String, String)> = cookies
-        .into_iter()
-        .map(|cookie| (cookie.name, cookie.value))
-        .collect();
-    let cookie_header = serialize_cookie_pairs(&pairs);
-    if cookie_header.trim().is_empty() {
-        return Err(CommandError {
-            message: "The browser session came back empty.".to_string(),
-        });
-    }
-    let (slot_id, account_changed) =
-        store_imported_header(&app, &jar, &account_lock, &cookie_header, "browser_google_signin")?;
-    Ok(BrowserImportResult { slot_id, account_changed, browser: profile.browser.to_string() })
-}
-
 #[cfg(any(target_os = "macos", test))]
 fn cookie_domain_matches(host: &str, cookie_domain: Option<&str>) -> bool {
     let Some(cookie_domain) = cookie_domain else {
@@ -2494,6 +2318,7 @@ fn build_login_window(
     .visible(visible)
     .skip_taskbar(!visible)
     .inner_size(520.0, 760.0)
+    .center()
     .on_page_load(move |_window, payload| {
         if payload.event() == tauri::webview::PageLoadEvent::Finished {
             loaded.store(true, Ordering::Relaxed);
@@ -2685,7 +2510,7 @@ async fn sign_in_youtube_music(
                 message: "YouTube Music sign-in was cancelled.".to_string(),
             });
         }
-        thread::sleep(Duration::from_secs(1));
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
     let _ = window.close();
@@ -5950,8 +5775,6 @@ pub fn run() {
             switch_youtube_music_account,
             remove_youtube_music_account,
             update_youtube_music_account_profile,
-            browser_signin_target,
-            browser_google_signin,
             cache_get,
             cache_set,
             cache_stats,

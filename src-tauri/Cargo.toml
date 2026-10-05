@@ -40,10 +40,8 @@ lofty = "0.24.0"
 notify = "8.2.0"
 futures-util = "0.3.33"
 # Already in the tree via tauri; declared directly for `sleep` in the range-retry backoff
-# and the semaphore that serialises playback fills. `net` + `macros` drive the
-# DevTools-protocol socket used for browser-session import.
+# and the semaphore that serialises playback fills.
 tokio = { version = "1", features = ["sync", "time", "net", "macros", "rt", "rt-multi-thread"] }
-tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "symphonia-all"] }
 # Demuxing only, and pinned to the version rodio already pulls so the binary carries one copy
 # of the Matroska/Ogg readers rather than two.

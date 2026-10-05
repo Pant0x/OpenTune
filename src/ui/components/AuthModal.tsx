@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { invoke } from "@tauri-apps/api/core";
 import { libraryController } from "../../player/playerStore";
 import { CloseIcon } from "@/ui/icons";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import openTuneText from "../../../assets/img/opentune-text.png";
-import { Loader } from "@/components/motion/loader";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -21,19 +19,16 @@ export function requestAuthModal(): void {
 }
 
 /**
- * Connect modal: exactly one way in.
+ * Connect modal:
  *
- * "Sign in with Google" opens a real browser window owned by the app on the
- * YouTube login. The user signs in there — once ever, then an account chooser —
- * the app notices the session itself, stores it as an ordinary slot, and syncs
- * the library exactly like the old window sign-in. No typing in the app, no
- * popup window, no passwords anywhere.
+ * "Sign in with Google" opens a dedicated, secure sign-in window.
+ * The user logs in with their Google account to sync their YouTube Music
+ * library, playlists, and liked songs. Once finished, the window closes
+ * automatically and the session is safely saved.
  */
 export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [target, setTarget] = useState<{ browser: string; profileName: string; restoresTabs: boolean } | null>(null);
-  const [targetError, setTargetError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Focus trap
@@ -72,13 +67,13 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   // Close on Escape
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape" && isOpen && !busy) {
         onClose();
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, busy]);
 
   // Prevent body scroll
   useEffect(() => {
@@ -95,47 +90,19 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const handleGoogleSignIn = async () => {
     setBusy(true);
     setError(null);
+    onClose();
 
     try {
-      await libraryController.importBrowserSession();
+      await libraryController.signIn();
       onAuthSuccess?.();
-      onClose();
     } catch (err) {
+      if (err instanceof Error && /cancel/i.test(err.message)) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
       setBusy(false);
     }
-  };
-
-  // Where the sign-in would run: naming the browser and warning about the
-  // restart BEFORE anything closes. Pure reads, refreshed every open.
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    setTargetError(null);
-    void invoke<{ browser: string; profileName: string; restoresTabs: boolean }>("browser_signin_target")
-      .then((found) => {
-        if (!cancelled) setTarget(found);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setTarget(null);
-          setTargetError(error instanceof Error ? error.message : "No supported browser found.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen]);
-
-  /**
-   * The classic embedded window, for machines with no supported browser.
-   * The overlay takes over progress from here — this just starts it and steps
-   * aside, so a failure surfaces there instead of stranding this modal.
-   */
-  const handleClassicSignIn = () => {
-    onClose();
-    void libraryController.signIn().catch(() => {});
   };
 
   if (!isOpen) return null;
@@ -149,7 +116,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
-        onClick={onClose}
+        onClick={busy ? undefined : onClose}
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
@@ -167,13 +134,14 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             type="button"
             className="absolute top-4 right-4 z-20 flex size-8 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onClose}
+            disabled={busy}
             aria-label="Close"
           >
             <CloseIcon size={18} />
           </button>
 
           {/* Branding */}
-          <div className="flex flex-col items-center mb-5">
+          <div className="flex flex-col items-center mb-6">
             <div className="flex items-center justify-center py-2 px-4 mb-3">
               <img
                 src={openTuneText}
@@ -184,10 +152,8 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <h2 id="auth-modal-title" className="text-xl font-bold text-foreground">
               Sign in to OpenTune
             </h2>
-            <p className="mt-1 text-xs text-muted-foreground text-center">
-              {target
-                ? `${target.browser} restarts once to connect — nothing is typed in here`
-                : "A browser window opens for sign-in — nothing is typed in here"}
+            <p className="mt-1.5 text-xs text-muted-foreground text-center max-w-[280px] leading-relaxed">
+              Sign in with your Google account to sync your playlists, liked songs, and music library.
             </p>
           </div>
 
@@ -221,33 +187,10 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <GoogleSignInButton
               onClick={() => void handleGoogleSignIn()}
               isBusy={busy}
-              disabled={busy || target === null}
+              disabled={busy}
               fullWidth
             />
-            {targetError && (
-              <p className="text-[11px] leading-relaxed text-destructive/90">{targetError}</p>
-            )}
-            {target && !target.restoresTabs && !busy && (
-              <p className="text-[11px] leading-relaxed text-amber-400/90">
-                {target.browser} will close and reopen — open tabs will not come back unless
-                “Continue where you left off” is enabled in its settings.
-              </p>
-            )}
-            {busy && (
-              <p className="flex items-center gap-2 text-[11px] leading-relaxed text-muted-foreground/80">
-                <Loader variant="spinner" size={12} />
-                Waiting for the browser sign-in — finish it there, then come back.
-              </p>
-            )}
           </div>
-
-          <button
-            type="button"
-            onClick={handleClassicSignIn}
-            className="mt-4 w-full text-center text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors"
-          >
-            No supported browser? Use the classic window instead
-          </button>
         </motion.div>
       </motion.div>
     </AnimatePresence>
