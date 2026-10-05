@@ -43,6 +43,9 @@ import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEf
 import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
+import { handleOAuthPopupRedirect } from "./lib/oauthService";
+
+void handleOAuthPopupRedirect();
 
 logInternalInfo("main.bootstrap start");
 // Before React mounts: a resolution restored after first paint is a resolution that already
