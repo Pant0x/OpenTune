@@ -336,6 +336,53 @@ export class LibraryController {
   }
 
   /**
+   * Signs in with a live browser session: no typing, no popup window.
+   *
+   * Mirrors `signIn` stage for stage — same authorizing state, same progress
+   * reporting, same library refresh — differing only in how the session arrives.
+   * Requires the data source to implement `signInWithBrowserSession`.
+   */
+  async importBrowserSession(browser: string, profileName: string): Promise<void> {
+    if (!this.dataSource.signInWithBrowserSession) return;
+    logInternalInfo("LibraryController.importBrowserSession start", { browser });
+    this.activeAuthFlow = "sign-in";
+    this.setState({
+      status: "authorizing",
+      authPrompt: null,
+      authProgress: { flow: "sign-in", stage: "browser", attempt: 1, attemptCount: 1 },
+      error: null,
+    });
+    try {
+      await this.dataSource.signInWithBrowserSession(
+        browser,
+        profileName,
+        (authPrompt) => {
+          logInternalInfo("LibraryController.importBrowserSession prompt received", {
+            verificationUrl: authPrompt.verificationUrl,
+            expiresInSec: authPrompt.expiresInSec,
+          });
+          this.setState({ status: "authorizing", authPrompt, error: null });
+        },
+        (stage) => this.setAuthStage(stage),
+      );
+      logInternalInfo("LibraryController.importBrowserSession authentication complete");
+      await this.refreshAfterSignIn();
+      logInternalInfo("LibraryController.importBrowserSession refresh complete");
+    } catch (error) {
+      if (isSignInCancellation(error)) {
+        logInternalInfo("LibraryController.importBrowserSession cancelled by user");
+        this.setState({ status: "signed-out", authPrompt: null, error: null });
+      } else {
+        this.setFailure("Browser session import failed.", error);
+      }
+    } finally {
+      // Cleared on every exit, success or failure: a stale stage would leave the overlay
+      // describing work that is no longer running.
+      this.setState({ authProgress: null });
+    }
+  }
+
+  /**
    * Backs out of a sign-in that is still waiting on the browser window.
    *
    * Closing that window is the whole mechanism: the backend polls for it and reports a

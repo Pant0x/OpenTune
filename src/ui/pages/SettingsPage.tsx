@@ -32,19 +32,16 @@ import {
   ArrowUpRightIcon,
   BugIcon,
   CheckIcon,
-  CloseIcon,
   DiscordIcon,
   DownloadIcon,
   FolderIcon,
   FolderOpenIcon,
   GitHubIcon,
-  ImageIcon,
   KeyIcon,
   LogFileIcon,
   LogoutIcon,
   LyricsIcon,
   PaletteIcon,
-  PencilIcon,
   PlayIcon,
   QueuePanelIcon,
   RefreshIcon,
@@ -52,8 +49,7 @@ import {
   TrashIcon,
   UserIcon,
 } from "@/ui/icons";
-import { useAuthProfile } from "../../lib/authProfile";
-import { signInWithOAuthPopup } from "../../lib/oauthService";
+import { useDiscordIdentity, setDiscordIdentity, type DiscordIdentity } from "../settings/discordIdentity";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import {
@@ -249,13 +245,6 @@ function formatSessionAge(confirmedAt: number | null): string {
   const hours = Math.floor(minutes / 60);
   return `${hours} hour${hours === 1 ? "" : "s"} ago`;
 }
-
-/**
- * Text field. Preflight strips the browser's default input chrome, and these two fields were
- * left bare by the CSS Modules migration — they rendered as invisible text on the card.
- */
-const SETTINGS_FIELD =
-  "min-w-0 rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-inset focus:ring-ring/60";
 
 /**
  * The ten-band equaliser.
@@ -612,59 +601,48 @@ export function SettingsPage({
   const [resetSettingsConfirming, setResetSettingsConfirming] = useState(false);
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
-  const { profile, updateUsername, updateAvatarUrl, signOut: authSignOut } = useAuthProfile();
-  const [isEditingUsername, setIsEditingUsername] = useState(false);
-  const [usernameInput, setUsernameInput] = useState("");
-  const [isEditingAvatar, setIsEditingAvatar] = useState(false);
-  const [avatarUrlInput, setAvatarUrlInput] = useState("");
-  const [profileActionBusy, setProfileActionBusy] = useState(false);
-  const [profileActionError, setProfileActionError] = useState<string | null>(null);
-  const [profileActionSuccess, setProfileActionSuccess] = useState<string | null>(null);
+  // Identity comes from connected services, not an OpenTune password account:
+  // the YouTube session (library account) and the linked Discord identity.
+  const discordIdentity = useDiscordIdentity();
 
-  const isGoogleUser = libraryState.status === "ready" || profile?.provider === "google";
-  const hasAppAccount = Boolean(profile || libraryState.status === "ready");
-
-  const handleSaveUsername = async () => {
-    if (!usernameInput.trim()) return;
-    setProfileActionBusy(true);
-    setProfileActionError(null);
-    setProfileActionSuccess(null);
-    try {
-      await updateUsername(usernameInput.trim());
-      setIsEditingUsername(false);
-      setProfileActionSuccess("Username updated successfully.");
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to update username.");
-    } finally {
-      setProfileActionBusy(false);
-    }
-  };
-
-  const handleSaveAvatar = async (url: string) => {
-    if (!url.trim()) return;
-    setProfileActionBusy(true);
-    setProfileActionError(null);
-    setProfileActionSuccess(null);
-    try {
-      await updateAvatarUrl(url.trim());
-      setIsEditingAvatar(false);
-      setAvatarUrlInput("");
-      setProfileActionSuccess("Profile picture updated successfully.");
-    } catch (err) {
-      setProfileActionError(err instanceof Error ? err.message : "Failed to update avatar.");
-    } finally {
-      setProfileActionBusy(false);
-    }
-  };
+  const hasAppAccount = Boolean(discordIdentity || libraryState.status === "ready");
 
   const handleSignOutAll = async () => {
     try {
       if (libraryState.status === "ready") {
         await libraryController.signOut();
       }
-      await authSignOut();
+      await invoke("discord_oauth_disconnect").catch(() => {});
+      setDiscordIdentity(null);
     } catch (err) {
       console.error("Sign out error:", err);
+    }
+  };
+
+  const [discordBusy, setDiscordBusy] = useState(false);
+  const [discordError, setDiscordError] = useState<string | null>(null);
+
+  /** Direct loopback OAuth in the system browser. Replaces the Supabase popup. */
+  const handleDiscordConnect = async () => {
+    setDiscordBusy(true);
+    setDiscordError(null);
+    try {
+      const identity = await invoke<DiscordIdentity>("discord_oauth_connect");
+      setDiscordIdentity(identity);
+    } catch (err) {
+      setDiscordError(err instanceof Error ? err.message : "Discord sign-in failed.");
+    } finally {
+      setDiscordBusy(false);
+    }
+  };
+
+  const handleDiscordDisconnect = async () => {
+    setDiscordBusy(true);
+    try {
+      await invoke("discord_oauth_disconnect").catch(() => {});
+      setDiscordIdentity(null);
+    } finally {
+      setDiscordBusy(false);
     }
   };
 
@@ -1065,54 +1043,33 @@ export function SettingsPage({
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="relative group/avatar shrink-0">
                   <AccountAvatar
-                    artworkUrl={profile?.avatarUrl || account?.artworkUrl}
+                    artworkUrl={discordIdentity?.avatarUrl || account?.artworkUrl}
                     className="size-14 ring-2 ring-border/60"
                     iconSize={30}
                   />
-                  {!isGoogleUser && profile && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingAvatar((prev) => !prev);
-                        setAvatarUrlInput(profile?.avatarUrl ?? "");
-                      }}
-                      className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full bg-primary text-white shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      title="Change Profile Picture"
-                      aria-label="Change Profile Picture"
-                    >
-                      <ImageIcon size={13} aria-hidden="true" />
-                    </button>
-                  )}
                 </div>
 
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-base font-semibold text-foreground">
-                      {profile?.username || account?.name || "Music Explorer"}
+                      {discordIdentity?.displayName || discordIdentity?.username || account?.name || "Music Explorer"}
                     </span>
-                    {!isGoogleUser && profile && !isEditingUsername && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingUsername(true);
-                          setUsernameInput(profile.username);
-                        }}
-                        className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                        title="Edit Username"
-                        aria-label="Edit Username"
-                      >
-                        <PencilIcon size={14} aria-hidden="true" />
-                      </button>
-                    )}
                   </div>
                   <span className="truncate text-xs text-muted-foreground">
-                    {profile?.email || (isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Sign in to customize profile and sync playlists")}
+                    {discordIdentity?.email || (isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Connect a browser or Discord to personalize")}
                   </span>
-                  {profile && (
-                    <span className="mt-1 inline-flex w-fit items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      {profile.provider === "google" ? "Google Account" : profile.provider === "discord" ? "Discord Account" : "OpenTune Account"}
-                    </span>
-                  )}
+                  <span className="mt-1 inline-flex w-fit items-center gap-1.5">
+                    {isSignedIn && (
+                      <span className="inline-flex items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        YouTube
+                      </span>
+                    )}
+                    {discordIdentity && (
+                      <span className="inline-flex items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        Discord • {discordIdentity.username}
+                      </span>
+                    )}
+                  </span>
                 </div>
 
                 {hasAppAccount ? (
@@ -1130,97 +1087,14 @@ export function SettingsPage({
                     type="button"
                     onClick={() => setIsAuthModalOpen(true)}
                   >
-                    Sign In / Sign Up
+                    Connect
                   </button>
                 )}
               </div>
 
-              {/* Inline Edit Username */}
-              {isEditingUsername && !isGoogleUser && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <span className="text-xs font-medium text-foreground w-full sm:w-auto">New Username:</span>
-                  <input
-                    className={cn(SETTINGS_FIELD, "flex-1 min-w-[180px]")}
-                    type="text"
-                    value={usernameInput}
-                    placeholder="Enter new username"
-                    onChange={(e) => setUsernameInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleSaveUsername();
-                      if (e.key === "Escape") setIsEditingUsername(false);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    disabled={profileActionBusy}
-                    onClick={() => void handleSaveUsername()}
-                    className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    <CheckIcon size={14} />
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    disabled={profileActionBusy}
-                    onClick={() => setIsEditingUsername(false)}
-                    className="flex items-center gap-1 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    <CloseIcon size={14} />
-                    Cancel
-                  </button>
-                </div>
-              )}
+              {/* Inline editors removed with password accounts: identity now comes
+                  from the connected YouTube session and Discord link below. */}
 
-              {/* Inline Edit Avatar / PFP */}
-              {isEditingAvatar && !isGoogleUser && (
-                <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <span className="text-xs font-medium text-foreground">Change Profile Picture:</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      className={cn(SETTINGS_FIELD, "flex-1 min-w-[200px]")}
-                      type="text"
-                      value={avatarUrlInput}
-                      placeholder="https://example.com/avatar.jpg"
-                      onChange={(e) => setAvatarUrlInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleSaveAvatar(avatarUrlInput);
-                        if (e.key === "Escape") setIsEditingAvatar(false);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      disabled={profileActionBusy || !avatarUrlInput.trim()}
-                      onClick={() => void handleSaveAvatar(avatarUrlInput)}
-                      className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      <CheckIcon size={14} />
-                      Save PFP
-                    </button>
-                    <button
-                      type="button"
-                      disabled={profileActionBusy}
-                      onClick={() => setIsEditingAvatar(false)}
-                      className="flex items-center gap-1 rounded-lg border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      <CloseIcon size={14} />
-                      Cancel
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[11px] text-muted-foreground">Quick presets:</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveAvatar("/icons/128x128.png")}
-                      className="text-[11px] font-medium text-primary hover:underline"
-                    >
-                      OpenTune Logo
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {profileActionSuccess && <p className="text-xs text-emerald-400">{profileActionSuccess}</p>}
-              {profileActionError && <p className="text-xs text-destructive">{profileActionError}</p>}
               {libraryState.error && <p className="text-xs text-destructive">{libraryState.error}</p>}
             </div>
 
@@ -1258,29 +1132,40 @@ export function SettingsPage({
                   <div className="flex flex-col">
                     <strong className="text-sm font-semibold text-foreground">Discord Account</strong>
                     <span className="text-xs text-muted-foreground">
-                      {profile?.isDiscordConnected || profile?.provider === "discord"
-                        ? `Connected — Linked to ${profile?.username || "Discord"}`
+                      {discordIdentity
+                        ? `Connected — Linked to ${discordIdentity.displayName || discordIdentity.username}`
                         : "Connect your Discord account to link your OpenTune profile"}
                     </span>
                   </div>
                 </div>
 
-                {profile?.isDiscordConnected || profile?.provider === "discord" ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
-                    <CheckIcon size={13} />
-                    Connected
-                  </span>
+                {discordError && (
+                  <p className="text-xs text-destructive">{discordError}</p>
+                )}
+
+                {discordIdentity ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30">
+                      <CheckIcon size={13} />
+                      Connected
+                    </span>
+                    <button
+                      type="button"
+                      disabled={discordBusy}
+                      onClick={() => void handleDiscordDisconnect()}
+                      className="rounded-full border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={async () => {
-                      try {
-                        await signInWithOAuthPopup("discord");
-                      } catch {}
-                    }}
-                    className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    disabled={discordBusy}
+                    onClick={() => void handleDiscordConnect()}
+                    className="flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Connect
+                    {discordBusy ? "Connecting…" : "Connect"}
                   </button>
                 )}
               </div>

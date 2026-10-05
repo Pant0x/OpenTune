@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { cn } from "@/lib/utils";
-import { supabase } from "../../lib/supabaseClient";
-import { signInWithOAuthPopup } from "../../lib/oauthService";
+import { invoke } from "@tauri-apps/api/core";
 import { libraryController } from "../../player/playerStore";
-import { useClerkAuth } from "../../lib/clerkClient";
-import { MailIcon, LockIcon, UserIcon, DiscordIcon, GoogleIcon, CloseIcon, EyeIcon, EyeClosedIcon } from "@/ui/icons";
+import { setDiscordIdentity, type DiscordIdentity } from "../../ui/settings/discordIdentity";
+import { DiscordIcon, CloseIcon, GlobeIcon } from "@/ui/icons";
 import openTuneText from "../../../assets/img/opentune-text.png";
 import { Loader } from "@/components/motion/loader";
 import { Button } from "@/components/motion/button";
@@ -16,23 +14,30 @@ interface AuthModalProps {
   onAuthSuccess?: () => void;
 }
 
-type AuthMode = "signin" | "signup" | "forgot" | "reset_otp";
+interface BrowserImportCandidate {
+  browser: string;
+  profileName: string;
+  kind: "chromium" | "firefox" | string;
+  hasSession: boolean;
+  restoresTabs: boolean;
+}
 
+/**
+ * Connect modal: identity comes from connected services, not passwords.
+ *
+ * Three doors, in order of preference: a live browser session (one click, no
+ * typing, no popup), a linked Discord identity (system browser loopback), and
+ * the classic embedded sign-in window for machines with no browser session.
+ * The old email/password + Supabase/Clerk apparatus is gone with its backends.
+ */
 export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
-  const [mode, setMode] = useState<AuthMode>("signin");
-  const [loginIdentifier, setLoginIdentifier] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const [otpCode, setOtpCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [candidates, setCandidates] = useState<BrowserImportCandidate[] | null>(null);
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [importingKey, setImportingKey] = useState<string | null>(null);
+  const [discordBusy, setDiscordBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
 
   // Focus trap
   useEffect(() => {
@@ -78,17 +83,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
-  // Listen for Supabase password recovery event
-  useEffect(() => {
-    if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setMode("reset_otp");
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
   // Prevent body scroll
   useEffect(() => {
     if (isOpen) {
@@ -101,258 +95,79 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     };
   }, [isOpen]);
 
-  const validateEmail = (emailStr: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailStr);
-  };
+  // Browsers with importable sessions. The primary sign-in path: one click, no
+  // typing, no popup window.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setCandidatesError(null);
+    void invoke<BrowserImportCandidate[]>("browser_import_candidates")
+      .then((found) => {
+        if (!cancelled) setCandidates(found);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCandidates([]);
+          setCandidatesError(error instanceof Error ? error.message : "Could not list browsers.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
-  const handleSignIn = async () => {
-    if (!supabase) {
-      setError("Authentication service is not configured.");
-      return;
-    }
-    const id = loginIdentifier.trim();
-    if (!id) {
-      setError("Please enter your email or username.");
-      return;
-    }
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
-
-    setBusy(true);
+  /**
+   * One-click sign-in from a live browser session. The backend reads the browser's
+   * own session, stores it as an ordinary slot, and the controller syncs the
+   * library exactly like a window sign-in — the overlay below is driven by the
+   * same library state, so progress and errors surface identically.
+   */
+  const handleBrowserImport = async (browser: string, profileName: string) => {
+    const key = `${browser}::${profileName}`;
+    setImportingKey(key);
     setError(null);
     setSuccessMessage(null);
 
     try {
-      let targetEmail = id;
-
-      // If user provided a username (no '@'), resolve email via RPC
-      if (!id.includes("@")) {
-        const { data: resolvedEmail, error: rpcError } = await supabase.rpc(
-          "get_email_by_username",
-          { username_input: id }
-        );
-
-        if (rpcError || !resolvedEmail) {
-          throw new Error(
-            "No account found with this username. Please sign in with your email or check the spelling."
-          );
-        }
-        targetEmail = String(resolvedEmail).trim();
-      }
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password,
-      });
-      if (signInError) throw signInError;
-
+      await libraryController.importBrowserSession(browser, profileName);
       onAuthSuccess?.();
       onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Browser import failed.");
+    } finally {
+      setImportingKey(null);
+    }
+  };
 
-      // Automatically connect to YouTube Music if not already active
+  /** Direct loopback OAuth in the system browser. Tokens stay in the OS keyring. */
+  const handleDiscordConnect = async () => {
+    setDiscordBusy(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const identity = await invoke<DiscordIdentity>("discord_oauth_connect");
+      setDiscordIdentity(identity);
+      onAuthSuccess?.();
+      onClose();
       if (libraryController.getState().status !== "ready") {
         void libraryController.signIn().catch(() => {});
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(err instanceof Error ? err.message : "Discord sign-in failed.");
     } finally {
-      setBusy(false);
+      setDiscordBusy(false);
     }
   };
 
-  const handleSignUp = async () => {
-    if (!supabase) {
-      setError("Authentication service is not configured.");
-      return;
-    }
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    const trimmedUser = username.trim();
-    if (trimmedUser.length > 0 && trimmedUser.length < 2) {
-      setError("Username must be at least 2 characters if provided.");
-      return;
-    }
-
-    const finalUsername = trimmedUser || email.trim().split("@")[0] || "User";
-
-    setBusy(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            username: finalUsername,
-            display_name: finalUsername,
-          },
-        },
-      });
-      if (signUpError) throw signUpError;
-
-      if (data.user?.identities?.length === 0) {
-        throw new Error("This email is already registered.");
-      }
-
-      onAuthSuccess?.();
-      onClose();
-
-      // Automatically connect to YouTube Music so all accounts use YT Music data and storage
-      if (libraryController.getState().status !== "ready") {
-        void libraryController.signIn().catch(() => {});
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-up failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    if (!supabase) {
-      setError("Authentication service is not configured.");
-      return;
-    }
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim());
-      if (resetErr) throw resetErr;
-
-      setSuccessMessage(`A 6-digit verification code has been sent to ${email.trim()}.`);
-      setMode("reset_otp");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send reset code.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleVerifyAndResetPassword = async () => {
-    if (!supabase) {
-      setError("Authentication service is not configured.");
-      return;
-    }
-    if (!otpCode.trim() || otpCode.trim().length < 6) {
-      setError("Please enter the 6-digit verification code.");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters.");
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      // 1. Verify OTP code
-      const { error: verifyErr } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token: otpCode.trim(),
-        type: "recovery",
-      });
-      if (verifyErr) throw verifyErr;
-
-      // 2. Update password
-      const { error: updateErr } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (updateErr) throw updateErr;
-
-      setSuccessMessage("Password reset successfully! Please sign in with your new password.");
-      setPassword("");
-      setNewPassword("");
-      setOtpCode("");
-      setLoginIdentifier(email.trim());
-      setMode("signin");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password. Please verify the code.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const { signInWithGoogle, isAvailable: isClerkAvailable } = useClerkAuth();
-
-  const handleGoogleAuth = async () => {
-    setBusy(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      if (isClerkAvailable) {
-        await signInWithGoogle();
-        onAuthSuccess?.();
-        onClose();
-      } else {
-        // Fallback to Supabase Google OAuth if configured, or notify user
-        if (supabase) {
-          await signInWithOAuthPopup("google");
-          onAuthSuccess?.();
-          onClose();
-        } else {
-          throw new Error("Google authentication is not configured yet.");
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Google sign-in failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleOAuth = async (provider: "discord") => {
-    setBusy(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    if (provider === "discord") {
-      if (!supabase) {
-        setError("Supabase client is not configured.");
-        setBusy(false);
-        return;
-      }
-      try {
-        await signInWithOAuthPopup("discord");
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          onAuthSuccess?.();
-          onClose();
-          if (libraryController.getState().status !== "ready") {
-            void libraryController.signIn().catch(() => {});
-          }
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Discord sign-in failed.");
-      } finally {
-        setBusy(false);
-      }
-    }
-  };
-
-  const switchMode = (targetMode: AuthMode) => {
-    setMode(targetMode);
-    setError(null);
-    setSuccessMessage(null);
+  /**
+   * The classic embedded window, for machines with no browser session to import.
+   * The overlay takes over progress from here — this just starts it and steps
+   * aside, so a failure surfaces there instead of stranding this modal.
+   */
+  const handleClassicSignIn = () => {
+    onClose();
+    void libraryController.signIn().catch(() => {});
   };
 
   if (!isOpen) return null;
@@ -389,7 +204,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <CloseIcon size={18} />
           </button>
 
-          {/* OpenTune In-App Branding Banner */}
+          {/* Branding */}
           <div className="flex flex-col items-center mb-5">
             <div className="flex items-center justify-center py-2 px-4 mb-3">
               <img
@@ -399,48 +214,12 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
               />
             </div>
             <h2 id="auth-modal-title" className="text-xl font-bold text-foreground">
-              {mode === "signin" && "Sign In to OpenTune"}
-              {mode === "signup" && "Create OpenTune Account"}
-              {mode === "forgot" && "Reset Password"}
-              {mode === "reset_otp" && "Set New Password"}
+              Connect OpenTune
             </h2>
             <p className="mt-1 text-xs text-muted-foreground text-center">
-              {mode === "signin" && "Sign in with your email or username to access your music library"}
-              {mode === "signup" && "Join OpenTune to sync your music and favorites across devices"}
-              {mode === "forgot" && "Enter your account email to receive a 6-digit recovery code"}
-              {mode === "reset_otp" && `Enter the 6-digit verification code sent to ${email || "your email"}`}
+              Your browser session is your account — no passwords, no typing
             </p>
           </div>
-
-          {/* Mode Switcher Tabs (Only in signin & signup) */}
-          {(mode === "signin" || mode === "signup") && (
-            <div className="mb-5 flex rounded-xl bg-background/80 p-1 border border-border/30">
-              <button
-                type="button"
-                onClick={() => switchMode("signin")}
-                className={cn(
-                  "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all",
-                  mode === "signin"
-                    ? "bg-primary text-white shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => switchMode("signup")}
-                className={cn(
-                  "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all",
-                  mode === "signup"
-                    ? "bg-primary text-white shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Sign Up
-              </button>
-            </div>
-          )}
 
           {/* Error & Success Messages */}
           {error && (
@@ -492,435 +271,118 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             </motion.div>
           )}
 
-          {/* Form */}
-          <form
-            ref={formRef}
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (mode === "signin") void handleSignIn();
-              else if (mode === "signup") void handleSignUp();
-              else if (mode === "forgot") void handleForgotPassword();
-              else if (mode === "reset_otp") void handleVerifyAndResetPassword();
-            }}
-            className="flex flex-col gap-3.5"
+          {/* Browser import — the primary sign-in. One click, no typing, no popup. */}
+          <div className="mb-2">
+            <div className="mb-1 block text-xs font-medium text-foreground">
+              Connect your browser
+            </div>
+            <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground/80">
+              Uses the YouTube session already signed in there. Nothing is typed, nothing leaves your machine.
+            </p>
+            {candidates === null && !candidatesError && (
+              <div className="flex items-center gap-2 rounded-xl bg-background/80 p-3 text-xs text-muted-foreground border border-border/30">
+                <Loader variant="spinner" size={14} />
+                Looking for browsers…
+              </div>
+            )}
+            {candidatesError && (
+              <div className="mb-2 rounded-xl bg-destructive/15 p-3 text-xs text-destructive border border-destructive/20">
+                {candidatesError}
+              </div>
+            )}
+            {candidates !== null && candidates.length === 0 && !candidatesError && (
+              <div className="rounded-xl bg-background/80 p-3 text-xs text-muted-foreground border border-border/30">
+                No browsers found. Sign into YouTube Music in Brave, Chrome, Edge or Firefox first.
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              {(candidates ?? []).map((candidate) => {
+                const key = `${candidate.browser}::${candidate.profileName}`;
+                const importing = importingKey === key;
+                const disabled = discordBusy || importingKey !== null;
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center gap-3 rounded-xl bg-background/80 p-3 border border-border/30"
+                  >
+                    <GlobeIcon size={18} className="shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-foreground">
+                        {candidate.browser}
+                        <span className="ml-1.5 font-normal text-muted-foreground/70">
+                          {candidate.profileName}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">
+                        {!candidate.hasSession && "No YouTube session here yet."}
+                        {candidate.hasSession && candidate.kind !== "chromium" && "YouTube session found."}
+                        {candidate.hasSession && candidate.kind === "chromium" && `${candidate.browser} restarts once to hand it over.`}
+                        {candidate.hasSession && candidate.kind === "chromium" && !candidate.restoresTabs && " Open tabs will not come back — enable “Continue where you left off” first."}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={candidate.hasSession ? "primary" : "outline"}
+                      size="md"
+                      disabled={disabled || !candidate.hasSession}
+                      onClick={() => void handleBrowserImport(candidate.browser, candidate.profileName)}
+                      className="shrink-0 rounded-xl text-xs"
+                    >
+                      {importing ? (
+                        <>
+                          <Loader variant="spinner" size={14} className="mr-1.5" />
+                          Importing…
+                        </>
+                      ) : (
+                        "Import"
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            {importingKey !== null && (
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">
+                Importing — if your browser restarts, leave it alone until the library appears.
+              </p>
+            )}
+          </div>
+
+          {/* Divider & Discord */}
+          <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground/60">
+            <span className="flex-1 h-px bg-border/40" />
+            <span>or continue with</span>
+            <span className="flex-1 h-px bg-border/40" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            disabled={discordBusy || importingKey !== null}
+            onClick={() => void handleDiscordConnect()}
+            className="w-full flex items-center justify-center gap-2 rounded-xl text-xs hover:border-[#5865F2]/40 transition-all"
           >
-            {/* SIGN IN: Email or Username */}
-            {mode === "signin" && (
+            {discordBusy ? (
               <>
-                <div>
-                  <label
-                    htmlFor="auth-identifier"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    Email or Username
-                  </label>
-                  <div className="relative">
-                    <MailIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-identifier"
-                      type="text"
-                      value={loginIdentifier}
-                      onChange={(e) => setLoginIdentifier(e.target.value)}
-                      placeholder="name@example.com or username"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-3 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="username"
-                      required
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label
-                      htmlFor="auth-password"
-                      className="block text-xs font-medium text-foreground"
-                    >
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMode("forgot");
-                        setError(null);
-                        setSuccessMessage(null);
-                        if (loginIdentifier.includes("@")) {
-                          setEmail(loginIdentifier.trim());
-                        }
-                      }}
-                      className="text-[11px] text-muted-foreground/80 hover:text-primary transition-colors focus:outline-none"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <LockIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-10 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="current-password"
-                      required
-                      disabled={busy}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-2 font-semibold text-sm rounded-xl py-2.5 shadow-md hover:shadow-lg transition-all"
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <>
-                      <Loader variant="spinner" size={16} className="mr-2" />
-                      Signing In...
-                    </>
-                  ) : (
-                    "Sign In"
-                  )}
-                </Button>
+                <Loader variant="spinner" size={14} />
+                Connecting…
+              </>
+            ) : (
+              <>
+                <DiscordIcon size={16} className="text-[#5865F2]" />
+                Discord
               </>
             )}
+          </Button>
 
-            {/* SIGN UP: Username (Optional), Email, Password */}
-            {mode === "signup" && (
-              <>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label
-                      htmlFor="auth-username"
-                      className="block text-xs font-medium text-foreground"
-                    >
-                      Username
-                    </label>
-                    <span className="text-[11px] text-muted-foreground/60">Optional</span>
-                  </div>
-                  <div className="relative">
-                    <UserIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-username"
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="e.g. Alex (optional)"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-3 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="username"
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="auth-email"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    Email
-                  </label>
-                  <div className="relative">
-                    <MailIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-3 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="email"
-                      required
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="auth-password"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    Password
-                  </label>
-                  <div className="relative">
-                    <LockIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-10 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="new-password"
-                      required
-                      disabled={busy}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
-                      onClick={() => setShowPassword(!showPassword)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-2 font-semibold text-sm rounded-xl py-2.5 shadow-md hover:shadow-lg transition-all"
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <>
-                      <Loader variant="spinner" size={16} className="mr-2" />
-                      Creating Account...
-                    </>
-                  ) : (
-                    "Create Account"
-                  )}
-                </Button>
-              </>
-            )}
-
-            {/* FORGOT PASSWORD: Enter Email */}
-            {mode === "forgot" && (
-              <>
-                <div>
-                  <label
-                    htmlFor="auth-forgot-email"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <MailIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-forgot-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-3 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="email"
-                      required
-                      disabled={busy}
-                    />
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-2 font-semibold text-sm rounded-xl py-2.5 shadow-md hover:shadow-lg transition-all"
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <>
-                      <Loader variant="spinner" size={16} className="mr-2" />
-                      Sending Code...
-                    </>
-                  ) : (
-                    "Send Reset Code"
-                  )}
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={() => switchMode("signin")}
-                  className="mt-1 text-xs text-muted-foreground hover:text-foreground text-center transition-colors"
-                >
-                  Back to Sign In
-                </button>
-              </>
-            )}
-
-            {/* RESET OTP: Enter 6-digit code and new password */}
-            {mode === "reset_otp" && (
-              <>
-                <div>
-                  <label
-                    htmlFor="auth-otp"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    6-Digit Verification Code
-                  </label>
-                  <input
-                    id="auth-otp"
-                    type="text"
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    placeholder="123456"
-                    className={cn(
-                      "w-full rounded-xl bg-background/90 px-3 py-2 text-center text-lg font-mono tracking-widest text-foreground outline-none border border-border/40 transition-colors",
-                      "placeholder:text-muted-foreground/30",
-                      "focus:border-primary focus:ring-1 focus:ring-primary",
-                    )}
-                    required
-                    disabled={busy}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="auth-new-password"
-                    className="mb-1 block text-xs font-medium text-foreground"
-                  >
-                    New Password
-                  </label>
-                  <div className="relative">
-                    <LockIcon
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-                    />
-                    <input
-                      id="auth-new-password"
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className={cn(
-                        "w-full rounded-xl bg-background/90 pl-9 pr-10 py-2 text-sm text-foreground outline-none border border-border/40 transition-colors",
-                        "placeholder:text-muted-foreground/50",
-                        "focus:border-primary focus:ring-1 focus:ring-primary",
-                      )}
-                      autoComplete="new-password"
-                      required
-                      disabled={busy}
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      aria-label={showNewPassword ? "Hide password" : "Show password"}
-                    >
-                      {showNewPassword ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  className="w-full mt-2 font-semibold text-sm rounded-xl py-2.5 shadow-md hover:shadow-lg transition-all"
-                  disabled={busy}
-                >
-                  {busy ? (
-                    <>
-                      <Loader variant="spinner" size={16} className="mr-2" />
-                      Setting Password...
-                    </>
-                  ) : (
-                    "Set New Password"
-                  )}
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={() => switchMode("signin")}
-                  className="mt-1 text-xs text-muted-foreground hover:text-foreground text-center transition-colors"
-                >
-                  Back to Sign In
-                </button>
-              </>
-            )}
-          </form>
-
-          {/* Divider & Discord - only for signin and signup */}
-          {(mode === "signin" || mode === "signup") && (
-            <>
-              <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground/60">
-                <span className="flex-1 h-px bg-border/40" />
-                <span>or continue with</span>
-                <span className="flex-1 h-px bg-border/40" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="md"
-                  disabled={busy}
-                  onClick={() => void handleGoogleAuth()}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl text-xs hover:border-white/20 transition-all"
-                >
-                  <GoogleIcon size={16} />
-                  Google
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="md"
-                  disabled={busy}
-                  onClick={() => void handleOAuth("discord")}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl text-xs hover:border-[#5865F2]/40 transition-all"
-                >
-                  <DiscordIcon size={16} className="text-[#5865F2]" />
-                  Discord
-                </Button>
-              </div>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={handleClassicSignIn}
+            className="mt-3 w-full text-center text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors"
+          >
+            No browser session? Use the classic window instead
+          </button>
         </motion.div>
       </motion.div>
     </AnimatePresence>
