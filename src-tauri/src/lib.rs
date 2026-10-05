@@ -5610,8 +5610,8 @@ pub struct OAuthPayload {
 }
 
 pub struct OAuthServerSession {
-    pub cancel_tx: tokio::sync::oneshot::Sender<()>,
-    pub result_rx: tokio::sync::oneshot::Receiver<Result<OAuthPayload, String>>,
+    pub cancel_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    pub result_rx: Option<tokio::sync::oneshot::Receiver<Result<OAuthPayload, String>>>,
 }
 
 pub struct OAuthServerState(
@@ -5619,7 +5619,8 @@ pub struct OAuthServerState(
 );
 
 async fn run_oauth_loopback_server(
-    listener: tokio::net::TcpListener,
+    ipv4_listener: tokio::net::TcpListener,
+    ipv6_listener: Option<tokio::net::TcpListener>,
     result_tx: tokio::sync::oneshot::Sender<Result<OAuthPayload, String>>,
     mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
@@ -5714,7 +5715,19 @@ async fn run_oauth_loopback_server(
 
     let server_task = async {
         loop {
-            let (mut stream, _) = match listener.accept().await {
+            let accept_future = async {
+                tokio::select! {
+                    res = ipv4_listener.accept() => res,
+                    res = async {
+                        match &ipv6_listener {
+                            Some(l) => l.accept().await,
+                            None => std::future::pending().await,
+                        }
+                    } => res,
+                }
+            };
+
+            let (mut stream, _) = match accept_future.await {
                 Ok(conn) => conn,
                 Err(_) => break,
             };
@@ -5816,9 +5829,11 @@ async fn run_oauth_loopback_server(
 
     tokio::select! {
         _ = server_task => {},
-        _ = &mut cancel_rx => {
-            if let Some(tx) = result_tx.take() {
-                let _ = tx.send(Err("OAuth was cancelled".to_string()));
+        res = &mut cancel_rx => {
+            if res.is_ok() {
+                if let Some(tx) = result_tx.take() {
+                    let _ = tx.send(Err("OAuth was cancelled".to_string()));
+                }
             }
         },
         _ = tokio::time::sleep(Duration::from_secs(180)) => {
@@ -5833,28 +5848,31 @@ async fn run_oauth_loopback_server(
 async fn prepare_oauth_listener(
     state: tauri::State<'_, OAuthServerState>,
 ) -> Result<u16, CommandError> {
-    let listener = match tokio::net::TcpListener::bind("127.0.0.1:8000").await {
-        Ok(l) => l,
+    let (ipv4, port) = match tokio::net::TcpListener::bind("127.0.0.1:8000").await {
+        Ok(l) => (l, 8000),
         Err(_) => match tokio::net::TcpListener::bind("127.0.0.1:8001").await {
-            Ok(l) => l,
+            Ok(l) => (l, 8001),
             Err(_) => {
-                let port = portpicker::pick_unused_port().unwrap_or(8080);
-                tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await
-                    .map_err(|e| CommandError { message: format!("failed to bind OAuth callback port: {e}") })?
+                let p = portpicker::pick_unused_port().unwrap_or(8080);
+                let l = tokio::net::TcpListener::bind(format!("127.0.0.1:{p}")).await
+                    .map_err(|e| CommandError { message: format!("failed to bind OAuth callback port: {e}") })?;
+                (l, p)
             }
         }
     };
 
-    let local_addr = listener.local_addr().map_err(|e| CommandError { message: e.to_string() })?;
-    let port = local_addr.port();
+    let ipv6 = tokio::net::TcpListener::bind(format!("[::1]:{port}")).await.ok();
 
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
 
-    tokio::spawn(run_oauth_loopback_server(listener, result_tx, cancel_rx));
+    tokio::spawn(run_oauth_loopback_server(ipv4, ipv6, result_tx, cancel_rx));
 
     let mut lock = state.0.lock().await;
-    *lock = Some(OAuthServerSession { cancel_tx, result_rx });
+    *lock = Some(OAuthServerSession {
+        cancel_tx: Some(cancel_tx),
+        result_rx: Some(result_rx),
+    });
 
     Ok(port)
 }
@@ -5865,22 +5883,31 @@ async fn wait_for_oauth_callback(
 ) -> Result<OAuthPayload, CommandError> {
     let rx = {
         let mut lock = state.0.lock().await;
-        match lock.take() {
-            Some(session) => session.result_rx,
+        match lock.as_mut() {
+            Some(session) => match session.result_rx.take() {
+                Some(r) => r,
+                None => return Err(CommandError { message: "OAuth callback already awaiting".to_string() }),
+            },
             None => return Err(CommandError { message: "no active OAuth listener".to_string() }),
         }
     };
 
-    match rx.await {
+    let result = match rx.await {
         Ok(Ok(payload)) => {
             if let Some(err) = payload.error.as_deref() {
-                return Err(CommandError { message: err.to_string() });
+                Err(CommandError { message: err.to_string() })
+            } else {
+                Ok(payload)
             }
-            Ok(payload)
         }
         Ok(Err(err)) => Err(CommandError { message: err }),
         Err(_) => Err(CommandError { message: "OAuth listener stopped".to_string() }),
-    }
+    };
+
+    let mut lock = state.0.lock().await;
+    *lock = None;
+
+    result
 }
 
 #[tauri::command]
@@ -5889,7 +5916,9 @@ async fn cancel_oauth_listener(
 ) -> Result<(), CommandError> {
     let mut lock = state.0.lock().await;
     if let Some(session) = lock.take() {
-        let _ = session.cancel_tx.send(());
+        if let Some(tx) = session.cancel_tx {
+            let _ = tx.send(());
+        }
     }
     Ok(())
 }
