@@ -341,7 +341,7 @@ export class LibraryController {
    * state, same progress reporting, same library refresh.
    */
   async importBrowserSession(): Promise<void> {
-    if (!this.dataSource.signInWithManagedBrowser) return;
+    if (!this.dataSource.signInWithBrowser) return;
     logInternalInfo("LibraryController.importBrowserSession start");
     this.activeAuthFlow = "sign-in";
     this.setState({
@@ -351,7 +351,7 @@ export class LibraryController {
       error: null,
     });
     try {
-      await this.dataSource.signInWithManagedBrowser(
+      await this.dataSource.signInWithBrowser(
         (authPrompt) => {
           logInternalInfo("LibraryController.importBrowserSession prompt received", {
             verificationUrl: authPrompt.verificationUrl,

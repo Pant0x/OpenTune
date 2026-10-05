@@ -2267,55 +2267,95 @@ fn store_imported_header(
     Ok((slot_id, account_changed))
 }
 
-/// Signs in through a real browser window owned by the app — no in-app popup.
-///
-/// Launches an installed Chromium with an APP-MANAGED profile (never the user's
-/// own — their tabs, sessions and settings are untouched) on the YouTube login,
-/// polls its session over DevTools, and the moment login cookies appear kills
-/// its own window and stores the session as an ordinary slot. First run types
-/// once in a real browser window; afterwards the persisted profile makes it an
-/// account chooser. Nothing listens when idle: the port is picked fresh per run.
+/// Where a browser sign-in would run. Lets the UI name the browser and warn
+/// about tab loss BEFORE anything closes. Pure reads, no processes touched.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserSigninTarget {
+    browser: String,
+    profile_name: String,
+    restores_tabs: bool,
+}
+
 #[tauri::command]
-async fn browser_profile_signin(
+fn browser_signin_target() -> Result<BrowserSigninTarget, CommandError> {
+    let profile = browser_cdp::detect_user_profile().ok_or_else(|| CommandError {
+        message: "Install Brave, Chrome or Edge first, then sign in again.".to_string(),
+    })?;
+    Ok(BrowserSigninTarget {
+        browser: profile.browser.to_string(),
+        profile_name: profile.profile_dir_name,
+        restores_tabs: profile.restores_tabs,
+    })
+}
+
+/// Signs in through the user's own browser — no in-app popup.
+///
+/// Restarts their Chromium once on its own profile with a debugging port, opens
+/// the YouTube login there, polls the session over DevTools (the browser
+/// decrypts for us, HttpOnly cookies included), and the moment login cookies
+/// appear kills the debug instance and relaunches the browser normally. Tabs
+/// survive when the browser restores its session — the UI confirms that first.
+/// Already signed in means zero typing: the login page lands straight through.
+/// Nothing listens when idle: the port is picked fresh per run, and every exit
+/// path relaunches normally first.
+#[tauri::command]
+async fn browser_google_signin(
     app: tauri::AppHandle,
     jar: tauri::State<'_, YoutubeCookieJar>,
     account_lock: tauri::State<'_, AccountStoreLock>,
 ) -> Result<BrowserImportResult, CommandError> {
     use tokio::time::{sleep, Duration};
 
-    let browser = browser_cdp::pick_signin_browser().ok_or_else(|| CommandError {
+    let profile = browser_cdp::detect_user_profile().ok_or_else(|| CommandError {
         message: "Install Brave, Chrome or Edge first, then sign in again.".to_string(),
     })?;
-    let browser_exe = browser_cdp::find_browser_exe(browser).ok_or_else(|| CommandError {
-        message: format!("{browser} is not installed"),
+    let browser_exe = browser_cdp::find_browser_exe(profile.browser).ok_or_else(|| CommandError {
+        message: format!("{} is not installed", profile.browser),
     })?;
-    let profile_dir = app
-        .path()
-        .app_data_dir()
-        .map(|dir| dir.join("browser-login"))
-        .map_err(|error| CommandError {
-            message: format!("application data directory unavailable: {error}"),
-        })?;
     let port = portpicker::pick_unused_port()
         .ok_or_else(|| cache_error("no free localhost port for sign-in".to_string()))?;
+    let image = match profile.browser {
+        "Brave" => "brave.exe",
+        "Chrome" => "chrome.exe",
+        "Edge" => "msedge.exe",
+        "Opera" => "opera.exe",
+        "Vivaldi" => "vivaldi.exe",
+        _ => "chrome.exe",
+    };
 
-    eprintln!("[internal][tauri][info] browser_profile_signin browser={browser} port={port}");
-    let mut child = browser_cdp::launch_managed_browser(&browser_exe, &profile_dir, port, YOUTUBE_LOGIN_URL)
-        .map_err(cache_error)?;
+    eprintln!("[internal][tauri][info] browser_google_signin browser={} port={port}", profile.browser);
+    // The profile is locked by a running instance; a second one would join it
+    // (no debugging port) or fail. So the running one goes first.
+    if browser_cdp::process_is_running(image) {
+        std::process::Command::new("taskkill")
+            .args(["/F", "/IM", image])
+            .output()
+            .map_err(|error| cache_error(format!("could not restart the browser: {error}")))?;
+        if !browser_cdp::wait_for_exit(image, 15_000) {
+            return Err(CommandError {
+                message: "The browser would not close; sign-in cancelled.".to_string(),
+            });
+        }
+    }
+    let mut child = browser_cdp::launch_debug_browser(
+        &browser_exe,
+        &profile.user_data_dir,
+        &profile.profile_dir_name,
+        port,
+        YOUTUBE_LOGIN_URL,
+    )
+    .map_err(cache_error)?;
 
     let deadline = std::time::Instant::now() + Duration::from_secs(300);
     let cookies = loop {
         if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(CommandError {
-                message: "Browser sign-in timed out.".to_string(),
-            });
+            break None;
         }
-        // The window going away is the cancel button: no waiting out a dead flow.
         match child.try_wait() {
             Ok(Some(_)) => {
                 let _ = child.wait();
+                browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
                 return Err(CommandError {
                     message: "Browser sign-in was closed.".to_string(),
                 });
@@ -2323,11 +2363,12 @@ async fn browser_profile_signin(
             Ok(None) => {}
             Err(error) => {
                 let _ = child.kill();
+                browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
                 return Err(cache_error(format!("browser watch failed: {error}")));
             }
         }
         match browser_cdp::read_cookies_via_cdp(port).await {
-            Ok(cookies) if browser_cdp::cookies_hold_login(&cookies) => break cookies,
+            Ok(cookies) if browser_cdp::cookies_hold_login(&cookies) => break Some(cookies),
             Ok(_) => {}
             Err(_) => {}
         }
@@ -2335,7 +2376,13 @@ async fn browser_profile_signin(
     };
     let _ = child.kill();
     let _ = child.wait();
+    // Normal again before anything else: no debug port left behind, whatever
+    // the outcome below.
+    browser_cdp::relaunch_normally(&browser_exe, &profile.user_data_dir, &profile.profile_dir_name);
 
+    let cookies = cookies.ok_or_else(|| CommandError {
+        message: "Browser sign-in timed out.".to_string(),
+    })?;
     let pairs: Vec<(String, String)> = cookies
         .into_iter()
         .map(|cookie| (cookie.name, cookie.value))
@@ -2347,29 +2394,8 @@ async fn browser_profile_signin(
         });
     }
     let (slot_id, account_changed) =
-        store_imported_header(&app, &jar, &account_lock, &cookie_header, "browser_profile_signin")?;
-    Ok(BrowserImportResult { slot_id, account_changed, browser: browser.to_string() })
-}
-
-/// Removes the app-managed browser profiles (full-data wipe path).
-///
-/// Session cookies live there; "delete all app data" that left them behind
-/// would be a privacy lie, and a stale profile would silently re-seed the next
-/// sign-in with a dead session.
-#[tauri::command]
-fn browser_login_data_clear(app: tauri::AppHandle) -> Result<(), CommandError> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map(|dir| dir.join("browser-login"))
-        .map_err(|error| CommandError {
-            message: format!("application data directory unavailable: {error}"),
-        })?;
-    if dir.is_dir() {
-        std::fs::remove_dir_all(&dir)
-            .map_err(|error| cache_error(format!("browser login data clear failed: {error}")))?;
-    }
-    Ok(())
+        store_imported_header(&app, &jar, &account_lock, &cookie_header, "browser_google_signin")?;
+    Ok(BrowserImportResult { slot_id, account_changed, browser: profile.browser.to_string() })
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -5924,8 +5950,8 @@ pub fn run() {
             switch_youtube_music_account,
             remove_youtube_music_account,
             update_youtube_music_account_profile,
-            browser_profile_signin,
-            browser_login_data_clear,
+            browser_signin_target,
+            browser_google_signin,
             cache_get,
             cache_set,
             cache_stats,

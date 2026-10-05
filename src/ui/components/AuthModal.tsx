@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { invoke } from "@tauri-apps/api/core";
 import { libraryController } from "../../player/playerStore";
 import { CloseIcon } from "@/ui/icons";
 import { GoogleSignInButton } from "./GoogleSignInButton";
@@ -10,6 +11,13 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAuthSuccess?: () => void;
+}
+
+/** Global request to open the Connect modal (e.g. sidebar empty states). */
+export const OPEN_AUTH_MODAL_EVENT = "opentune:open-auth";
+
+export function requestAuthModal(): void {
+  window.dispatchEvent(new Event(OPEN_AUTH_MODAL_EVENT));
 }
 
 /**
@@ -24,6 +32,8 @@ interface AuthModalProps {
 export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [target, setTarget] = useState<{ browser: string; profileName: string; restoresTabs: boolean } | null>(null);
+  const [targetError, setTargetError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Focus trap
@@ -97,6 +107,27 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     }
   };
 
+  // Where the sign-in would run: naming the browser and warning about the
+  // restart BEFORE anything closes. Pure reads, refreshed every open.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setTargetError(null);
+    void invoke<{ browser: string; profileName: string; restoresTabs: boolean }>("browser_signin_target")
+      .then((found) => {
+        if (!cancelled) setTarget(found);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTarget(null);
+          setTargetError(error instanceof Error ? error.message : "No supported browser found.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   /**
    * The classic embedded window, for machines with no supported browser.
    * The overlay takes over progress from here — this just starts it and steps
@@ -154,7 +185,9 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
               Sign in to OpenTune
             </h2>
             <p className="mt-1 text-xs text-muted-foreground text-center">
-              A browser window opens for sign-in — nothing is typed in here
+              {target
+                ? `${target.browser} restarts once to connect — nothing is typed in here`
+                : "A browser window opens for sign-in — nothing is typed in here"}
             </p>
           </div>
 
@@ -188,8 +221,18 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
             <GoogleSignInButton
               onClick={() => void handleGoogleSignIn()}
               isBusy={busy}
+              disabled={busy || target === null}
               fullWidth
             />
+            {targetError && (
+              <p className="text-[11px] leading-relaxed text-destructive/90">{targetError}</p>
+            )}
+            {target && !target.restoresTabs && !busy && (
+              <p className="text-[11px] leading-relaxed text-amber-400/90">
+                {target.browser} will close and reopen — open tabs will not come back unless
+                “Continue where you left off” is enabled in its settings.
+              </p>
+            )}
             {busy && (
               <p className="flex items-center gap-2 text-[11px] leading-relaxed text-muted-foreground/80">
                 <Loader variant="spinner" size={12} />

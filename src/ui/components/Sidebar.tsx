@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import { FloatingPanel } from "./FloatingPanel";
 import { GoogleSignInButton } from "./GoogleSignInButton";
+import { requestAuthModal } from "./AuthModal";
 import { importPlaylistFile, importSpotifyPlaylist } from "../../player/playlistTransfer";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import {
@@ -1530,7 +1531,7 @@ export function Sidebar({
                   <GoogleSignInButton
                     size="sm"
                     iconOnly={shouldHideText}
-                    onClick={() => void libraryController.signIn()}
+                    onClick={() => requestAuthModal()}
                   />
                 )}
               </div>
@@ -1680,7 +1681,7 @@ export function Sidebar({
                   <GoogleSignInButton
                     size="sm"
                     iconOnly={shouldHideText}
-                    onClick={() => void libraryController.signIn()}
+                    onClick={() => requestAuthModal()}
                   />
                 )}
                 {showPlaylistRetry && (

@@ -3377,36 +3377,36 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   /**
-   * Signs in through a real browser window owned by the app.
+   * Signs in through the user's own browser.
    *
-   * The backend launches an installed Chromium with an app-managed profile on
-   * the YouTube login, polls its session, and stores it as an ordinary slot —
-   * so no credential crosses IPC. This re-reads the active cookie the same way
-   * boot does, then runs the exact same post-sign-in landing as `signIn`
+   * The backend restarts their Chromium once on its own profile, opens the
+   * YouTube login there, and stores the session as an ordinary slot — so no
+   * credential crosses IPC. This re-reads the active cookie the same way boot
+   * does, then runs the exact same post-sign-in landing as `signIn`
    * (cache policy, channel selection, profile capture).
    */
-  async signInWithManagedBrowser(
+  async signInWithBrowser(
     onPrompt: (prompt: AuthPrompt) => void,
     onStage?: (stage: AuthStage) => void,
   ): Promise<void> {
-    logInternalInfo("YouTubeMusicDataSource.signInWithManagedBrowser start");
+    logInternalInfo("YouTubeMusicDataSource.signInWithBrowser start");
     onPrompt({
       verificationUrl: "https://music.youtube.com/",
       userCode: "Signing in with Google",
       expiresInSec: 300,
     });
     onStage?.("browser");
-    const { slotId, accountChanged } = await invoke<BrowserImportResult>("browser_profile_signin");
+    const { slotId, accountChanged } = await invoke<BrowserImportResult>("browser_google_signin");
     const cookie = await invoke<string | null>("load_youtube_music_cookie");
     if (!cookie) {
       throw new Error("The sign-in finished without a session.");
     }
     onStage?.("session");
-    logInternalInfo("YouTubeMusicDataSource.signInWithManagedBrowser command completed", {
+    logInternalInfo("YouTubeMusicDataSource.signInWithBrowser command completed", {
       credentialBytes: cookie.length,
       accountChanged,
     });
-    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithManagedBrowser");
+    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithBrowser");
   }
 
   /**
