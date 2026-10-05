@@ -6842,11 +6842,22 @@ export class YouTubeMusicDataSource extends DataSource {
     try {
       const client = await this.getMusicClient();
       const response = await client.music.search(normalizedQuery, { type: "song" });
-      const tracks = this.uniqueById(
+      let tracks: Track[] = this.uniqueById(
         (response.songs?.contents ?? [])
-        .map((item) => this.toTrack(item as unknown as MusicItem))
+          .map((item: unknown) => this.toTrack(item as MusicItem))
           .filter((item): item is Track => Boolean(item)),
       );
+
+      if (tracks.length === 0) {
+        const vidResponse = await client.music.search(normalizedQuery, { type: "video" }).catch(() => null);
+        if (vidResponse?.videos?.contents) {
+          tracks = this.uniqueById(
+            (vidResponse.videos.contents as unknown[])
+              .map((item: unknown) => this.toTrack(item as MusicItem))
+              .filter((item): item is Track => Boolean(item)),
+          );
+        }
+      }
 
       logInternalInfo("YouTubeMusicDataSource.searchTracks success", {
         query: normalizedQuery,

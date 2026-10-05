@@ -710,6 +710,14 @@ export class LibraryController {
     return this.dataSource.searchCategory(query, category);
   }
 
+  async searchTracks(query: string): Promise<Track[]> {
+    if (this.dataSource.searchTracks) {
+      return this.dataSource.searchTracks(query);
+    }
+    const results = await this.searchCategory(query, "song");
+    return results.tracks;
+  }
+
   isAlbumSaved(albumId: string): boolean {
     return this.state.library?.albums.some((album) =>
       album.id === albumId || album.playlistId === albumId
