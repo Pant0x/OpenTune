@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
-import { libraryController } from "../../player/playerStore";
 import { supabase } from "../../lib/supabaseClient";
-import { signInWithOAuthPopup } from "../../lib/oauthService";
+import { signInWithOAuthPopup, cancelOAuthLogin } from "../../lib/oauthService";
 import {
   CloseIcon,
   GoogleIcon,
@@ -13,7 +12,6 @@ import {
   UserIcon,
   EyeIcon,
   EyeClosedIcon,
-  YouTubeMusicIcon,
 } from "@/ui/icons";
 import { Loader } from "@/components/motion/loader";
 import openTuneText from "../../../assets/img/opentune-text.png";
@@ -76,16 +74,21 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     return () => modal.removeEventListener("keydown", handleTab);
   }, [isOpen]);
 
+  const handleDismiss = () => {
+    void cancelOAuthLogin();
+    onClose();
+  };
+
   // Close on Escape
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen && !busy) {
-        onClose();
+        handleDismiss();
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose, busy]);
+  }, [isOpen, busy]);
 
   // Prevent body scroll
   useEffect(() => {
@@ -187,27 +190,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     }
   };
 
-  const handleYouTubeConnect = async () => {
-    setBusy(true);
-    setActiveProvider("youtube");
-    setError(null);
-    setInfo(null);
-
-    try {
-      await libraryController.signIn();
-      onAuthSuccess?.();
-      onClose();
-    } catch (err) {
-      if (err instanceof Error && /cancel/i.test(err.message)) {
-        return;
-      }
-      setError(err instanceof Error ? err.message : "YouTube Music connection failed.");
-    } finally {
-      setBusy(false);
-      setActiveProvider(null);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -219,7 +201,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
-        onClick={busy ? undefined : onClose}
+        onClick={busy ? undefined : handleDismiss}
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
@@ -236,7 +218,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
           <button
             type="button"
             className="absolute top-4 right-4 z-20 flex size-8 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:text-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={onClose}
+            onClick={handleDismiss}
             disabled={busy}
             aria-label="Close"
           >
@@ -440,31 +422,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
               {mode === "signin"
                 ? "Don't have an account? Sign up"
                 : "Already have an account? Sign in"}
-            </button>
-          </div>
-
-          {/* YouTube Music Dedicated Callout */}
-          <div className="mt-5 pt-4 border-t border-border/40 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-muted-foreground">
-                Looking for your YouTube Music library?
-              </span>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleYouTubeConnect()}
-              className={cn(
-                "w-full flex items-center justify-center gap-2.5 rounded-2xl py-2 px-3 text-xs font-medium transition-all",
-                "bg-card hover:bg-card/80 border border-border/60 hover:border-red-500/40 text-foreground shadow-sm cursor-pointer disabled:opacity-50",
-              )}
-            >
-              {busy && activeProvider === "youtube" ? (
-                <Loader variant="spinner" size={15} />
-              ) : (
-                <YouTubeMusicIcon size={17} className="text-[#FF0000]" />
-              )}
-              <span>Connect YouTube Music Session</span>
             </button>
           </div>
         </motion.div>
