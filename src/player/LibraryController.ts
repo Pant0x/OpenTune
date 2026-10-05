@@ -336,15 +336,13 @@ export class LibraryController {
   }
 
   /**
-   * Signs in with a live browser session: no typing, no popup window.
-   *
-   * Mirrors `signIn` stage for stage — same authorizing state, same progress
-   * reporting, same library refresh — differing only in how the session arrives.
-   * Requires the data source to implement `signInWithBrowserSession`.
+   * Signs in through a real browser window owned by the app: no typing in the
+   * app, no popup window. Mirrors `signIn` stage for stage — same authorizing
+   * state, same progress reporting, same library refresh.
    */
-  async importBrowserSession(browser: string, profileName: string): Promise<void> {
-    if (!this.dataSource.signInWithBrowserSession) return;
-    logInternalInfo("LibraryController.importBrowserSession start", { browser });
+  async importBrowserSession(): Promise<void> {
+    if (!this.dataSource.signInWithManagedBrowser) return;
+    logInternalInfo("LibraryController.importBrowserSession start");
     this.activeAuthFlow = "sign-in";
     this.setState({
       status: "authorizing",
@@ -353,9 +351,7 @@ export class LibraryController {
       error: null,
     });
     try {
-      await this.dataSource.signInWithBrowserSession(
-        browser,
-        profileName,
+      await this.dataSource.signInWithManagedBrowser(
         (authPrompt) => {
           logInternalInfo("LibraryController.importBrowserSession prompt received", {
             verificationUrl: authPrompt.verificationUrl,

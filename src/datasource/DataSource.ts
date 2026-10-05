@@ -93,15 +93,13 @@ export abstract class DataSource {
     onStage?: (stage: AuthStage) => void,
   ): Promise<void>;
   /**
-   * Signs in with a live browser session instead of a login window: no typing, no
-   * popup. The backend reads the browser's own session (file or DevTools door),
-   * stores it as an ordinary slot, and reports back exactly what `signIn` would —
-   * so everything downstream (cache policy, channel selection, library refresh)
-   * behaves identically. Absent when the source has no browser to import from.
+   * Signs in through a real browser window owned by the app: no typing in the
+   * app, no popup window. The backend launches an installed Chromium on the
+   * YouTube login with an app-managed profile, polls its session, and stores it
+   * as an ordinary slot — so everything downstream (cache policy, channel
+   * selection, library refresh) behaves identically to `signIn`.
    */
-  signInWithBrowserSession?(
-    browser: string,
-    profileName: string,
+  signInWithManagedBrowser?(
     onPrompt: (prompt: AuthPrompt) => void,
     onStage?: (stage: AuthStage) => void,
   ): Promise<void>;

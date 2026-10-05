@@ -43,7 +43,6 @@ import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEf
 import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
-import { hydrateDiscordIdentity } from "./ui/settings/discordIdentity";
 
 logInternalInfo("main.bootstrap start");
 // Before React mounts: a resolution restored after first paint is a resolution that already
@@ -81,7 +80,6 @@ void Promise.all([
   hydrateOutputDevice(),
   hydrateYouTubeAccountSettings(),
   hydrateDiscordSettings(),
-  hydrateDiscordIdentity(),
   hydrateSidebarSettings(),
   hydrateKeyboardShortcuts(),
   hydrateToolbarItemSettings(),
