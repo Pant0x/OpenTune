@@ -336,6 +336,12 @@ interface SignInResult {
   slotId: string;
 }
 
+/** Mirrors `BrowserImportResult` in src-tauri/src/lib.rs. No cookie crosses IPC. */
+interface BrowserImportResult {
+  slotId: string;
+  accountChanged: boolean;
+}
+
 /** Mirrors `YoutubeAccountSummary` in src-tauri/src/lib.rs. */
 interface StoredGoogleAccount {
   slotId: string;
@@ -3362,12 +3368,65 @@ export class YouTubeMusicDataSource extends DataSource {
     // Unbounded: this resolves when the person finishes signing in, not on a timer.
     onStage?.("browser");
     const { cookie, accountChanged, slotId } = await invoke<SignInResult>("sign_in_youtube_music");
-    this.musicCookie = cookie;
     onStage?.("session");
     logInternalInfo("YouTubeMusicDataSource.signIn command completed", {
       credentialBytes: cookie.length,
       accountChanged,
     });
+    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signIn");
+  }
+
+  /**
+   * Signs in with a live browser session: no typing, no popup window.
+   *
+   * The backend stores the session as an ordinary slot and seeds the live jar
+   * itself, so no credential crosses IPC — this re-reads the active cookie the
+   * same way boot does, then runs the exact same post-sign-in landing as `signIn`
+   * (cache policy, channel selection, profile capture).
+   */
+  async signInWithBrowserSession(
+    browser: string,
+    profileName: string,
+    onPrompt: (prompt: AuthPrompt) => void,
+    onStage?: (stage: AuthStage) => void,
+  ): Promise<void> {
+    logInternalInfo("YouTubeMusicDataSource.signInWithBrowserSession start", { browser });
+    onPrompt({
+      verificationUrl: "https://music.youtube.com/",
+      userCode: `Importing session from ${browser}`,
+      expiresInSec: 180,
+    });
+    onStage?.("browser");
+    const { slotId, accountChanged } = await invoke<BrowserImportResult>("import_browser_session", {
+      browser,
+      profileName,
+    });
+    const cookie = await invoke<string | null>("load_youtube_music_cookie");
+    if (!cookie) {
+      throw new Error("The import finished without a session.");
+    }
+    onStage?.("session");
+    logInternalInfo("YouTubeMusicDataSource.signInWithBrowserSession command completed", {
+      credentialBytes: cookie.length,
+      accountChanged,
+    });
+    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithBrowserSession");
+  }
+
+  /**
+   * The landing every authenticated session shares, however it arrived.
+   *
+   * Extracted from `signIn` so a browser import lands identically: same renewal
+   * fast path (same account keeps cache and channel), same full resync (new
+   * account drops the old channel's cache and selection).
+   */
+  private async finishAuthenticatedSession(
+    cookie: string,
+    accountChanged: boolean,
+    slotId: string,
+    label: string,
+  ): Promise<void> {
+    this.musicCookie = cookie;
 
     /*
      * The same account signing in again is a renewal, not a new session, so it is treated as
@@ -3384,7 +3443,7 @@ export class YouTubeMusicDataSource extends DataSource {
       this.resetMusicClients();
       await this.getMusicClient();
       void this.captureAccountProfile(slotId);
-      logInternalInfo("YouTubeMusicDataSource.signIn success (session renewed)");
+      logInternalInfo(`YouTubeMusicDataSource.${label} success (session renewed)`);
       return;
     }
 
@@ -3398,7 +3457,7 @@ export class YouTubeMusicDataSource extends DataSource {
     this.resetMusicSessionSelection();
     await this.getMusicClient();
     void this.captureAccountProfile(slotId);
-    logInternalInfo("YouTubeMusicDataSource.signIn success");
+    logInternalInfo(`YouTubeMusicDataSource.${label} success`);
   }
 
   /**

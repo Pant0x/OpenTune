@@ -48,6 +48,8 @@ mod linux_media;
 mod windows_fullscreen;
 
 mod audio;
+mod browser_cdp;
+mod browser_cookies;
 mod process_memory;
 mod discord_rpc;
 mod opus_source;
@@ -2222,6 +2224,148 @@ fn update_youtube_music_account_profile(
     save_account_store(&app, &store)
 }
 
+/// One importable browser session. Carries no secret material: `has_session` is
+/// answered from cookie NAMES only (names are plaintext in every store), and values
+/// are never read for the listing.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserImportCandidate {
+    browser: String,
+    profile_name: String,
+    /// "chromium" or "firefox" — the Chromium path restarts the browser once.
+    kind: String,
+    has_session: bool,
+    /// Chromium only: the browser reopens its tabs after the import restart.
+    /// False means the UI must warn about tab loss out loud before proceeding.
+    restores_tabs: bool,
+}
+
+/// Whether a cookie name belongs to a Google login session (vs consent/measurement).
+fn is_login_cookie_name(name: &str) -> bool {
+    matches!(
+        name,
+        "SID" | "HSID" | "SSID" | "APISID" | "SAPISID" | "SIDCC"
+            | "__Secure-1PSID" | "__Secure-3PSID" | "__Secure-1PAPISID" | "__Secure-3PAPISID"
+            | "__Secure-1PSIDTS" | "__Secure-3PSIDTS" | "__Secure-1PSIDCC" | "__Secure-3PSIDCC"
+    )
+}
+
+#[tauri::command]
+fn browser_import_candidates() -> Result<Vec<BrowserImportCandidate>, CommandError> {
+    let mut candidates = Vec::new();
+    for profile in browser_cookies::detect_browser_profiles() {
+        let (kind, restores_tabs) = match profile.kind {
+            browser_cookies::BrowserKind::Chromium => {
+                let restores = browser_cdp::plan_chromium_import(&profile)
+                    .map(|plan| plan.restores_tabs)
+                    .unwrap_or(false);
+                ("chromium", restores)
+            }
+            browser_cookies::BrowserKind::Firefox => ("firefox", true),
+        };
+        // Names only — values stay on disk until the user confirms the import.
+        let has_session = browser_cookies::read_session_cookies(&profile)
+            .map(|cookies| cookies.iter().any(|cookie| is_login_cookie_name(&cookie.name)))
+            .unwrap_or(false);
+        candidates.push(BrowserImportCandidate {
+            browser: profile.browser.to_string(),
+            profile_name: profile.profile_name.clone(),
+            kind: kind.to_string(),
+            has_session,
+            restores_tabs,
+        });
+    }
+    Ok(candidates)
+}
+
+/// What an import produced. Deliberately NOT the cookie: Rust seeds the live jar
+/// itself (like `sign_in_youtube_music`), and the frontend re-reads its mirror the
+/// same way boot does (`load_youtube_music_cookie`).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserImportResult {
+    slot_id: String,
+    account_changed: bool,
+}
+
+/// Signs in with a browser's live session: no typing, no popup.
+///
+/// Firefox is read straight from its cookie store (plaintext). Chromium stores are
+/// app-bound encrypted, so the running browser is asked over DevTools instead —
+/// which restarts it once on the same profile (see `browser_cdp`). Either way the
+/// resulting header flows through the exact same slot upsert, durable save, and
+/// live-jar seeding as an interactive sign-in, so caching, multi-account, and the
+/// frontend refresh below all behave identically.
+#[tauri::command]
+async fn import_browser_session(
+    app: tauri::AppHandle,
+    jar: tauri::State<'_, YoutubeCookieJar>,
+    account_lock: tauri::State<'_, AccountStoreLock>,
+    browser: String,
+    profile_name: String,
+) -> Result<BrowserImportResult, CommandError> {
+    eprintln!("[internal][tauri][info] import_browser_session browser={browser} profile={profile_name}");
+    let profile = browser_cookies::detect_browser_profiles()
+        .into_iter()
+        .find(|profile| profile.browser == browser && profile.profile_name == profile_name)
+        .ok_or_else(|| CommandError {
+            message: "That browser profile is no longer available.".to_string(),
+        })?;
+
+    let cookies = match profile.kind {
+        browser_cookies::BrowserKind::Firefox => browser_cookies::read_session_cookies(&profile)
+            .map_err(|error| cache_error(format!("Firefox session read failed: {error}")))?,
+        browser_cookies::BrowserKind::Chromium => {
+            let plan = browser_cdp::plan_chromium_import(&profile)
+                .map_err(|error| cache_error(format!("browser import unavailable: {error}")))?;
+            let port = portpicker::pick_unused_port().ok_or_else(|| {
+                cache_error("no free localhost port for the browser import".to_string())
+            })?;
+            browser_cdp::import_session_via_cdp(&plan, port).await
+                .map_err(cache_error)?
+        }
+    };
+
+    if !cookies.iter().any(|cookie| is_login_cookie_name(&cookie.name)) {
+        return Err(CommandError {
+            message: "No YouTube login in that profile. Sign into YouTube Music there first, then import again.".to_string(),
+        });
+    }
+    let pairs: Vec<(String, String)> = cookies
+        .into_iter()
+        .map(|cookie| (cookie.name, cookie.value))
+        .collect();
+    let cookie_header = serialize_cookie_pairs(&pairs);
+    if cookie_header.trim().is_empty() {
+        return Err(CommandError {
+            message: "That profile's YouTube session came back empty.".to_string(),
+        });
+    }
+
+    // Same landing as an interactive sign-in: its own slot when new, a refresh in
+    // place when the identity is already stored (re-importing never duplicates).
+    let candidate_slot_id = generate_slot_id();
+    let (slot_id, account_changed) = {
+        let _guard = account_lock.0.lock().map_err(|_| CommandError {
+            message: "account store lock unavailable".to_string(),
+        })?;
+        let mut store = load_account_store(&app)?;
+        let (slot_id, account_changed) =
+            store.upsert_signed_in_account(&cookie_header, candidate_slot_id);
+        save_account_store(&app, &store)?;
+        (slot_id, account_changed)
+    };
+    if let Ok(mut state) = jar.0.lock() {
+        state.cookie = Some(cookie_header.clone());
+        state.persisted_at = Some(Instant::now());
+    }
+    eprintln!(
+        "[internal][tauri][info] import_browser_session success slot={slot_id} account_changed={account_changed} credential_bytes={}",
+        cookie_header.len()
+    );
+    Ok(BrowserImportResult { slot_id, account_changed })
+}
+
 #[cfg(any(target_os = "macos", test))]
 fn cookie_domain_matches(host: &str, cookie_domain: Option<&str>) -> bool {
     let Some(cookie_domain) = cookie_domain else {
@@ -3333,6 +3477,17 @@ fn load_superseded(slot: Option<(usize, u64)>) -> bool {
 const AUDIO_MIN_CHUNK_BYTES: u64 = 512 * 1024;
 
 /**
+ * Bytes in the first playback range.
+ *
+ * Deliberately much smaller than the rest. A media element cannot report `canplay` until it
+ * has the container header and a little audio, and it asks for the whole file in one range —
+ * so whatever the first chunk weighs is exactly how long a click waits for sound. Sizing it
+ * like the others meant ~700 KB before the first note; this is enough to decode a header.
+ */
+const AUDIO_HEAD_CHUNK_BYTES: usize = 384 * 1024;
+/** Bytes in every playback range after the head. */
+const AUDIO_BODY_CHUNK_BYTES: usize = 1536 * 1024;
+/**
  * Range size for a given total.
  *
  * Aims for roughly `OFFLINE_CHUNK_CONCURRENCY` ranges so the whole file is in flight at once,
@@ -3343,16 +3498,7 @@ const AUDIO_MIN_CHUNK_BYTES: u64 = 512 * 1024;
  * 4 MB of Opus — fell under it and took the single sequential stream this exists to avoid.
  */
 /**
- * Bytes in the first range.
- *
- * Deliberately much smaller than the rest. A media element cannot report `canplay` until it
- * has the container header and a little audio, and it asks for the whole file in one range —
- * so whatever the first chunk weighs is exactly how long a click waits for sound. Sizing it
- * like the others meant ~700 KB before the first note; this is enough to decode a header.
- */
-
-/**
- * The two ranges a *playback* body is fetched in: a small head, then all the rest.
+ * The ranges a *playback* body is fetched in: a small head, then body-sized chunks.
  *
  * Playback does not fan out. googlevideo refuses ranges when several are in flight on one
  * session — always the later ones, never the first — and with a track playing and another
@@ -3368,12 +3514,10 @@ fn playback_ranges(total: usize) -> Vec<(usize, usize)> {
     if total == 0 {
         return Vec::new();
     }
-    const HEAD_CHUNK_SIZE: usize = 384 * 1024;
-    const BODY_CHUNK_SIZE: usize = 1536 * 1024;
     let mut ranges = Vec::new();
     let mut start = 0;
     while start < total {
-        let chunk_size = if start == 0 { HEAD_CHUNK_SIZE } else { BODY_CHUNK_SIZE };
+        let chunk_size = if start == 0 { AUDIO_HEAD_CHUNK_BYTES } else { AUDIO_BODY_CHUNK_BYTES };
         let end = (start + chunk_size - 1).min(total - 1);
         ranges.push((start, end));
         start = end + 1;
@@ -5452,6 +5596,243 @@ async fn proxy_http_request(
     })
 }
 
+/**
+ * Direct Discord identity sign-in: system browser, no Supabase, no popup window.
+ *
+ * The loopback door, same shape as a native app should use: the registered
+ * redirect is fixed (`http://localhost:8000/callback`), the port is bound BEFORE
+ * any browser opens so a busy port fails fast instead of stranding a consent,
+ * and the listener lives exactly for this call. Tokens land in the OS keyring;
+ * only the public identity crosses IPC, never a secret.
+ *
+ * Credentials are baked at compile time from `DISCORD_CLIENT_ID` /
+ * `DISCORD_CLIENT_SECRET` (local builds export them from `.env.local`, CI
+ * provides repo secrets). A desktop binary cannot keep a secret — accepted
+ * openly: it only ever mints tokens for a user who just consented in their own
+ * browser, for this app's own scopes.
+ */
+const DISCORD_KEYRING_USER: &str = "discord-oauth-session";
+const DISCORD_CALLBACK_PORT: u16 = 8000;
+const DISCORD_REDIRECT_URI: &str = "http://localhost:8000/callback";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiscordIdentity {
+    id: String,
+    username: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+    email: Option<String>,
+}
+
+fn discord_client_credentials() -> Result<(String, String), CommandError> {
+    let id = option_env!("DISCORD_CLIENT_ID").unwrap_or("").trim().to_string();
+    let secret = option_env!("DISCORD_CLIENT_SECRET").unwrap_or("").trim().to_string();
+    if id.is_empty() || secret.is_empty() {
+        return Err(cache_error("Discord sign-in is not configured in this build."));
+    }
+    Ok((id, secret))
+}
+
+fn discord_keyring_entry() -> Result<keyring::Entry, CommandError> {
+    keyring::Entry::new(KEYRING_SERVICE, DISCORD_KEYRING_USER).map_err(|error| CommandError {
+        message: format!("credential store unavailable: {error}"),
+    })
+}
+
+/// Reads one HTTP request head from a loopback callback connection.
+///
+/// Enough HTTP to find `?code=` — request line plus headers, 16 KiB cap, no body
+/// parsing, no keep-alive. Anything malformed is a failed attempt, not a crash.
+async fn read_callback_request(
+    stream: &mut tokio::net::TcpStream,
+) -> Result<String, CommandError> {
+    use tokio::io::AsyncReadExt;
+    use tokio::time::{sleep, Duration};
+
+    let mut head = Vec::new();
+    for _ in 0..64 {
+        let mut chunk = [0u8; 1024];
+        let read = tokio::time::timeout(Duration::from_secs(10), stream.read(&mut chunk))
+            .await
+            .map_err(|_| cache_error("browser callback timed out"))?
+            .map_err(|error| cache_error(format!("browser callback read failed: {error}")))?;
+        if read == 0 {
+            break;
+        }
+        head.extend_from_slice(&chunk[..read]);
+        if head.len() > 16 * 1024 {
+            return Err(cache_error("browser callback request too large"));
+        }
+        if head.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    String::from_utf8(head).map_err(|_| cache_error("browser callback was not HTTP"))
+}
+
+#[tauri::command]
+async fn discord_oauth_connect(_app: tauri::AppHandle) -> Result<DiscordIdentity, CommandError> {
+    use tokio::time::{timeout, Duration};
+
+    let (client_id, client_secret) = discord_client_credentials()?;
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{DISCORD_CALLBACK_PORT}"))
+        .await
+        .map_err(|error| {
+            cache_error(format!("local callback unavailable (port {DISCORD_CALLBACK_PORT} busy?): {error}"))
+        })?;
+
+    let authorize = format!(
+        "https://discord.com/oauth2/authorize?client_id={client_id}&redirect_uri={}&response_type=code&scope=identify%20email&prompt=consent",
+        urlencoding(DISCORD_REDIRECT_URI),
+    );
+    tauri_plugin_opener::open_url(authorize, None::<&str>)
+        .map_err(|error| cache_error(format!("could not open the browser: {error}")))?;
+    eprintln!("[internal][tauri][info] discord_oauth_connect waiting for browser consent");
+
+    let code = timeout(Duration::from_secs(300), async {
+        let (mut stream, _) = listener
+            .accept()
+            .await
+            .map_err(|error| cache_error(format!("browser callback accept failed: {error}")))?;
+        let head = read_callback_request(&mut stream).await?;
+        let request_line = head.lines().next().unwrap_or("");
+        let target = request_line.split_whitespace().nth(1).unwrap_or("/");
+        // Answered on the same connection: opening a second one would wait behind
+        // this very accept, which already moved on.
+        use tokio::io::AsyncWriteExt;
+        let answer = |ok: bool| async move {
+            let body = if ok {
+                "<html><body><h2>Signed in. Return to OpenTune.</h2></body></html>"
+            } else {
+                "<html><body><h2>Sign-in cancelled. Return to OpenTune.</h2></body></html>"
+            };
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+            let _ = stream.shutdown().await;
+        };
+        if target.contains("error=") {
+            answer(false).await;
+            return Err(cache_error("Discord sign-in was cancelled."));
+        }
+        let query = target.split_once('?').map(|(_, query)| query).unwrap_or("");
+        let code = url::form_urlencoded::parse(query.as_bytes())
+            .find(|(key, _)| key == "code")
+            .map(|(_, value)| value.into_owned())
+            .ok_or_else(|| cache_error("browser callback carried no code"))?;
+        answer(true).await;
+        Ok::<String, CommandError>(code)
+    })
+    .await
+    .map_err(|_| cache_error("Discord sign-in timed out."))??;
+
+    let http = reqwest::Client::new();
+    let token_text = http
+        .post("https://discord.com/api/oauth2/token")
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", DISCORD_REDIRECT_URI),
+        ])
+        .send()
+        .await
+        .map_err(|error| cache_error(format!("Discord token exchange failed: {error}")))?
+        .text()
+        .await
+        .map_err(|error| cache_error(format!("Discord token exchange read failed: {error}")))?;
+    let token: serde_json::Value =
+        serde_json::from_str(&token_text).map_err(|_| cache_error("Discord token exchange was refused."))?;
+    let access_token = token
+        .get("access_token")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| cache_error("Discord token exchange was refused."))?
+        .to_string();
+    let refresh_token = token
+        .get("refresh_token")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    if refresh_token.is_empty() {
+        return Err(cache_error("Discord did not return a refresh token."));
+    }
+
+    let me_text = http
+        .get("https://discord.com/api/users/@me")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .send()
+        .await
+        .map_err(|error| cache_error(format!("Discord identity fetch failed: {error}")))?
+        .text()
+        .await
+        .map_err(|error| cache_error(format!("Discord identity read failed: {error}")))?;
+    let me: serde_json::Value =
+        serde_json::from_str(&me_text).map_err(|_| cache_error("Discord identity fetch was refused."))?;
+    let id = me
+        .get("id")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| cache_error("Discord identity fetch was refused."))?
+        .to_string();
+    let username = me
+        .get("username")
+        .and_then(|value| value.as_str())
+        .unwrap_or("Discord user")
+        .to_string();
+    let display_name = me
+        .get("global_name")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+    let avatar_url = me
+        .get("avatar")
+        .and_then(|value| value.as_str())
+        .map(|hash| format!("https://cdn.discordapp.com/avatars/{id}/{hash}.png"));
+    let email = me.get("email").and_then(|value| value.as_str()).map(|value| value.to_string());
+
+    let session = serde_json::json!({
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "obtainedAtMs": now_ms(),
+    });
+    discord_keyring_entry()?.set_password(&session.to_string()).map_err(|error| CommandError {
+        message: format!("Discord session save failed: {error}"),
+    })?;
+
+    eprintln!("[internal][tauri][info] discord_oauth_connect success id_len={}", id.len());
+    Ok(DiscordIdentity { id, username, display_name, avatar_url, email })
+}
+
+/// Forgets the Discord identity. The token revocation is best-effort — the
+/// keyring entry going away is what actually signs out on this device.
+#[tauri::command]
+fn discord_oauth_disconnect() -> Result<(), CommandError> {
+    if let Ok(entry) = discord_keyring_entry() {
+        let _ = entry.delete_credential();
+    }
+    eprintln!("[internal][tauri][info] discord_oauth_disconnect");
+    Ok(())
+}
+
+/// Percent-encodes one query value. `url` has no single-value encoder that fits
+/// here, and hand-rolling the unreserved set wrong would corrupt the redirect.
+fn urlencoding(value: &str) -> String {
+    const UNRESERVED: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if UNRESERVED.contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 #[tauri::command]
 fn discord_rpc_update(
     discord_manager: tauri::State<
@@ -5773,6 +6154,8 @@ pub fn run() {
             switch_youtube_music_account,
             remove_youtube_music_account,
             update_youtube_music_account_profile,
+            browser_import_candidates,
+            import_browser_session,
             cache_get,
             cache_set,
             cache_stats,
@@ -5791,6 +6174,8 @@ pub fn run() {
             local_audio_unwatch,
             discord_rpc_update,
             discord_rpc_clear,
+            discord_oauth_connect,
+            discord_oauth_disconnect,
             discord_rpc_init,
             discord_rpc_pause,
             discord_rpc_resume,
@@ -5810,7 +6195,7 @@ mod tests {
     use super::{
         apply_set_cookie, audio_url_with_range, cookie_account_identity, cookie_domain_matches,
         error_cause_chain, is_slow_persist_cookie, is_youtube_cookie_host, parse_cookie_header, sanitize_log_url,
-        audio_chunk_size, playback_ranges, serialize_cookie_pairs, MediaBuffer, AUDIO_HEAD_CHUNK_BYTES, signed_content_length, store_media_item,
+        audio_chunk_size, playback_ranges, serialize_cookie_pairs, MediaBuffer, AUDIO_HEAD_CHUNK_BYTES, AUDIO_BODY_CHUNK_BYTES, signed_content_length, store_media_item,
         MediaItem, AUDIO_MIN_CHUNK_BYTES, MEDIA_SERVER_MAX_ITEMS, OFFLINE_CHUNK_BYTES,
         load_superseded, LOAD_GENERATION, bytes_preview,
         YoutubeAccountStore, generate_slot_id, login_partition_directory_name,
@@ -5965,16 +6350,18 @@ mod tests {
         assert_eq!(reader.seek(SeekFrom::Start(2)).unwrap(), 2);
     }
 
-    /// The head decides how long a click waits for sound, and the two ranges must tile the
+    /// The head decides how long a click waits for sound, and the ranges must tile the
     /// body exactly — a gap here is a hole in the audio.
     #[test]
     fn playback_ranges_lead_with_a_small_head_and_cover_everything() {
         let total = 4_000_000;
         let ranges = playback_ranges(total);
 
-        assert_eq!(ranges.len(), 2, "playback fetches a head and then the rest, nothing more");
+        // A head plus body-sized chunks: 393_216 + 3 × 1_572_864 covers 4_000_000.
+        assert_eq!(ranges.len(), 4, "playback fetches a head then body chunks");
         assert_eq!(ranges[0], (0, AUDIO_HEAD_CHUNK_BYTES - 1));
-        assert_eq!(ranges[1], (AUDIO_HEAD_CHUNK_BYTES, total - 1));
+        assert_eq!(ranges[1].0, AUDIO_HEAD_CHUNK_BYTES);
+        assert_eq!(ranges[1].1 - ranges[1].0 + 1, AUDIO_BODY_CHUNK_BYTES);
 
         let mut next = 0;
         for (start, end) in &ranges {
