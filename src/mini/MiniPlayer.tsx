@@ -111,7 +111,7 @@ export function MiniPlayer() {
               className={cn(
                 "rounded-md px-2 py-1 capitalize transition-colors cursor-pointer",
                 mode === candidate
-                  ? "bg-primary text-white shadow-xs"
+                  ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -405,7 +405,7 @@ function LyricsBody({
           type="button"
           onClick={() => sendMiniCommand({ type: "toggle" })}
           aria-label={isPlaying ? "Pause" : "Play"}
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-white transition-transform hover:scale-105 cursor-pointer"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform hover:scale-105 cursor-pointer"
         >
           {isPlaying ? <PauseActiveIcon size={16} /> : <PlayActiveIcon size={16} />}
         </button>

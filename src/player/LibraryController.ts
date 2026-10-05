@@ -271,7 +271,12 @@ export class LibraryController {
     try {
       const cachedLibrary = await this.dataSource.getCachedLibrary?.();
       if (cachedLibrary) {
-        this.setState({ library: cachedLibrary, error: null });
+        this.setState({
+          library: cachedLibrary,
+          status: cachedLibrary.account ? "ready" : "restoring",
+          sessionConfirmedAt: cachedLibrary.account ? Date.now() : null,
+          error: null,
+        });
       }
 
       /*
@@ -283,10 +288,27 @@ export class LibraryController {
       const restored = await this.dataSource.restoreSession?.()
         || await this.dataSource.refreshSession?.();
       if (!restored) {
-        this.setState({ status: "signed-out", authPrompt: null, error: null });
+        this.setState({ status: "signed-out", authPrompt: null, error: null, sessionConfirmedAt: null });
         return;
       }
-      await this.refresh();
+
+      this.setState({
+        status: "ready",
+        sessionConfirmedAt: this.state.sessionConfirmedAt || Date.now(),
+        error: null,
+      });
+
+      try {
+        await this.refresh({ background: Boolean(this.state.library?.account), suppressFailure: true });
+      } catch (err) {
+        if (err instanceof AuthExpiredError) {
+          this.setSessionExpired();
+        } else {
+          logInternalInfo("LibraryController initial background refresh failed, cached library remains", {
+            error: String(err),
+          });
+        }
+      }
     } catch (error) {
       this.setFailure("Unable to restore your YouTube Music session.", error);
     }
@@ -467,14 +489,23 @@ export class LibraryController {
     }
   }
 
-  async refresh(options: { suppressFailure?: boolean } = {}): Promise<void> {
+  async refresh(options: { background?: boolean; suppressFailure?: boolean } = {}): Promise<void> {
     if (!this.dataSource.getLibrary) return;
-    this.setState({ status: "loading", authPrompt: null, error: null });
+    const isBackground = Boolean(options.background && this.state.library?.account);
+    if (!isBackground) {
+      this.setState({ status: "loading", authPrompt: null, error: null });
+    }
     try {
       const library = await withTimeout(
         this.dataSource.getLibrary(
           (updatedLibrary) => {
-            this.setState({ status: "ready", library: updatedLibrary, authPrompt: null, error: null });
+            this.setState({
+              status: "ready",
+              library: updatedLibrary,
+              authPrompt: null,
+              error: null,
+              sessionConfirmedAt: this.state.sessionConfirmedAt || Date.now(),
+            });
           },
           (error) => {
             // A background refresh, so there is no caller to throw to — this is the only way an
@@ -498,7 +529,13 @@ export class LibraryController {
   }
 
   private applyLibrary(library: LibrarySnapshot): void {
-    this.setState({ status: "ready", library, authPrompt: null, error: null });
+    this.setState({
+      status: "ready",
+      library,
+      authPrompt: null,
+      error: null,
+      sessionConfirmedAt: this.state.sessionConfirmedAt || Date.now(),
+    });
     logInternalInfo("LibraryController.refresh success", {
       albumCount: library.albums.length,
       playlistCount: library.playlists.length,
