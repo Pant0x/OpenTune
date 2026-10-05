@@ -93,13 +93,13 @@ export abstract class DataSource {
     onStage?: (stage: AuthStage) => void,
   ): Promise<void>;
   /**
-   * Signs in through a real browser window owned by the app: no typing in the
-   * app, no popup window. The backend launches an installed Chromium on the
-   * YouTube login with an app-managed profile, polls its session, and stores it
-   * as an ordinary slot — so everything downstream (cache policy, channel
-   * selection, library refresh) behaves identically to `signIn`.
+   * Signs in through the user's own browser: no typing in the app, no popup
+   * window. The backend restarts their Chromium once on its own profile, opens
+   * the YouTube login there, and stores the session as an ordinary slot — so
+   * everything downstream (cache policy, channel selection, library refresh)
+   * behaves identically to `signIn`.
    */
-  signInWithManagedBrowser?(
+  signInWithBrowser?(
     onPrompt: (prompt: AuthPrompt) => void,
     onStage?: (stage: AuthStage) => void,
   ): Promise<void>;

@@ -51,6 +51,7 @@ import { TrackContextMenuProvider } from "./components/TrackContextMenu";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PlaylistContextMenuProvider } from "./components/PlaylistContextMenu";
 import { VolumeSyncBridge } from "./components/player/VolumeSyncBridge";
+import { AuthModal, OPEN_AUTH_MODAL_EVENT } from "./components/AuthModal";
 import { AlbumNavigationProvider, ArtistNavigationProvider, SongNavigationProvider } from "./components/ArtistLinks";
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
@@ -317,6 +318,13 @@ export default function App() {
   const [navigationHistory, setNavigationHistory] = useState<AppViewState[]>([]);
   const [forwardHistory, setForwardHistory] = useState<AppViewState[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    const openAuthModal = () => setIsAuthModalOpen(true);
+    window.addEventListener(OPEN_AUTH_MODAL_EVENT, openAuthModal);
+    return () => window.removeEventListener(OPEN_AUTH_MODAL_EVENT, openAuthModal);
+  }, []);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [queuePanelWidth, setQueuePanelWidth] = useState(readQueuePanelWidth);
   const isQueuePanelCollapsed = useQueuePanelCollapsed();
@@ -852,11 +860,9 @@ export default function App() {
   };
 
   const handleSignIn = async () => {
-    await libraryController.signIn();
-    if (libraryController.getState().status !== "ready") return;
-
     playerUIStore.setLyricsOpen(false);
     navigateToView({ view: "home" });
+    window.dispatchEvent(new Event(OPEN_AUTH_MODAL_EVENT));
   };
 
   const handleOpenLink = async (url: string): Promise<boolean> => {
@@ -1626,6 +1632,11 @@ export default function App() {
       <ZoomHudOverlay />
       <Oneko />
       <MiniWindowSync isOpen={playerUIState.isWaveMiniPlayerOpen} />
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={() => setIsAuthModalOpen(false)}
+      />
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}

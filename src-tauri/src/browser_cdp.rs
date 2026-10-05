@@ -1,23 +1,13 @@
 /*!
- * YouTube sign-in through a real browser window, with zero app popups.
+ * YouTube sign-in through the user's own browser, with zero app popups.
  *
- * The app launches an installed Chromium with an APP-MANAGED profile directory
- * (under the app data dir — never the user's own browser profile, so their tabs,
- * sessions and settings are never touched, restarted, or even read) plus a
- * debugging port, and opens the YouTube login there. The user signs in once, in
- * a real browser window; the app polls the session over DevTools, and the moment
- * login cookies appear it kills its own window and stores the session as an
- * ordinary slot. Afterwards the profile persists, so later sign-ins are an
- * account chooser instead of typing.
- *
- * Why this shape and not the alternatives:
- * - Cookie *files* are app-bound encrypted (v20) and unreadable to anyone but
- *   the browser itself — asking the RUNNING browser over DevTools has it decrypt
- *   for us, HttpOnly cookies included.
- * - The user's own profile is never launched, killed, restarted, or read. The
- *   only window that ever closes is one this module opened.
- * - No extensions, no registry keys, no admin, no secrets, no verification:
- *   the loopback port is picked fresh per run and nothing listens when idle.
+ * The app restarts the user's Chromium on their own profile with a debugging
+ * port, opens the YouTube login there, polls the session over DevTools (the
+ * browser decrypts for us, HttpOnly cookies included), and the moment login
+ * cookies appear kills its debug instance and relaunches the browser normally.
+ * Tabs survive when the browser restores its session — checked up front, warned
+ * about out loud when it doesn't. The debug port is never left open behind us:
+ * every exit path relaunches normally first.
  */
 
 use std::path::{Path, PathBuf};
@@ -51,15 +41,6 @@ fn is_login_cookie_name(name: &str) -> bool {
 
 /// Browsers this flow can drive, preferred first.
 const SUPPORTED_BROWSERS: &[&str] = &["Brave", "Edge", "Chrome", "Opera", "Vivaldi"];
-
-/// First installed Chromium, preferred order. `None` means no supported browser —
-/// the caller falls back to the classic window instead of failing silently.
-pub(crate) fn pick_signin_browser() -> Option<&'static str> {
-    SUPPORTED_BROWSERS
-        .iter()
-        .find(|browser| find_browser_exe(browser).is_some())
-        .copied()
-}
 
 pub(crate) fn find_browser_exe(browser: &str) -> Option<PathBuf> {
     let program_files = std::env::var_os("PROGRAMFILES").map(PathBuf::from);
@@ -114,21 +95,20 @@ pub(crate) fn find_browser_exe(browser: &str) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Launches OUR OWN browser window: app-managed profile, debugging port, login page.
-///
-/// Same profile directory every call, so the Google session persists between
-/// sign-ins. Same executable the user already has — no downloads, no bundled
-/// browser. The returned child is ours to kill; nothing else is ever touched.
-pub(crate) fn launch_managed_browser(
+/// Launches the browser on a user profile with a debugging port, for the app to
+/// read back what the user does there. Same executable the user already has —
+/// no downloads, no bundled browser. The returned child is ours to kill; a
+/// running user instance is closed first by the caller, never here.
+pub(crate) fn launch_debug_browser(
     browser_exe: &Path,
-    profile_dir: &Path,
+    user_data_dir: &Path,
+    profile_dir_name: &str,
     port: u16,
     login_url: &str,
 ) -> Result<std::process::Child, String> {
-    std::fs::create_dir_all(profile_dir)
-        .map_err(|error| format!("browser profile directory unavailable: {error}"))?;
     std::process::Command::new(browser_exe)
-        .arg(format!("--user-data-dir={}", profile_dir.display()))
+        .arg(format!("--user-data-dir={}", user_data_dir.display()))
+        .arg(format!("--profile-directory={profile_dir_name}"))
         .arg(format!("--remote-debugging-port={port}"))
         .arg("--no-first-run")
         .arg("--no-default-browser-check")
@@ -136,6 +116,152 @@ pub(crate) fn launch_managed_browser(
         .arg(login_url)
         .spawn()
         .map_err(|error| format!("could not open the browser: {error}"))
+}
+
+/// A live user profile that could hold a session. Paths only — reading happens
+/// exclusively through the browser itself over DevTools, never from files.
+pub(crate) struct UserBrowserProfile {
+    pub browser: &'static str,
+    pub user_data_dir: PathBuf,
+    pub profile_dir_name: String,
+    /// The browser reopens its tabs after a restart. False means the UI must
+    /// warn about tab loss out loud before proceeding.
+    pub restores_tabs: bool,
+}
+
+/// User-data roots per browser. The first existing profile (Default preferred)
+/// wins; multi-profile machines get Default-or-first, documented in the UI.
+pub(crate) fn detect_user_profile() -> Option<UserBrowserProfile> {
+    for browser in SUPPORTED_BROWSERS {
+        let Some(user_data_dir) = user_data_dir(browser) else { continue };
+        if find_browser_exe(browser).is_none() {
+            continue;
+        }
+        let mut names: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&user_data_dir) {
+            for entry in entries.flatten() {
+                if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name == "Default" || name.starts_with("Profile ") {
+                    names.push(name);
+                }
+            }
+        }
+        names.sort_by_key(|name| if name == "Default" { 0 } else { 1 });
+        if let Some(profile_dir_name) = names.into_iter().next() {
+            return Some(UserBrowserProfile {
+                browser,
+                restores_tabs: browser_restores_tabs(&user_data_dir),
+                user_data_dir,
+                profile_dir_name,
+            });
+        }
+    }
+    None
+}
+
+fn user_data_dir(browser: &str) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?;
+        let relative = match browser {
+            "Brave" => "BraveSoftware\\Brave-Browser\\User Data",
+            "Chrome" => "Google\\Chrome\\User Data",
+            "Edge" => "Microsoft\\Edge\\User Data",
+            "Opera" => "Opera Software\\Opera Stable",
+            "Vivaldi" => "Vivaldi\\User Data",
+            _ => return None,
+        };
+        Some(local.join(relative))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let library = std::env::var_os("HOME").map(PathBuf::from)?.join("Library/Application Support");
+        let relative = match browser {
+            "Brave" => "BraveSoftware/Brave-Browser",
+            "Chrome" => "Google/Chrome",
+            "Edge" => "Microsoft Edge",
+            "Opera" => "com.operasoftware.Opera",
+            "Vivaldi" => "Vivaldi",
+            _ => return None,
+        };
+        Some(library.join(relative))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let config = std::env::var_os("HOME").map(PathBuf::from)?.join(".config");
+        let relative = match browser {
+            "Brave" => "BraveSoftware/Brave-Browser",
+            "Chrome" => "google-chrome",
+            "Edge" => "microsoft-edge",
+            "Opera" => "opera",
+            "Vivaldi" => "vivaldi",
+            _ => return None,
+        };
+        Some(config.join(relative))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = browser;
+        None
+    }
+}
+
+/// Whether the browser reopens its tabs after a restart.
+///
+/// Read from `<User Data>/Preferences` (`session.restore_on_startup == 1`).
+/// Missing file or key means "does not restore" — the safe direction to err in,
+/// because the import restarts the browser and tabs are the thing at stake.
+fn browser_restores_tabs(user_data_dir: &Path) -> bool {
+    let text = match std::fs::read_to_string(user_data_dir.join("Preferences")) {
+        Ok(text) => text,
+        Err(_) => return false,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(parsed) => parsed,
+        Err(_) => return false,
+    };
+    parsed
+        .pointer("/session/restore_on_startup")
+        .and_then(|value| value.as_u64())
+        == Some(1)
+}
+
+pub(crate) fn process_is_running(image: &str) -> bool {
+    std::process::Command::new("tasklist")
+        .args(["/FI", &format!("IMAGENAME eq {image}"), "/NH"])
+        .output()
+        .map(|output| {
+            let text = String::from_utf8_lossy(&output.stdout);
+            text.lines().any(|line| line.to_ascii_lowercase().starts_with(&image.to_ascii_lowercase()))
+        })
+        .unwrap_or(false)
+}
+
+pub(crate) fn wait_for_exit(image: &str, timeout_ms: u64) -> bool {
+    let rounds = timeout_ms / 250;
+    for _ in 0..rounds {
+        if !process_is_running(image) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    !process_is_running(image)
+}
+
+/// Puts the browser back exactly as a normal launch after import work.
+///
+/// The debug port is never left open behind us: every exit path — success,
+/// failure, timeout — relaunches normally first.
+pub(crate) fn relaunch_normally(browser_exe: &Path, user_data_dir: &Path, profile_dir_name: &str) {
+    let _ = std::process::Command::new(browser_exe)
+        .arg(format!("--user-data-dir={}", user_data_dir.display()))
+        .arg(format!("--profile-directory={profile_dir_name}"))
+        .arg("--no-first-run")
+        .arg("--no-default-browser-check")
+        .spawn();
 }
 
 /// Reads the session cookies the managed window currently holds.
@@ -246,18 +372,21 @@ mod cdp_probe {
     //! Safe probes: no browser is ever launched or touched.
     //! Run: `cargo test cdp_probe -- --nocapture`.
 
-    use super::{find_browser_exe, pick_signin_browser};
+    use super::{detect_user_profile, find_browser_exe};
 
     #[test]
     fn signin_browser_resolution_is_sane() {
         // Unknown names resolve to nothing, never panic.
         assert!(find_browser_exe("Netscape").is_none());
-        match pick_signin_browser() {
-            Some(browser) => {
-                eprintln!("[probe] sign-in browser: {browser}");
-                assert!(find_browser_exe(browser).is_some());
+        match detect_user_profile() {
+            Some(profile) => {
+                eprintln!(
+                    "[probe] sign-in profile: {} / {} restores_tabs={}",
+                    profile.browser, profile.profile_dir_name, profile.restores_tabs
+                );
+                assert!(find_browser_exe(profile.browser).is_some());
             }
-            None => eprintln!("[probe] no supported browser installed"),
+            None => eprintln!("[probe] no supported browser profile on disk"),
         }
     }
 }
