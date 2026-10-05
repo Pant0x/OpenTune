@@ -22,6 +22,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
+import { useAuthProfile } from "../../lib/authProfile";
 import openTuneText from "../../../assets/img/opentune-text.png";
 import { SearchBar } from "./SearchBar";
 import type { Playlist } from "../../datasource/types";
@@ -76,6 +77,8 @@ export function TitleBar({
     && (libraryState.status === "restoring"
       || libraryState.status === "loading"
       || libraryState.status === "authorizing");
+  const { profile: cloudProfile, signOut: signOutCloud } = useAuthProfile();
+  const hasUserAccount = Boolean(cloudProfile || isSignedIn);
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const nativeWindowControls = useNativeWindowControls();
@@ -247,13 +250,13 @@ export function TitleBar({
           side="bottom"
           className="w-64"
           trigger={
-            <Tooltip side="bottom" content={isSignedIn ? account?.name || "Account" : "Sign in"}>
+            <Tooltip side="bottom" content={hasUserAccount ? (cloudProfile?.username || account?.name || "Account") : "Sign in"}>
               <button
                 type="button"
                 onClick={() => setIsAccountPanelOpen((open) => !open)}
                 aria-haspopup="menu"
                 aria-expanded={isAccountPanelOpen}
-                aria-label={isSignedIn ? `Account: ${account?.name || "YouTube Music"}` : "Sign in"}
+                aria-label={hasUserAccount ? `Account: ${cloudProfile?.username || account?.name || "User"}` : "Sign in"}
                 className={cn(
                   "ml-0.5 grid size-7 place-items-center rounded-full transition-shadow",
                   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -261,7 +264,7 @@ export function TitleBar({
                 )}
               >
                 <AccountAvatar
-                  artworkUrl={isSignedIn ? account?.artworkUrl : undefined}
+                  artworkUrl={cloudProfile?.avatarUrl ?? (isSignedIn ? account?.artworkUrl : undefined)}
                   className="size-7"
                   iconSize={15}
                 />
@@ -269,36 +272,64 @@ export function TitleBar({
             </Tooltip>
           }
         >
-          {isSignedIn ? (
+          {hasUserAccount ? (
             <div className="flex flex-col gap-1">
-              {/* YouTube Music Account */}
-              <div className="flex items-center gap-2.5 px-1 py-1.5">
-                <AccountAvatar artworkUrl={account?.artworkUrl} className="size-9" iconSize={18} />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm font-medium text-foreground">
-                    {account?.name || "YouTube Music"}
+              {/* OpenTune Cloud Profile if logged in */}
+              {cloudProfile && (
+                <div className="flex items-center gap-2.5 px-2 py-2">
+                  <AccountAvatar artworkUrl={cloudProfile.avatarUrl ?? undefined} className="size-9" iconSize={18} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-semibold text-foreground">
+                      {cloudProfile.username}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {cloudProfile.email || "OpenTune Cloud"}
+                    </span>
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">YouTube Music</span>
-                </span>
-              </div>
+                </div>
+              )}
 
-              <span className="my-0.5 h-px bg-border" aria-hidden="true" />
+              {/* YouTube Music Account */}
+              {isSignedIn ? (
+                <>
+                  <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-card/60 border border-border/40">
+                    <AccountAvatar artworkUrl={account?.artworkUrl} className="size-7" iconSize={15} />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-xs font-medium text-foreground">
+                        {account?.name || "YouTube Music"}
+                      </span>
+                      <span className="truncate text-[10px] text-emerald-400 font-medium">● YouTube Connected</span>
+                    </span>
+                  </div>
 
-              {/* Separate Google logins first, channels within the active one after — labeled
-                  so the two are never mistaken for one undifferentiated list. This is a quick
-                  switcher, not where accounts are added or removed, so a section (label
-                  included) renders nothing at all when there is only one option in it. */}
-              <GoogleAccountSwitcher
-                libraryController={libraryController}
-                onSwitched={() => setIsAccountPanelOpen(false)}
-                label="Account"
-              />
+                  <span className="my-0.5 h-px bg-border" aria-hidden="true" />
 
-              <AccountSwitcher
-                libraryController={libraryController}
-                onSwitched={() => setIsAccountPanelOpen(false)}
-                label="Channel"
-              />
+                  <GoogleAccountSwitcher
+                    libraryController={libraryController}
+                    onSwitched={() => setIsAccountPanelOpen(false)}
+                    label="Account"
+                  />
+
+                  <AccountSwitcher
+                    libraryController={libraryController}
+                    onSwitched={() => setIsAccountPanelOpen(false)}
+                    label="Channel"
+                  />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={ACCOUNT_PANEL_ITEM}
+                  onClick={() => {
+                    setIsAccountPanelOpen(false);
+                    onOpenSettings();
+                  }}
+                >
+                  <span className="text-xs text-muted-foreground hover:text-foreground">
+                    Connect YouTube Music in Settings &rarr;
+                  </span>
+                </button>
+              )}
 
               <span className="my-0.5 h-px bg-border" aria-hidden="true" />
 
@@ -319,7 +350,8 @@ export function TitleBar({
                 className={ACCOUNT_PANEL_ITEM}
                 onClick={() => {
                   setIsAccountPanelOpen(false);
-                  void libraryController.signOut();
+                  if (cloudProfile) void signOutCloud();
+                  if (isSignedIn) void libraryController.signOut();
                 }}
               >
                 <LoginIcon size={16} aria-hidden="true" />

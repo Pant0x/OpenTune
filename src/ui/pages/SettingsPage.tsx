@@ -47,6 +47,7 @@ import {
   SettingsIcon,
   TrashIcon,
   UserIcon,
+  YouTubeMusicIcon,
 } from "@/ui/icons";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -119,6 +120,7 @@ import {
   usePotatoPcMode,
 } from "../settings/renderEffects";
 import { AuthModal } from "../components/AuthModal";
+import { useAuthProfile } from "../../lib/authProfile";
 import { ExternalLinkButton } from "../components/ExternalLinkButton";
 import {
   AUTO_LYRICS_SOURCE,
@@ -599,8 +601,8 @@ export function SettingsPage({
   const [resetSettingsConfirming, setResetSettingsConfirming] = useState(false);
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
-  // Identity comes from the connected YouTube session.
-  const hasAppAccount = libraryState.status === "ready";
+  // OpenTune Cloud identity and YouTube session state.
+  const { profile: cloudProfile, signOut: signOutCloud } = useAuthProfile();
 
   const handleSignOutAll = async () => {
     try {
@@ -990,26 +992,25 @@ export function SettingsPage({
 
       {activeTab === "about" && (
         <div className="flex flex-col gap-5" role="tabpanel" aria-label="About settings">
-          {/* User Profile & Account Card */}
+          {/* OpenTune Cloud Account Section */}
           <section className={SETTINGS_CARD} aria-labelledby="account-settings-title">
             <SettingsCardHeader
-              title="Account & Profile"
+              title="OpenTune Account"
               titleId="account-settings-title"
               icon={<UserIcon size={18} aria-hidden="true" />}
-              description={hasAppAccount ? "Manage your profile and authentication" : "No account connected"}
+              description={cloudProfile ? "Manage your cloud profile and synced library" : "Sign in to sync your playlists and preferences across devices"}
               status={
-                <span className={hasAppAccount ? "text-primary font-medium" : "text-muted-foreground"}>
-                  {hasAppAccount ? "Active" : "Signed out"}
+                <span className={cloudProfile ? "text-primary font-medium" : "text-muted-foreground"}>
+                  {cloudProfile ? "Active" : "Signed out"}
                 </span>
               }
             />
 
-            {/* Profile Row */}
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
                 <div className="relative group/avatar shrink-0">
                   <AccountAvatar
-                    artworkUrl={account?.artworkUrl}
+                    artworkUrl={cloudProfile?.avatarUrl ?? undefined}
                     className="size-14 ring-2 ring-border/60"
                     iconSize={30}
                   />
@@ -1018,58 +1019,147 @@ export function SettingsPage({
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-base font-semibold text-foreground">
-                      {account?.name || "Music Explorer"}
+                      {cloudProfile?.username || "Guest User"}
                     </span>
+                    {cloudProfile?.provider && (
+                      <span className="rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                        {cloudProfile.provider}
+                      </span>
+                    )}
                   </div>
                   <span className="truncate text-xs text-muted-foreground">
-                    {isSignedIn ? `Google Account • Session active (${formatSessionAge(libraryState.sessionConfirmedAt)})` : "Connect to personalize"}
+                    {cloudProfile?.email || "No email linked • Sign in to sync your library across devices"}
                   </span>
-                  {isSignedIn && (
-                    <span className="mt-1 inline-flex w-fit items-center rounded-md bg-card/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      YouTube
-                    </span>
-                  )}
                 </div>
 
-                {hasAppAccount ? (
+                {cloudProfile ? (
                   <button
-                    className="flex items-center gap-2 rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex items-center gap-2 rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
                     type="button"
-                    onClick={() => void handleSignOutAll()}
+                    onClick={() => void signOutCloud()}
                   >
                     <LogoutIcon size={16} />
                     Sign out
                   </button>
                 ) : (
                   <button
-                    className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                     type="button"
                     onClick={() => setIsAuthModalOpen(true)}
                   >
-                    Connect
+                    Sign In / Sign Up
                   </button>
                 )}
               </div>
+            </div>
+          </section>
 
-              {/* Inline editors removed with password accounts: identity now comes
-                  from the connected YouTube session and Discord link below. */}
+          {/* YouTube Music Integration Section */}
+          <section className={SETTINGS_CARD} aria-labelledby="ytmusic-settings-title">
+            <SettingsCardHeader
+              title="YouTube Music Integration"
+              titleId="ytmusic-settings-title"
+              icon={<YouTubeMusicIcon size={18} className="text-[#FF0000]" aria-hidden="true" />}
+              description="Connect your YouTube Music account to personalize Quick Picks, sync listening history, and access liked songs"
+              status={
+                isSignedIn ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+                    ● Connected
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    Not Connected
+                  </span>
+                )
+              }
+            />
+
+            <div className="flex flex-col gap-4">
+              {isSignedIn ? (
+                <>
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border/40 bg-background/30 p-4">
+                    <div className="relative group/avatar shrink-0">
+                      <AccountAvatar
+                        artworkUrl={account?.artworkUrl}
+                        className="size-14 ring-2 ring-border/60"
+                        iconSize={30}
+                      />
+                    </div>
+
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-base font-semibold text-foreground">
+                          {account?.name || "YouTube Account"}
+                        </span>
+                        <span className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                          Active
+                        </span>
+                      </div>
+                      <span className="truncate text-xs text-muted-foreground">
+                        Session active ({formatSessionAge(libraryState.sessionConfirmedAt)}) &bull; {libraryState.library?.playlists.length ?? 0} playlists &bull; {libraryState.library?.likedSongs.length ?? 0} liked songs
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-white/10 disabled:opacity-50 cursor-pointer"
+                        type="button"
+                        disabled={authBusy}
+                        onClick={() => void onSignIn()}
+                      >
+                        <RefreshIcon size={14} className={authBusy ? "animate-spin" : ""} />
+                        Switch
+                      </button>
+                      <button
+                        className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-2 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 cursor-pointer"
+                        type="button"
+                        disabled={authBusy}
+                        onClick={() => void handleSignOutAll()}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Google Channels / Switcher when signed in */}
+                  <div className="flex flex-col gap-2 border-t border-border pt-4">
+                    <GoogleAccountSwitcher
+                      libraryController={libraryController}
+                      showSingle
+                      allowRemove
+                      label="Google Accounts"
+                    />
+                    <AddGoogleAccountButton disabled={authBusy} onClick={() => void onSignIn()} />
+                    <AccountSwitcher libraryController={libraryController} showSingle label="Channel" />
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1 max-w-md">
+                      <strong className="text-sm font-semibold text-foreground">
+                        Unlock Personal Recommendations
+                      </strong>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Connecting your YouTube account gives you instant access to your personal Quick Picks, listening history, subscribed artists, and private playlists.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={authBusy}
+                      onClick={() => void onSignIn()}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#FF0000] hover:bg-[#CC0000] text-white font-semibold px-5 py-2.5 text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <YouTubeMusicIcon size={16} />
+                      <span>{authBusy ? "Connecting…" : "Connect YouTube Music"}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {libraryState.error && <p className="text-xs text-destructive">{libraryState.error}</p>}
             </div>
-
-            {/* Google Channels / Switcher when signed in */}
-            {isSignedIn && (
-              <div className="flex flex-col gap-2 border-t border-border pt-4">
-                <GoogleAccountSwitcher
-                  libraryController={libraryController}
-                  showSingle
-                  allowRemove
-                  label="Google Accounts"
-                />
-                <AddGoogleAccountButton disabled={authBusy} onClick={() => void onSignIn()} />
-                <AccountSwitcher libraryController={libraryController} showSingle label="Channel" />
-              </div>
-            )}
           </section>
 
           {/* Connected Accounts Section */}
