@@ -4,6 +4,7 @@ import { Loader } from "@/components/motion/loader";
 import { CheckActiveIcon, CloseIcon, UserIcon, UserPlusIcon } from "@/ui/icons";
 import type { AccountOption, GoogleAccountOption } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
+import { useLibraryState } from "../../player/playerStore";
 import { logInternalWarn } from "../../internal/logging";
 
 /**
@@ -93,6 +94,8 @@ export function AccountSwitcher({
   label?: string;
   className?: string;
 }) {
+  const libraryState = useLibraryState();
+  const currentAccountName = libraryState.library?.account?.name;
   const [accounts, setAccounts] = useState<AccountOption[] | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
 
@@ -112,10 +115,13 @@ export function AccountSwitcher({
     return () => {
       cancelled = true;
     };
-  }, [libraryController]);
+  }, [libraryController, currentAccountName, libraryState.sessionConfirmedAt]);
 
   const handleSelect = async (account: AccountOption) => {
-    if (account.isActive || switchingId) return;
+    const isItemActive = currentAccountName
+      ? account.name.trim().toLowerCase() === currentAccountName.trim().toLowerCase()
+      : account.isActive;
+    if (isItemActive || switchingId) return;
     setSwitchingId(account.id);
     try {
       await libraryController.selectAccount(account.id);
@@ -150,29 +156,34 @@ export function AccountSwitcher({
     <div className={cn("flex flex-col gap-1.5", className)}>
       {label && <SectionLabel>{label}</SectionLabel>}
       <div className="flex flex-col gap-0.5">
-        {accounts.map((account) => (
-          <button
-            key={account.id}
-            type="button"
-            disabled={Boolean(switchingId)}
-            onClick={() => void handleSelect(account)}
-            aria-current={account.isActive ? "true" : undefined}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/70",
-              " disabled:pointer-events-none disabled:opacity-60",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              account.isActive && "bg-muted/40",
-            )}
-          >
-            <AccountAvatar artworkUrl={account.artworkUrl} className="size-8" iconSize={16} />
-            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{account.name}</span>
-            {switchingId === account.id ? (
-              <Loader variant="spinner" size={15} />
-            ) : account.isActive ? (
-              <CheckActiveIcon size={16} className="shrink-0 text-primary" aria-hidden="true" />
-            ) : null}
-          </button>
-        ))}
+        {accounts.map((account) => {
+          const isItemActive = currentAccountName
+            ? account.name.trim().toLowerCase() === currentAccountName.trim().toLowerCase()
+            : account.isActive;
+          return (
+            <button
+              key={account.id}
+              type="button"
+              disabled={Boolean(switchingId || isItemActive)}
+              onClick={() => void handleSelect(account)}
+              aria-current={isItemActive ? "true" : undefined}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/70",
+                " disabled:pointer-events-none disabled:opacity-60",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                isItemActive && "bg-muted/40",
+              )}
+            >
+              <AccountAvatar artworkUrl={account.artworkUrl} className="size-8" iconSize={16} />
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">{account.name}</span>
+              {switchingId === account.id ? (
+                <Loader variant="spinner" size={15} />
+              ) : isItemActive ? (
+                <CheckActiveIcon size={16} className="shrink-0 text-primary" aria-hidden="true" />
+              ) : null}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -223,6 +234,8 @@ export function GoogleAccountSwitcher({
       });
   };
 
+  const libraryState = useLibraryState();
+
   useEffect(() => {
     let cancelled = false;
     libraryController
@@ -239,7 +252,7 @@ export function GoogleAccountSwitcher({
     return () => {
       cancelled = true;
     };
-  }, [libraryController]);
+  }, [libraryController, libraryState.sessionConfirmedAt, libraryState.library?.account?.name]);
 
   const handleSelect = async (account: GoogleAccountOption) => {
     if (account.isActive || busyId) return;

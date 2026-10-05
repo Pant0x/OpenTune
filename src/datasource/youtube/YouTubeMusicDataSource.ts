@@ -2935,18 +2935,38 @@ export class YouTubeMusicDataSource extends DataSource {
       candidates = await this.getAccountCandidates();
     }
 
-    const activeKey = accountCandidateKey({
-      accountIndex: this.musicAccountIndex,
-      onBehalfOfUser: this.musicOnBehalfOfUser,
-      serializedDelegationContext: this.musicSerializedDelegationContext,
-    });
+    const preferredKey = await this.readPreferredAccountKey();
+    const currentName = this.musicAccountName?.trim().toLowerCase();
+    const nameMatchCandidate = currentName
+      ? candidates.find((c) => c.name?.trim().toLowerCase() === currentName)
+      : null;
+
+    let activeId: string | null = null;
+    if (nameMatchCandidate) {
+      activeId = accountCandidateKey(nameMatchCandidate);
+    } else if (this.musicOnBehalfOfUser || this.musicSerializedDelegationContext) {
+      activeId = accountCandidateKey({
+        accountIndex: this.musicAccountIndex,
+        onBehalfOfUser: this.musicOnBehalfOfUser,
+        serializedDelegationContext: this.musicSerializedDelegationContext,
+      });
+    } else if (preferredKey && candidates.some((c) => accountCandidateKey(c) === preferredKey)) {
+      activeId = preferredKey;
+    } else {
+      activeId = accountCandidateKey({
+        accountIndex: this.musicAccountIndex,
+        onBehalfOfUser: this.musicOnBehalfOfUser,
+        serializedDelegationContext: this.musicSerializedDelegationContext,
+      });
+    }
+
     return candidates.map((candidate) => {
       const id = accountCandidateKey(candidate);
       return {
         id,
         name: candidate.name ?? "YouTube Music",
         artworkUrl: candidate.artworkUrl,
-        isActive: id === activeKey,
+        isActive: id === activeId,
       };
     });
   }
@@ -3561,8 +3581,12 @@ export class YouTubeMusicDataSource extends DataSource {
     return "switched";
   }
 
-  getCachedLibrary(): Promise<LibrarySnapshot | null> {
-    return getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
+  async getCachedLibrary(): Promise<LibrarySnapshot | null> {
+    const cached = await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
+    if (cached?.account?.name) {
+      this.musicAccountName = cached.account.name;
+    }
+    return cached;
   }
 
   async getLibrary(
