@@ -46,6 +46,7 @@ mod windows_media;
 mod linux_media;
 #[cfg(target_os = "windows")]
 mod windows_fullscreen;
+mod browser_cookies;
 
 mod audio;
 mod process_memory;
@@ -2436,12 +2437,74 @@ struct SignInResult {
 }
 
 #[tauri::command]
+async fn import_youtube_music_from_browser(
+    app: tauri::AppHandle,
+    jar: tauri::State<'_, YoutubeCookieJar>,
+    account_lock: tauri::State<'_, AccountStoreLock>,
+) -> Result<SignInResult, CommandError> {
+    if let Some(cookie_header) = browser_cookies::try_import_youtube_cookies_from_browsers() {
+        let candidate_slot_id = generate_slot_id();
+        let (slot_id, account_changed) = {
+            let _guard = account_lock.0.lock().map_err(|_| CommandError {
+                message: "account store lock unavailable".to_string(),
+            })?;
+            let mut store = load_account_store(&app)?;
+            let (slot_id, account_changed) =
+                store.upsert_signed_in_account(&cookie_header, candidate_slot_id.clone());
+            save_account_store(&app, &store)?;
+            (slot_id.clone(), account_changed)
+        };
+        if let Ok(mut state) = jar.0.lock() {
+            state.cookie = Some(cookie_header.clone());
+            state.persisted_at = Some(Instant::now());
+        }
+
+        return Ok(SignInResult {
+            cookie: cookie_header,
+            account_changed,
+            slot_id,
+        });
+    }
+
+    Err(CommandError {
+        message: "No active YouTube session found in installed browsers (Brave, Chrome, Edge).".to_string(),
+    })
+}
+
+#[tauri::command]
 async fn sign_in_youtube_music(
     app: tauri::AppHandle,
     jar: tauri::State<'_, YoutubeCookieJar>,
     account_lock: tauri::State<'_, AccountStoreLock>,
 ) -> Result<SignInResult, CommandError> {
     eprintln!("[internal][tauri][info] sign_in_youtube_music start");
+
+    // 1. First, attempt silent auto-import from installed browsers (Brave, Chrome, Edge, etc.)
+    if let Some(cookie_header) = browser_cookies::try_import_youtube_cookies_from_browsers() {
+        eprintln!("[internal][tauri][info] YouTube session auto-imported from system browser");
+        let candidate_slot_id = generate_slot_id();
+        let (slot_id, account_changed) = {
+            let _guard = account_lock.0.lock().map_err(|_| CommandError {
+                message: "account store lock unavailable".to_string(),
+            })?;
+            let mut store = load_account_store(&app)?;
+            let (slot_id, account_changed) =
+                store.upsert_signed_in_account(&cookie_header, candidate_slot_id.clone());
+            save_account_store(&app, &store)?;
+            (slot_id.clone(), account_changed)
+        };
+        if let Ok(mut state) = jar.0.lock() {
+            state.cookie = Some(cookie_header.clone());
+            state.persisted_at = Some(Instant::now());
+        }
+
+        return Ok(SignInResult {
+            cookie: cookie_header,
+            account_changed,
+            slot_id,
+        });
+    }
+
     /*
      * A brand new candidate slot, up front — every interactive sign-in gets its own empty
      * webview partition (see `build_login_window`), so Google always shows a clean login or
@@ -2453,7 +2516,7 @@ async fn sign_in_youtube_music(
      * `upsert_signed_in_account` below finds it by identity and this candidate partition goes
      * unused — cleaned up rather than left as an orphaned directory.
      */
-    let candidate_slot_id = generate_slot_id();
+    let candidate_slot_id = LEGACY_ACCOUNT_SLOT_ID.to_string();
     let window = build_login_window(&app, true, Arc::new(AtomicBool::new(false)), &candidate_slot_id)?;
     eprintln!("[internal][tauri][info] sign_in_youtube_music login window created");
 
@@ -6188,6 +6251,7 @@ pub fn run() {
             proxy_http_request,
             load_youtube_music_cookie,
             sign_in_youtube_music,
+            import_youtube_music_from_browser,
             refresh_youtube_music_cookie,
             delete_youtube_music_cookie,
             list_youtube_music_accounts,

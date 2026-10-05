@@ -577,7 +577,7 @@ export function SettingsPage({
   libraryController,
   libraryState,
   onRestartOnboarding: _onRestartOnboarding,
-  onSignIn,
+  onSignIn: _onSignIn,
   onDeleteAllAppData,
   onNavigateBack,
 }: SettingsPageProps) {
@@ -1105,7 +1105,7 @@ export function SettingsPage({
                         className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-white/10 disabled:opacity-50 cursor-pointer"
                         type="button"
                         disabled={authBusy}
-                        onClick={() => void onSignIn()}
+                        onClick={() => void libraryController.signIn()}
                       >
                         <RefreshIcon size={14} className={authBusy ? "animate-spin" : ""} />
                         Switch
@@ -1129,7 +1129,7 @@ export function SettingsPage({
                       allowRemove
                       label="Google Accounts"
                     />
-                    <AddGoogleAccountButton disabled={authBusy} onClick={() => void onSignIn()} />
+                    <AddGoogleAccountButton disabled={authBusy} onClick={() => void libraryController.signIn()} />
                     <AccountSwitcher libraryController={libraryController} showSingle label="Channel" />
                   </div>
                 </>
@@ -1148,7 +1148,7 @@ export function SettingsPage({
                     <button
                       type="button"
                       disabled={authBusy}
-                      onClick={() => void onSignIn()}
+                      onClick={() => void libraryController.signIn()}
                       className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#FF0000] hover:bg-[#CC0000] text-white font-semibold px-5 py-2.5 text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
                     >
                       <YouTubeMusicIcon size={16} />

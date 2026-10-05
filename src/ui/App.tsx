@@ -864,9 +864,11 @@ export default function App() {
   };
 
   const handleSignIn = async () => {
-    playerUIStore.setLyricsOpen(false);
-    navigateToView({ view: "home" });
-    window.dispatchEvent(new Event(OPEN_AUTH_MODAL_EVENT));
+    try {
+      await libraryController.signIn();
+    } catch {
+      // handled in controller
+    }
   };
 
   const handleOpenLink = async (url: string): Promise<boolean> => {
@@ -1639,7 +1641,14 @@ export default function App() {
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={async () => {
+          setIsAuthModalOpen(false);
+          if (libraryState.status !== "ready") {
+            try {
+              await libraryController.signIn();
+            } catch {}
+          }
+        }}
       />
 
 {/* <ReleaseNoteDialog
