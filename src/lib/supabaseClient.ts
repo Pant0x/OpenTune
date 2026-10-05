@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { durableAuthStorage } from "./durableAuthStorage";
 
 const supabaseUrl = (typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_SUPABASE_URL : "") as string;
 const supabaseAnonKey = (typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_SUPABASE_ANON_KEY : "") as string;
@@ -14,6 +15,7 @@ export const supabase =
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
+          storage: durableAuthStorage,
         },
       })
     : (null as unknown as ReturnType<typeof createClient>);
