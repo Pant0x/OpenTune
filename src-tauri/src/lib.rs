@@ -5738,11 +5738,38 @@ async fn run_oauth_loopback_server(
                 continue;
             }
 
-            if method == "POST" && path.starts_with("/token_handshake") {
-                let body = request_str.split("\r\n\r\n").nth(1).unwrap_or("");
-                let payload: OAuthPayload = serde_json::from_str(body).unwrap_or_default();
+            if method == "OPTIONS" {
+                let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n";
+                let _ = stream.write_all(resp.as_bytes()).await;
+                let _ = stream.shutdown().await;
+                continue;
+            }
 
-                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+            if path.starts_with("/token_handshake") {
+                let mut payload = OAuthPayload::default();
+                if method == "POST" {
+                    let body = request_str.split("\r\n\r\n").nth(1).unwrap_or("");
+                    if let Ok(parsed) = serde_json::from_str::<OAuthPayload>(body) {
+                        payload = parsed;
+                    }
+                }
+                if payload.code.is_none() && payload.access_token.is_none() {
+                    if let Some((_, query)) = path.split_once('?') {
+                        for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+                            if k == "code" {
+                                payload.code = Some(v.into_owned());
+                            } else if k == "access_token" {
+                                payload.access_token = Some(v.into_owned());
+                            } else if k == "refresh_token" {
+                                payload.refresh_token = Some(v.into_owned());
+                            } else if k == "error" || k == "error_description" {
+                                payload.error = Some(v.into_owned());
+                            }
+                        }
+                    }
+                }
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nConnection: close\r\n\r\n{\"ok\":true}";
                 let _ = stream.write_all(resp.as_bytes()).await;
                 let _ = stream.shutdown().await;
 

@@ -102,6 +102,7 @@ import { useReduceMotion } from "./settings/renderEffects";
 
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauriEnvironment } from "../lib/oauthService";
 import { logInternalWarn } from "../internal/logging";
 import { setAutostartEnabled } from "./settings/autostart";
 import {
@@ -229,6 +230,7 @@ export default function App() {
   // The window is transparent so the app root can round its own corners. When the window
   // is maximised or fullscreen those corners would expose the desktop, so drop the radius.
   useEffect(() => {
+    if (!isTauriEnvironment()) return;
     const appWindow = getCurrentWindow();
     let disposed = false;
 
@@ -267,6 +269,7 @@ export default function App() {
   // Uses custom native Win32 atomic fullscreen to eliminate the minimize/shrink artifact
   // while ensuring the Windows taskbar is 100% covered.
   useEffect(() => {
+    if (!isTauriEnvironment()) return;
     const win = getCurrentWindow();
     const syncFullscreen = async () => {
       try {
@@ -612,6 +615,7 @@ export default function App() {
   }, [persistAppSession]);
 
   useEffect(() => {
+    if (!isTauriEnvironment()) return;
     let unlisten: (() => void) | null = null;
     void getCurrentWindow().onCloseRequested(() => {
       persistAppSession();

@@ -44,6 +44,99 @@ import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
 
+function checkAndHandleWebOAuthCallback(): boolean {
+  if (typeof window === "undefined") return false;
+  const isTauri = Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  if (isTauri) return false;
+
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+  const hasAuth =
+    hash.includes("access_token=") ||
+    search.includes("code=") ||
+    hash.includes("error=") ||
+    search.includes("error=");
+
+  if (!hasAuth) return false;
+
+  const root = document.getElementById("root");
+  if (root) {
+    root.innerHTML = `
+      <div style="background:#0b0f17;color:#f3f4f6;font-family:system-ui,-apple-system,sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;margin:0;padding:20px;box-sizing:border-box;">
+        <div style="background:#111827;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:36px 40px;text-align:center;max-width:420px;width:100%;box-shadow:0 25px 50px -12px rgba(0,0,0,0.7);">
+          <div style="width:52px;height:52px;background:rgba(16,185,129,0.15);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin:0 auto 20px;color:#10b981;">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          </div>
+          <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#ffffff;">Successfully Signed In!</h2>
+          <p style="margin:0;font-size:14px;color:#9ca3af;line-height:1.6;">Connecting to OpenTune Desktop...</p>
+          <div id="sync-status" style="margin-top:18px;font-size:13px;color:#10b981;font-weight:500;">Syncing session...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(search.replace(/^\?/, ""));
+  const payload = {
+    code: searchParams.get("code") || hashParams.get("code"),
+    accessToken: hashParams.get("access_token"),
+    refreshToken: hashParams.get("refresh_token"),
+    error: searchParams.get("error") || hashParams.get("error") || searchParams.get("error_description"),
+  };
+
+  const deliverTokens = async () => {
+    const ports = [8000, 8001, 8080];
+    let delivered = false;
+
+    for (const port of ports) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/token_handshake`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          delivered = true;
+          break;
+        }
+      } catch {
+        try {
+          const query = hash ? hash.replace(/^#/, "") : search.replace(/^\?/, "");
+          await fetch(`http://127.0.0.1:${port}/token_handshake?` + query, { mode: "no-cors" });
+          delivered = true;
+          break;
+        } catch {}
+      }
+    }
+
+    const statusEl = document.getElementById("sync-status");
+    if (statusEl) {
+      if (delivered) {
+        statusEl.innerText = "✓ Connected to OpenTune! You may close this tab.";
+        setTimeout(() => {
+          try { window.close(); } catch {}
+        }, 1800);
+      } else {
+        statusEl.innerText = "✓ Authenticated! Please return to OpenTune.";
+      }
+    }
+
+    try {
+      window.location.replace(`http://localhost:8000/callback` + hash);
+    } catch {}
+  };
+
+  void deliverTokens();
+  return true;
+}
+
+if (!checkAndHandleWebOAuthCallback()) {
+  bootstrap();
+}
+
+function bootstrap() {
 logInternalInfo("main.bootstrap start");
 // Before React mounts: a resolution restored after first paint is a resolution that already
 // let its image flash the fallback icon.
@@ -137,5 +230,7 @@ syncLocalAudioWatcher();
 void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
 // Feeds the external mini player window (snapshots out, transport commands in).
 startMiniBridge();
+}
+
 
 
