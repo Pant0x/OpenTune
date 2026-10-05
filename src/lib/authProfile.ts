@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
+import { getAppSetting, setAppSetting, removeAppSetting } from "../internal/appSettings";
 
 export interface UserProfile {
   id: string;
@@ -13,23 +14,41 @@ export interface UserProfile {
 
 const LOCAL_PROFILE_KEY = "opentune_user_profile";
 const PROFILE_CHANGE_EVENT = "opentune:profile-change";
+let cachedProfileInMemory: UserProfile | null = null;
 
 export function getStoredProfile(): UserProfile | null {
+  if (cachedProfileInMemory) return cachedProfileInMemory;
   try {
-    const raw = localStorage.getItem(LOCAL_PROFILE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    if (typeof window !== "undefined" && window.localStorage) {
+      const raw = window.localStorage.getItem(LOCAL_PROFILE_KEY);
+      if (raw) {
+        cachedProfileInMemory = JSON.parse(raw);
+        return cachedProfileInMemory;
+      }
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
 export function saveStoredProfile(profile: UserProfile | null) {
+  cachedProfileInMemory = profile;
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      if (profile) {
+        window.localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
+      } else {
+        window.localStorage.removeItem(LOCAL_PROFILE_KEY);
+      }
+    }
+  } catch {}
+
   try {
     if (profile) {
-      localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
+      void setAppSetting(LOCAL_PROFILE_KEY, profile);
     } else {
-      localStorage.removeItem(LOCAL_PROFILE_KEY);
+      void removeAppSetting(LOCAL_PROFILE_KEY);
     }
     window.dispatchEvent(new Event(PROFILE_CHANGE_EVENT));
   } catch {}
@@ -41,6 +60,19 @@ export function useAuthProfile() {
 
   useEffect(() => {
     let mounted = true;
+
+    // 1. Immediately hydrate from durable appSettings on disk
+    void getAppSetting<UserProfile>(LOCAL_PROFILE_KEY).then((diskProfile) => {
+      if (diskProfile && mounted) {
+        cachedProfileInMemory = diskProfile;
+        setProfile((current) => current || diskProfile);
+        try {
+          if (typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(diskProfile));
+          }
+        } catch {}
+      }
+    });
 
     async function syncSession() {
       if (!supabase) {
@@ -56,62 +88,49 @@ export function useAuthProfile() {
           return;
         }
 
-        if (!session?.user) {
-          // Check if there is an existing Supabase auth token in localStorage.
-          // If so, the session may still be refreshing or network is briefly offline;
-          // do NOT prematurely wipe the saved user profile.
-          const hasSbToken = Object.keys(localStorage).some(
-            (k) => k.startsWith("sb-") && k.endsWith("-auth-token")
-          );
+        if (session?.user) {
+          const user = session.user;
+          const provider =
+            (user.app_metadata?.provider as "google" | "discord" | "email") ||
+            (user.identities?.[0]?.provider as "google" | "discord" | "email") ||
+            (user.email ? "email" : "unknown");
 
-          if (!hasSbToken) {
-            if (mounted) {
-              setProfile(null);
-              saveStoredProfile(null);
-            }
+          const meta = user.user_metadata || {};
+          const username =
+            meta.username ||
+            meta.display_name ||
+            meta.full_name ||
+            meta.name ||
+            user.email?.split("@")[0] ||
+            "User";
+
+          const avatarUrl =
+            meta.avatar_url ||
+            meta.picture ||
+            null;
+
+          const identities = user.identities || [];
+          const isGoogleConnected = provider === "google" || identities.some((i) => i.provider === "google");
+          const isDiscordConnected = provider === "discord" || identities.some((i) => i.provider === "discord");
+
+          const userProf: UserProfile = {
+            id: user.id,
+            email: user.email ?? null,
+            username,
+            avatarUrl,
+            provider,
+            isGoogleConnected,
+            isDiscordConnected,
+          };
+
+          if (mounted) {
+            setProfile(userProf);
+            saveStoredProfile(userProf);
+            setLoading(false);
           }
+        } else {
+          // If Supabase session is not immediately ready on boot (or offline), do NOT wipe profile
           if (mounted) setLoading(false);
-          return;
-        }
-
-        const user = session.user;
-        const provider =
-          (user.app_metadata?.provider as "google" | "discord" | "email") ||
-          (user.identities?.[0]?.provider as "google" | "discord" | "email") ||
-          (user.email ? "email" : "unknown");
-
-        const meta = user.user_metadata || {};
-        const username =
-          meta.username ||
-          meta.display_name ||
-          meta.full_name ||
-          meta.name ||
-          user.email?.split("@")[0] ||
-          "User";
-
-        const avatarUrl =
-          meta.avatar_url ||
-          meta.picture ||
-          null;
-
-        const identities = user.identities || [];
-        const isGoogleConnected = provider === "google" || identities.some((i) => i.provider === "google");
-        const isDiscordConnected = provider === "discord" || identities.some((i) => i.provider === "discord");
-
-        const userProf: UserProfile = {
-          id: user.id,
-          email: user.email ?? null,
-          username,
-          avatarUrl,
-          provider,
-          isGoogleConnected,
-          isDiscordConnected,
-        };
-
-        if (mounted) {
-          setProfile(userProf);
-          saveStoredProfile(userProf);
-          setLoading(false);
         }
       } catch (err) {
         console.error("[auth] Failed to sync profile:", err);
@@ -127,12 +146,13 @@ export function useAuthProfile() {
     window.addEventListener(PROFILE_CHANGE_EVENT, handleProfileChange);
 
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_OUT") {
+          // User explicitly signed out
           setProfile(null);
           saveStoredProfile(null);
           setLoading(false);
-        } else {
+        } else if (session?.user) {
           void syncSession();
         }
       });
@@ -152,54 +172,50 @@ export function useAuthProfile() {
 
   const updateUsername = async (newUsername: string) => {
     if (!newUsername.trim()) throw new Error("Username cannot be empty");
-    if (!supabase) {
-      if (profile) {
-        const updated = { ...profile, username: newUsername.trim() };
-        setProfile(updated);
-        saveStoredProfile(updated);
-      }
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        username: newUsername.trim(),
-        display_name: newUsername.trim(),
-      },
-    });
-
-    if (error) throw error;
+    const trimmed = newUsername.trim();
 
     if (profile) {
-      const updated = { ...profile, username: newUsername.trim() };
+      const updated = { ...profile, username: trimmed };
       setProfile(updated);
       saveStoredProfile(updated);
+    }
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            username: trimmed,
+            display_name: trimmed,
+          },
+        });
+        if (error) console.warn("[auth] updateUser username error:", error);
+      } catch (err) {
+        console.warn("[auth] updateUser username error:", err);
+      }
     }
   };
 
   const updateAvatarUrl = async (newAvatarUrl: string) => {
-    if (!supabase) {
-      if (profile) {
-        const updated = { ...profile, avatarUrl: newAvatarUrl.trim() };
-        setProfile(updated);
-        saveStoredProfile(updated);
-      }
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      data: {
-        avatar_url: newAvatarUrl.trim(),
-        picture: newAvatarUrl.trim(),
-      },
-    });
-
-    if (error) throw error;
+    const trimmed = newAvatarUrl.trim();
 
     if (profile) {
-      const updated = { ...profile, avatarUrl: newAvatarUrl.trim() };
+      const updated = { ...profile, avatarUrl: trimmed };
       setProfile(updated);
       saveStoredProfile(updated);
+    }
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            avatar_url: trimmed,
+            picture: trimmed,
+          },
+        });
+        if (error) console.warn("[auth] updateUser avatar error:", error);
+      } catch (err) {
+        console.warn("[auth] updateUser avatar error:", err);
+      }
     }
   };
 
