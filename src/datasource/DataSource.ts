@@ -92,17 +92,6 @@ export abstract class DataSource {
     onPrompt: (prompt: AuthPrompt) => void,
     onStage?: (stage: AuthStage) => void,
   ): Promise<void>;
-  /**
-   * Signs in through the user's own browser: no typing in the app, no popup
-   * window. The backend restarts their Chromium once on its own profile, opens
-   * the YouTube login there, and stores the session as an ordinary slot — so
-   * everything downstream (cache policy, channel selection, library refresh)
-   * behaves identically to `signIn`.
-   */
-  signInWithBrowser?(
-    onPrompt: (prompt: AuthPrompt) => void,
-    onStage?: (stage: AuthStage) => void,
-  ): Promise<void>;
   /** Abandons a sign-in still waiting on the user. No-op once it has moved past that. */
   cancelSignIn?(): Promise<void>;
   /**

@@ -336,12 +336,6 @@ interface SignInResult {
   slotId: string;
 }
 
-/** Mirrors `BrowserImportResult` in src-tauri/src/lib.rs. No cookie crosses IPC. */
-interface BrowserImportResult {
-  slotId: string;
-  accountChanged: boolean;
-}
-
 /** Mirrors `YoutubeAccountSummary` in src-tauri/src/lib.rs. */
 interface StoredGoogleAccount {
   slotId: string;
@@ -3377,44 +3371,10 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   /**
-   * Signs in through the user's own browser.
+   * The landing every authenticated session shares.
    *
-   * The backend restarts their Chromium once on its own profile, opens the
-   * YouTube login there, and stores the session as an ordinary slot — so no
-   * credential crosses IPC. This re-reads the active cookie the same way boot
-   * does, then runs the exact same post-sign-in landing as `signIn`
-   * (cache policy, channel selection, profile capture).
-   */
-  async signInWithBrowser(
-    onPrompt: (prompt: AuthPrompt) => void,
-    onStage?: (stage: AuthStage) => void,
-  ): Promise<void> {
-    logInternalInfo("YouTubeMusicDataSource.signInWithBrowser start");
-    onPrompt({
-      verificationUrl: "https://music.youtube.com/",
-      userCode: "Signing in with Google",
-      expiresInSec: 300,
-    });
-    onStage?.("browser");
-    const { slotId, accountChanged } = await invoke<BrowserImportResult>("browser_google_signin");
-    const cookie = await invoke<string | null>("load_youtube_music_cookie");
-    if (!cookie) {
-      throw new Error("The sign-in finished without a session.");
-    }
-    onStage?.("session");
-    logInternalInfo("YouTubeMusicDataSource.signInWithBrowser command completed", {
-      credentialBytes: cookie.length,
-      accountChanged,
-    });
-    await this.finishAuthenticatedSession(cookie, accountChanged, slotId, "signInWithBrowser");
-  }
-
-  /**
-   * The landing every authenticated session shares, however it arrived.
-   *
-   * Extracted from `signIn` so a browser import lands identically: same renewal
-   * fast path (same account keeps cache and channel), same full resync (new
-   * account drops the old channel's cache and selection).
+   * Same renewal fast path (same account keeps cache and channel), same full resync
+   * (new account drops the old channel's cache and selection).
    */
   private async finishAuthenticatedSession(
     cookie: string,
