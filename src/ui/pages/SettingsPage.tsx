@@ -124,6 +124,7 @@ import {
   usePotatoPcMode,
 } from "../settings/renderEffects";
 import { AuthModal } from "../components/AuthModal";
+import { signInWithOAuthPopup } from "../../lib/oauthService";
 import { useAuthProfile } from "../../lib/authProfile";
 import { ExternalLinkButton } from "../components/ExternalLinkButton";
 import {
@@ -794,13 +795,22 @@ export function SettingsPage({
   const discordPresenceEnabled = useDiscordPresenceEnabled();
   const localMusicFolder = useLocalMusicFolder();
   const account = libraryState.library?.account;
-  // Confirmed by YouTube rather than inferred from cached data — see LibraryState.
-  const isSignedIn = libraryState.status === "ready"
-    && account
-    && libraryState.sessionConfirmedAt !== null;
-  const authBusy = libraryState.status === "restoring"
-    || libraryState.status === "authorizing"
-    || libraryState.status === "loading";
+  const isSignedIn = Boolean(account) && libraryState.status !== "signed-out";
+  const authBusy = !isSignedIn
+    && (libraryState.status === "restoring"
+      || libraryState.status === "authorizing"
+      || libraryState.status === "loading");
+  const [isConnectingDiscord, setIsConnectingDiscord] = useState(false);
+  const handleConnectDiscord = async () => {
+    setIsConnectingDiscord(true);
+    try {
+      await signInWithOAuthPopup("discord");
+    } catch (err) {
+      console.error("[settings] Discord connect error:", err);
+    } finally {
+      setIsConnectingDiscord(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -1172,7 +1182,7 @@ export function SettingsPage({
                   </div>
                 ) : (
                   <button
-                    className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                    className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                     type="button"
                     onClick={() => setIsAuthModalOpen(true)}
                   >
@@ -1309,7 +1319,7 @@ export function SettingsPage({
                       type="button"
                       disabled={isSavingProfile}
                       onClick={handleSaveProfile}
-                      className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {isSavingProfile ? (
                         <>
@@ -1447,9 +1457,64 @@ export function SettingsPage({
             />
 
             <div className="flex flex-col gap-3">
-              {/* Preferences Box under Discord RPC */}
               <div className="flex flex-col gap-3 rounded-xl border border-border/40 bg-background/30 p-4">
-                <strong className="text-sm font-semibold text-foreground">Preferences</strong>
+                {/* Discord Account Connection Row */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-card">
+                      <DiscordIcon size={22} className="text-[#5865F2]" />
+                    </span>
+                    <div className="flex min-w-0 flex-col">
+                      <div className="flex items-center gap-2">
+                        <strong className="text-sm font-semibold text-foreground">Discord</strong>
+                        {cloudProfile?.isDiscordConnected ? (
+                          <span className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="rounded-md bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            Not Connected
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {cloudProfile?.isDiscordConnected
+                          ? "Discord account connected to OpenTune"
+                          : "Connect your Discord account to sync activity and profile"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {cloudProfile?.isDiscordConnected ? (
+                    <button
+                      type="button"
+                      disabled={isConnectingDiscord}
+                      onClick={handleConnectDiscord}
+                      className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white/10 disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshIcon size={13} className={isConnectingDiscord ? "animate-spin" : ""} />
+                      <span>Reconnect</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isConnectingDiscord}
+                      onClick={handleConnectDiscord}
+                      className="flex items-center gap-1.5 rounded-full bg-[#5865F2] hover:bg-[#4752C4] text-white px-4 py-2 text-xs font-semibold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isConnectingDiscord ? (
+                        <>
+                          <RefreshIcon size={13} className="animate-spin" />
+                          <span>Connecting…</span>
+                        </>
+                      ) : (
+                        <span>Connect Account</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                <div className="h-px bg-border/40 my-1" />
 
                 {/* Discord Rich Presence (RPC) Row */}
                 <div className="flex items-center justify-between gap-4 pt-1">
@@ -1479,31 +1544,6 @@ export function SettingsPage({
                     />
                   </div>
                 </div>
-
-                <div className="h-px bg-border/40 my-1" />
-
-                {/* GitHub Repository Link */}
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid size-10 place-items-center rounded-xl bg-card">
-                      <GitHubIcon size={20} className="text-foreground" />
-                    </span>
-                    <div className="flex flex-col">
-                      <strong className="text-sm font-semibold text-foreground">GitHub Repository</strong>
-                      <span className="text-xs text-muted-foreground">
-                        View source code, report issues, and star OpenTune on GitHub
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void openUrl(GITHUB_REPOSITORY_URL)}
-                    className="flex items-center gap-1.5 rounded-full bg-card hover:bg-card/80 border border-border/50 px-4 py-1.5 text-xs font-semibold text-foreground transition-colors cursor-pointer"
-                  >
-                    <span>View GitHub</span>
-                    <ArrowUpRightIcon size={12} className="text-muted-foreground" />
-                  </button>
-                </div>
               </div>
             </div>
           </section>
@@ -1526,7 +1566,7 @@ export function SettingsPage({
                   </span>
                 </span>
                 <button
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
                   type="button"
                   disabled={updateStatus === "checking"}
                   onClick={() => void handleCheckForUpdates()}
@@ -1547,7 +1587,7 @@ export function SettingsPage({
                   </span>
                   {updateResult.canInstall && (
                     <button
-                      className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
                       type="button"
                       disabled={updateStatus === "installing"}
                       onClick={() => void handleInstallUpdate()}
@@ -1571,7 +1611,30 @@ export function SettingsPage({
                 <p className="text-sm text-destructive">{updateError}</p>
               )}
 
+              <div className="h-px bg-border/40" />
 
+              {/* GitHub Repository Link */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-xl bg-card">
+                    <GitHubIcon size={20} className="text-foreground" />
+                  </span>
+                  <div className="flex flex-col">
+                    <strong className="text-sm font-semibold text-foreground">GitHub Repository</strong>
+                    <span className="text-xs text-muted-foreground">
+                      View source code, report issues, and star OpenTune on GitHub
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void openUrl(GITHUB_REPOSITORY_URL)}
+                  className="flex items-center gap-1.5 rounded-full bg-card hover:bg-card/80 border border-border/50 px-4 py-1.5 text-xs font-semibold text-foreground transition-colors cursor-pointer"
+                >
+                  <span>View GitHub</span>
+                  <ArrowUpRightIcon size={12} className="text-muted-foreground" />
+                </button>
+              </div>
             </div>
           </section>
         </div>
