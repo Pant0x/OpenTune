@@ -49,13 +49,28 @@ export function useAuthProfile() {
       }
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.warn("[auth] getSession error:", error);
+          if (mounted) setLoading(false);
+          return;
+        }
+
         if (!session?.user) {
-          if (mounted) {
-            setProfile(null);
-            saveStoredProfile(null);
-            setLoading(false);
+          // Check if there is an existing Supabase auth token in localStorage.
+          // If so, the session may still be refreshing or network is briefly offline;
+          // do NOT prematurely wipe the saved user profile.
+          const hasSbToken = Object.keys(localStorage).some(
+            (k) => k.startsWith("sb-") && k.endsWith("-auth-token")
+          );
+
+          if (!hasSbToken) {
+            if (mounted) {
+              setProfile(null);
+              saveStoredProfile(null);
+            }
           }
+          if (mounted) setLoading(false);
           return;
         }
 
@@ -112,8 +127,14 @@ export function useAuthProfile() {
     window.addEventListener(PROFILE_CHANGE_EVENT, handleProfileChange);
 
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-        void syncSession();
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+          setProfile(null);
+          saveStoredProfile(null);
+          setLoading(false);
+        } else {
+          void syncSession();
+        }
       });
 
       return () => {

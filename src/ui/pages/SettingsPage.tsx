@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useEffect,
   useId,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -31,6 +32,8 @@ import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
   BugIcon,
+  CheckIcon,
+  CloseIcon,
   DiscordIcon,
   DownloadIcon,
   FolderIcon,
@@ -41,6 +44,7 @@ import {
   LogoutIcon,
   LyricsIcon,
   PaletteIcon,
+  PencilIcon,
   PlayIcon,
   QueuePanelIcon,
   RefreshIcon,
@@ -244,6 +248,62 @@ function formatSessionAge(confirmedAt: number | null): string {
   if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
   const hours = Math.floor(minutes / 60);
   return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+}
+
+const PRESET_AVATARS = [
+  {
+    label: "Headphones",
+    url: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Neon Synth",
+    url: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=150&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Lo-Fi Cat",
+    url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=150&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Vinyl Record",
+    url: "https://images.unsplash.com/photo-1539375665275-f9de415ef9ac?w=150&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Cyber Wave",
+    url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Music Lover",
+    url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+  },
+];
+
+function resizeImageToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const size = 128;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        const minDim = Math.min(img.width, img.height);
+        const sx = (img.width - minDim) / 2;
+        const sy = (img.height - minDim) / 2;
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
@@ -602,7 +662,66 @@ export function SettingsPage({
   const [resetSettingsBusy, setResetSettingsBusy] = useState(false);
   const [resetSettingsError, setResetSettingsError] = useState<string | null>(null);
   // OpenTune Cloud identity and YouTube session state.
-  const { profile: cloudProfile, signOut: signOutCloud } = useAuthProfile();
+  const {
+    profile: cloudProfile,
+    signOut: signOutCloud,
+    updateUsername,
+    updateAvatarUrl,
+  } = useAuthProfile();
+
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editUsername, setEditUsername] = useState("");
+  const [editAvatarUrl, setEditAvatarUrl] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+  const [profileErrorMsg, setProfileErrorMsg] = useState<string | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartEditProfile = () => {
+    setEditUsername(cloudProfile?.username || "");
+    setEditAvatarUrl(cloudProfile?.avatarUrl || "");
+    setProfileSuccessMsg(null);
+    setProfileErrorMsg(null);
+    setIsEditingProfile(true);
+  };
+
+  const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setEditAvatarUrl(dataUrl);
+    } catch {
+      setProfileErrorMsg("Could not process selected image file.");
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editUsername.trim()) {
+      setProfileErrorMsg("Username cannot be empty");
+      return;
+    }
+    setIsSavingProfile(true);
+    setProfileErrorMsg(null);
+    setProfileSuccessMsg(null);
+    try {
+      if (editUsername.trim() !== cloudProfile?.username) {
+        await updateUsername(editUsername.trim());
+      }
+      if (editAvatarUrl.trim() !== (cloudProfile?.avatarUrl || "")) {
+        await updateAvatarUrl(editAvatarUrl.trim());
+      }
+      setProfileSuccessMsg("Profile updated successfully!");
+      setTimeout(() => {
+        setIsEditingProfile(false);
+        setProfileSuccessMsg(null);
+      }, 1500);
+    } catch (err) {
+      setProfileErrorMsg(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleSignOutAll = async () => {
     try {
@@ -1033,14 +1152,24 @@ export function SettingsPage({
                 </div>
 
                 {cloudProfile ? (
-                  <button
-                    className="flex items-center gap-2 rounded-full border border-border/60 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
-                    type="button"
-                    onClick={() => void signOutCloud()}
-                  >
-                    <LogoutIcon size={16} />
-                    Sign out
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:bg-card hover:border-foreground/20 active:scale-95 cursor-pointer"
+                      type="button"
+                      onClick={isEditingProfile ? () => setIsEditingProfile(false) : handleStartEditProfile}
+                    >
+                      <PencilIcon size={14} />
+                      {isEditingProfile ? "Cancel" : "Edit Profile"}
+                    </button>
+                    <button
+                      className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-2 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
+                      type="button"
+                      onClick={() => void signOutCloud()}
+                    >
+                      <LogoutIcon size={14} />
+                      Sign out
+                    </button>
+                  </div>
                 ) : (
                   <button
                     className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
@@ -1051,6 +1180,152 @@ export function SettingsPage({
                   </button>
                 )}
               </div>
+
+              {isEditingProfile && cloudProfile && (
+                <div className="flex flex-col gap-4 rounded-xl border border-border/50 bg-background/40 p-4 transition-all">
+                  <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <PencilIcon size={15} className="text-primary" />
+                      Edit Profile
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProfile(false)}
+                      className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                      aria-label="Close profile editor"
+                    >
+                      <CloseIcon size={14} />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-start gap-4">
+                    <div className="flex flex-col items-center gap-2 shrink-0">
+                      <AccountAvatar
+                        artworkUrl={editAvatarUrl || undefined}
+                        className="size-16 ring-2 ring-primary/40 shadow-sm"
+                        iconSize={32}
+                      />
+                      <span className="text-[11px] text-muted-foreground">Preview</span>
+                    </div>
+
+                    <div className="flex flex-1 flex-col gap-3 w-full">
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="edit-username-input" className="text-xs font-medium text-foreground">
+                          Username
+                        </label>
+                        <input
+                          id="edit-username-input"
+                          type="text"
+                          value={editUsername}
+                          onChange={(e) => setEditUsername(e.target.value)}
+                          placeholder="Your display name"
+                          maxLength={32}
+                          className="w-full rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="edit-avatar-input" className="text-xs font-medium text-foreground">
+                            Profile Picture URL
+                          </label>
+                          <input
+                            ref={avatarFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAvatarFileSelected}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => avatarFileInputRef.current?.click()}
+                            className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                          >
+                            Upload image...
+                          </button>
+                        </div>
+                        <input
+                          id="edit-avatar-input"
+                          type="url"
+                          value={editAvatarUrl}
+                          onChange={(e) => setEditAvatarUrl(e.target.value)}
+                          placeholder="https://example.com/avatar.png"
+                          className="w-full rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 pt-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">
+                          Or pick a preset avatar:
+                        </span>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                          {PRESET_AVATARS.map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => setEditAvatarUrl(preset.url)}
+                              title={preset.label}
+                              className={cn(
+                                "group relative size-9 shrink-0 overflow-hidden rounded-full border transition-all cursor-pointer",
+                                editAvatarUrl === preset.url
+                                  ? "border-primary ring-2 ring-primary/40 scale-105"
+                                  : "border-border/60 hover:border-foreground/40 hover:scale-105"
+                              )}
+                            >
+                              <img
+                                src={preset.url}
+                                alt={preset.label}
+                                className="size-full object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {profileErrorMsg && (
+                    <div className="rounded-lg bg-destructive/15 border border-destructive/25 px-3 py-1.5 text-xs text-destructive">
+                      {profileErrorMsg}
+                    </div>
+                  )}
+                  {profileSuccessMsg && (
+                    <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/25 px-3 py-1.5 text-xs text-emerald-400 font-medium">
+                      <CheckIcon size={14} />
+                      {profileSuccessMsg}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 border-t border-border/30 pt-3">
+                    <button
+                      type="button"
+                      disabled={isSavingProfile}
+                      onClick={() => setIsEditingProfile(false)}
+                      className="rounded-full border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-card hover:text-foreground transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSavingProfile}
+                      onClick={handleSaveProfile}
+                      className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingProfile ? (
+                        <>
+                          <RefreshIcon size={13} className="animate-spin" />
+                          <span>Saving…</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckIcon size={13} />
+                          <span>Save Changes</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

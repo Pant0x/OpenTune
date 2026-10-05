@@ -8,6 +8,8 @@ import { BrowseShelves } from "../components/BrowseShelves";
 import type { HomeDestinationHandlers } from "../components/HomeDestinations";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { AlbumGridSkeleton } from "../components/Skeleton";
+import { useAuthProfile } from "@/lib/authProfile";
+import { requestAuthModal } from "../components/AuthModal";
 
 interface HomeMoodChip {
   id: string;
@@ -350,7 +352,7 @@ export function HomePage({
   libraryController,
   libraryState,
   searchController,
-  onSignIn,
+  onSignIn: _onSignIn,
   destinations: _destinations,
   onOpenAlbum,
   onOpenArtist,
@@ -358,6 +360,7 @@ export function HomePage({
   onOpenReleases,
 }: HomePageProps) {
   useTrackContextMenu();
+  const { profile: cloudProfile } = useAuthProfile();
   const [activeMood, setActiveMood] = useState<string>("all");
   const [moodShelves, setMoodShelves] = useState<BrowseShelf[] | null>(null);
   const [isLoadingMood, setIsLoadingMood] = useState(false);
@@ -591,18 +594,38 @@ export function HomePage({
         </div>
       )}
 
-      {libraryState.status === "signed-out" && (
+      {libraryState.status === "signed-out" && !cloudProfile && (
         <section className="flex items-center justify-between gap-4 rounded-xl bg-card/60 px-4 py-3 text-sm text-muted-foreground">
           <div>
             <h1 className="text-base font-semibold text-foreground">You&apos;re not signed in</h1>
-            <p>Sign in to access your history, playlists, and albums.</p>
+            <p>Sign in to sync your playlists, favorites, and preferences across devices.</p>
           </div>
           <button
             type="button"
-            onClick={() => void onSignIn()}
-            className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 active:scale-95"
+            onClick={() => requestAuthModal()}
+            className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90 active:scale-95 cursor-pointer"
           >
             Sign in
+          </button>
+        </section>
+      )}
+
+      {libraryState.status === "signed-out" && cloudProfile && (
+        <section className="flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-card/40 px-4 py-3 text-sm text-muted-foreground">
+          <div>
+            <h1 className="text-sm font-semibold text-foreground">
+              Welcome back, {cloudProfile.username}
+            </h1>
+            <p className="text-xs">
+              Connect YouTube Music to sync your YouTube listening history, liked songs, and playlists.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void libraryController.signIn()}
+            className="rounded-full bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 px-3.5 py-1.5 text-xs font-semibold transition active:scale-95 cursor-pointer"
+          >
+            Connect YouTube
           </button>
         </section>
       )}

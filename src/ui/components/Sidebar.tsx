@@ -14,6 +14,7 @@ import { Tooltip } from "@/components/motion/tooltip";
 import { FloatingPanel } from "./FloatingPanel";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { requestAuthModal } from "./AuthModal";
+import { useAuthProfile } from "@/lib/authProfile";
 import { importPlaylistFile, importSpotifyPlaylist } from "../../player/playlistTransfer";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import {
@@ -592,6 +593,7 @@ export function Sidebar({
   onNavigateLocalFiles: _onNavigateLocalFiles,
 }: SidebarProps) {
   const libraryState = useLibraryState();
+  const { profile: cloudProfile } = useAuthProfile();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
   const [libraryView, setLibraryView] = useState<LibraryView>("playlists");
   const toggleLibraryView = (targetView: "albums" | "artists") => {
@@ -1523,16 +1525,28 @@ export function Sidebar({
                 {!shouldHideText && (
                   <span>
                     {libraryState.status === "signed-out"
-                      ? "Sign in to see your subscribed artists."
+                      ? (cloudProfile
+                          ? "Connect YouTube Music to see your subscribed artists."
+                          : "Sign in to see your subscribed artists.")
                       : "No subscribed artists found."}
                   </span>
                 )}
                 {libraryState.status === "signed-out" && (
-                  <GoogleSignInButton
-                    size="sm"
-                    iconOnly={shouldHideText}
-                    onClick={() => requestAuthModal()}
-                  />
+                  cloudProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => void libraryController.signIn()}
+                      className="rounded-full bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary px-3 py-1 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Connect YouTube
+                    </button>
+                  ) : (
+                    <GoogleSignInButton
+                      size="sm"
+                      iconOnly={shouldHideText}
+                      onClick={() => requestAuthModal()}
+                    />
+                  )
                 )}
               </div>
             )
@@ -1673,16 +1687,28 @@ export function Sidebar({
                 {!shouldHideText && (
                   <span>
                     {libraryState.status === "signed-out"
-                      ? "Sign in to see your YouTube Music playlists."
+                      ? (cloudProfile
+                          ? "Connect YouTube Music to see your YouTube playlists."
+                          : "Sign in to see your YouTube Music playlists.")
                       : "No user-created playlists were found."}
                   </span>
                 )}
                 {libraryState.status === "signed-out" && (
-                  <GoogleSignInButton
-                    size="sm"
-                    iconOnly={shouldHideText}
-                    onClick={() => requestAuthModal()}
-                  />
+                  cloudProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => void libraryController.signIn()}
+                      className="rounded-full bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary px-3 py-1 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Connect YouTube
+                    </button>
+                  ) : (
+                    <GoogleSignInButton
+                      size="sm"
+                      iconOnly={shouldHideText}
+                      onClick={() => requestAuthModal()}
+                    />
+                  )
                 )}
                 {showPlaylistRetry && (
                   <button
