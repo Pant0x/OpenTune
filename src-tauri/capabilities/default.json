@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "mini", "opentune_oauth_popup"],
+  "windows": ["main", "mini"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
@@ -90,7 +90,10 @@
       "delete_youtube_credentials",
       "load_youtube_music_cookie",
       "sign_in_youtube_music",
-      "delete_youtube_music_cookie"
+      "delete_youtube_music_cookie",
+      "prepare_oauth_listener",
+      "wait_for_oauth_callback",
+      "cancel_oauth_listener"
     ]
   }
 }

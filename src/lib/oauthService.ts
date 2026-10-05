@@ -1,258 +1,106 @@
-import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { supabase } from "./supabaseClient";
-
-export const OAUTH_POPUP_LABEL = "opentune_oauth_popup";
-const OAUTH_BROADCAST_CHANNEL = "opentune_oauth_channel";
 
 export function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 }
 
-export function isOAuthPopup(): boolean {
-  if (typeof window === "undefined") return false;
-  if (window.name === OAUTH_POPUP_LABEL) return true;
-  if (window.opener && (window.location.hash.includes("access_token=") || window.location.search.includes("code="))) {
-    return true;
-  }
-
-  try {
-    const internals = (window as unknown as {
-      __TAURI_INTERNALS__?: {
-        metadata?: {
-          currentWindow?: { label?: string };
-          currentWebview?: { label?: string };
-        };
-      };
-    }).__TAURI_INTERNALS__;
-    const winLabel = internals?.metadata?.currentWindow?.label;
-    const webviewLabel = internals?.metadata?.currentWebview?.label;
-    if (winLabel === OAUTH_POPUP_LABEL || webviewLabel === OAUTH_POPUP_LABEL) {
-      return true;
-    }
-  } catch {}
-
-  if (isTauriEnvironment()) {
-    try {
-      const currentWin = getCurrentWebviewWindow();
-      if (currentWin.label === OAUTH_POPUP_LABEL) return true;
-    } catch {}
-  }
-
-  if (
-    typeof window !== "undefined" &&
-    (window.location.hash.includes("access_token=") ||
-      window.location.search.includes("code="))
-  ) {
-    try {
-      if (isTauriEnvironment()) {
-        const currentWin = getCurrentWebviewWindow();
-        if (currentWin.label !== "main") {
-          return true;
-        }
-      }
-    } catch {}
-    try {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__?: {
-          metadata?: {
-            currentWindow?: { label?: string };
-          };
-        };
-      }).__TAURI_INTERNALS__;
-      const winLabel = internals?.metadata?.currentWindow?.label;
-      if (winLabel && winLabel !== "main") {
-        return true;
-      }
-    } catch {}
-  }
-
-  return false;
+export interface OAuthCallbackPayload {
+  code?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  error?: string;
 }
 
 /**
- * Checks if the current window is an OAuth popup and handles closing after receiving tokens.
+ * Cancels any pending OAuth listener in the background (e.g. if the user cancels or closes modal).
+ */
+export async function cancelOAuthLogin(): Promise<void> {
+  if (isTauriEnvironment()) {
+    try {
+      await invoke("cancel_oauth_listener");
+    } catch {}
+  }
+}
+
+/**
+ * Initiates an OAuth sign-in flow (Google or Discord) via the user's default web browser
+ * (Brave, Chrome, Edge, etc.) using RFC 8252 local loopback callback, exactly like Spotify,
+ * Discord, and VS Code.
+ */
+export async function signInWithOAuthBrowser(provider: "google" | "discord"): Promise<void> {
+  if (!supabase) {
+    throw new Error("OpenTune Cloud authentication is not configured in this build.");
+  }
+
+  if (isTauriEnvironment()) {
+    // 1. Prepare local loopback listener on an available port (e.g. 8000 or dynamic)
+    const port = await invoke<number>("prepare_oauth_listener");
+    const callbackUrl = `http://localhost:${port}/callback`;
+
+    try {
+      // 2. Obtain Supabase OAuth authorization URL targeting our local loopback
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: callbackUrl,
+          skipBrowserRedirect: true,
+          scopes: provider === "discord" ? "identify email" : undefined,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.url) throw new Error("Could not retrieve authentication URL.");
+
+      // 3. Open user's default browser (e.g. Brave, Chrome, Edge)
+      await openUrl(data.url);
+
+      // 4. Await the callback from the browser
+      const payload = await invoke<OAuthCallbackPayload>("wait_for_oauth_callback");
+
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+
+      // 5. Exchange code or save session
+      if (payload.code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(payload.code);
+        if (exchangeError) throw exchangeError;
+      } else if (payload.accessToken && payload.refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: payload.accessToken,
+          refresh_token: payload.refreshToken,
+        });
+        if (setSessionError) throw setSessionError;
+      } else {
+        throw new Error("No authentication tokens or authorization code received.");
+      }
+
+      // 6. Refresh active session
+      await supabase.auth.getSession();
+    } catch (err) {
+      await cancelOAuthLogin();
+      throw err;
+    }
+  } else {
+    // Web fallback
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+  }
+}
+
+// Backward-compatible alias
+export const signInWithOAuthPopup = signInWithOAuthBrowser;
+
+/**
+ * No-op helper for backwards compatibility.
  */
 export async function handleOAuthPopupRedirect(): Promise<boolean> {
-  const isPopup = isOAuthPopup();
-  if (!isPopup) return false;
-
-  try {
-    const hash = window.location.hash;
-    const search = window.location.search;
-
-    if (hash && hash.includes("access_token=") && supabase) {
-      try {
-        const params = new URLSearchParams(hash.replace(/^#/, ""));
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-        if (access_token && refresh_token) {
-          await supabase.auth.setSession({ access_token, refresh_token });
-        }
-      } catch {}
-    } else if (search && search.includes("code=") && supabase) {
-      try {
-        const params = new URLSearchParams(search);
-        const code = params.get("code");
-        if (code) {
-          await supabase.auth.exchangeCodeForSession(code);
-        }
-      } catch {}
-    }
-
-    try {
-      const bc = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
-      bc.postMessage({ type: "OAUTH_SUCCESS", hash, search });
-      bc.close();
-    } catch {}
-
-    const hasTokensOrCode =
-      hash.includes("access_token=") ||
-      search.includes("code=") ||
-      hash.includes("error=") ||
-      search.includes("error=");
-
-    setTimeout(async () => {
-      try {
-        const currentWin = getCurrentWebviewWindow();
-        await currentWin.destroy();
-      } catch {
-        try {
-          const currentWin = getCurrentWebviewWindow();
-          await currentWin.close();
-        } catch {
-          window.close();
-        }
-      }
-    }, hasTokensOrCode ? 300 : 500);
-
-    return true;
-  } catch {
-    window.close();
-    return true;
-  }
-}
-
-/**
- * Initiates an OAuth sign-in flow (Discord or Google) inside a dedicated popup window,
- * keeping the main OpenTune application window intact without external navigation.
- */
-export async function signInWithOAuthPopup(provider: "google" | "discord"): Promise<void> {
-  if (!supabase) {
-    throw new Error("Supabase client is not configured.");
-  }
-
-  const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo,
-      skipBrowserRedirect: true,
-      scopes: provider === "discord" ? "identify email" : undefined,
-    },
-  });
-
-  if (error) throw error;
-  if (!data?.url) throw new Error("Could not retrieve authentication URL.");
-
-  if (isTauriEnvironment()) {
-    try {
-      const existing = await WebviewWindow.getByLabel(OAUTH_POPUP_LABEL);
-      if (existing) {
-        await existing.close();
-      }
-    } catch {}
-
-    const title =
-      provider === "discord"
-        ? "Sign in with Discord - OpenTune"
-        : "Sign in with Google - OpenTune";
-
-    const popup = new WebviewWindow(OAUTH_POPUP_LABEL, {
-      url: data.url,
-      title,
-      width: 520,
-      height: 720,
-      center: true,
-      resizable: true,
-      focus: true,
-    });
-
-    await new Promise<void>((resolve) => {
-      let resolved = false;
-
-      const finish = async () => {
-        if (resolved) return;
-        resolved = true;
-        try {
-          await popup.destroy();
-        } catch {
-          try {
-            await popup.close();
-          } catch {}
-        }
-        if (supabase) {
-          try {
-            await supabase.auth.getSession();
-          } catch {}
-        }
-        resolve();
-      };
-
-      let bc: BroadcastChannel | null = null;
-      try {
-        bc = new BroadcastChannel(OAUTH_BROADCAST_CHANNEL);
-        bc.onmessage = async (event) => {
-          if (event.data?.type === "OAUTH_SUCCESS") {
-            const hash = event.data.hash as string | undefined;
-            const search = event.data.search as string | undefined;
-            if (hash && hash.includes("access_token=") && supabase) {
-              try {
-                const params = new URLSearchParams(hash.replace(/^#/, ""));
-                const access_token = params.get("access_token");
-                const refresh_token = params.get("refresh_token");
-                if (access_token && refresh_token) {
-                  await supabase.auth.setSession({ access_token, refresh_token });
-                }
-              } catch {}
-            } else if (search && search.includes("code=") && supabase) {
-              try {
-                const params = new URLSearchParams(search);
-                const code = params.get("code");
-                if (code) {
-                  await supabase.auth.exchangeCodeForSession(code);
-                }
-              } catch {}
-            }
-            void finish();
-          }
-        };
-      } catch {}
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          subscription.unsubscribe();
-          void finish();
-        }
-      });
-
-      void popup.once("tauri://destroyed", () => {
-        subscription.unsubscribe();
-        if (bc) try { bc.close(); } catch {}
-        if (!resolved) {
-          resolve();
-        }
-      });
-
-      setTimeout(() => {
-        subscription.unsubscribe();
-        if (bc) try { bc.close(); } catch {}
-        if (!resolved) {
-          resolve();
-        }
-      }, 300_000);
-    });
-  } else {
-    window.open(data.url, OAUTH_POPUP_LABEL, "width=520,height=720,status=no,toolbar=no,menubar=no");
-  }
+  return false;
 }

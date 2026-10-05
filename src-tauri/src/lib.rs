@@ -5596,6 +5596,277 @@ fn desktop_environment() -> String {
         .unwrap_or_default()
 }
 
+/* ---------------------------------------------------------------------------------------- *
+ * Browser OAuth loopback listener for OpenTune Cloud (Google, Discord, etc.)
+ * ---------------------------------------------------------------------------------------- */
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthPayload {
+    pub code: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub error: Option<String>,
+}
+
+pub struct OAuthServerSession {
+    pub cancel_tx: tokio::sync::oneshot::Sender<()>,
+    pub result_rx: tokio::sync::oneshot::Receiver<Result<OAuthPayload, String>>,
+}
+
+pub struct OAuthServerState(
+    pub std::sync::Arc<tokio::sync::Mutex<Option<OAuthServerSession>>>,
+);
+
+async fn run_oauth_loopback_server(
+    listener: tokio::net::TcpListener,
+    result_tx: tokio::sync::oneshot::Sender<Result<OAuthPayload, String>>,
+    mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::time::Duration;
+
+    let mut result_tx = Some(result_tx);
+
+    let html_body = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>OpenTune - Signed In</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: #0b0f17;
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 36px 40px;
+      text-align: center;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .icon {
+      width: 52px;
+      height: 52px;
+      background: rgba(16, 185, 129, 0.15);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      color: #10b981;
+    }
+    h2 { margin: 0 0 10px; font-size: 22px; font-weight: 700; color: #ffffff; }
+    p { margin: 0; font-size: 14px; color: #9ca3af; line-height: 1.6; }
+    .status { margin-top: 18px; font-size: 13px; color: #10b981; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6L9 17l-5-5"/>
+      </svg>
+    </div>
+    <h2>Successfully Signed In!</h2>
+    <p>Your OpenTune account is now authenticated. You can safely close this tab and return to the app.</p>
+    <div class="status" id="status">Syncing with OpenTune...</div>
+  </div>
+  <script>
+    (function() {
+      const hash = window.location.hash ? window.location.hash.substring(1) : '';
+      const search = window.location.search ? window.location.search.substring(1) : '';
+      const params = new URLSearchParams(hash || search);
+      
+      const payload = {
+        code: params.get('code'),
+        accessToken: params.get('access_token'),
+        refreshToken: params.get('refresh_token'),
+        error: params.get('error') || params.get('error_description')
+      };
+
+      fetch('/token_handshake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(() => {
+        document.getElementById('status').innerText = 'Connected! You may close this tab.';
+        setTimeout(() => { try { window.close(); } catch(e){} }, 2000);
+      }).catch(() => {
+        document.getElementById('status').innerText = 'Connected! Return to OpenTune.';
+      });
+    })();
+  </script>
+</body>
+</html>"#;
+
+    let server_task = async {
+        loop {
+            let (mut stream, _) = match listener.accept().await {
+                Ok(conn) => conn,
+                Err(_) => break,
+            };
+
+            let mut buf = [0u8; 8192];
+            let n = match stream.read(&mut buf).await {
+                Ok(n) if n > 0 => n,
+                _ => continue,
+            };
+
+            let request_str = String::from_utf8_lossy(&buf[..n]);
+            let first_line = request_str.lines().next().unwrap_or("");
+            let parts: Vec<&str> = first_line.split_whitespace().collect();
+            let method = parts.first().copied().unwrap_or("GET");
+            let path = parts.get(1).copied().unwrap_or("/");
+
+            if path.contains("favicon.ico") {
+                let resp = "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n";
+                let _ = stream.write_all(resp.as_bytes()).await;
+                let _ = stream.shutdown().await;
+                continue;
+            }
+
+            if method == "POST" && path.starts_with("/token_handshake") {
+                let body = request_str.split("\r\n\r\n").nth(1).unwrap_or("");
+                let payload: OAuthPayload = serde_json::from_str(body).unwrap_or_default();
+
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{\"ok\":true}";
+                let _ = stream.write_all(resp.as_bytes()).await;
+                let _ = stream.shutdown().await;
+
+                if let Some(tx) = result_tx.take() {
+                    let _ = tx.send(Ok(payload));
+                }
+                break;
+            }
+
+            // It's GET /callback or similar
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                html_body.len(),
+                html_body
+            );
+            let _ = stream.write_all(resp.as_bytes()).await;
+            let _ = stream.shutdown().await;
+
+            if let Some((_, query)) = path.split_once('?') {
+                let mut code = None;
+                let mut error = None;
+                for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+                    if k == "code" {
+                        code = Some(v.into_owned());
+                    } else if k == "error" || k == "error_description" {
+                        error = Some(v.into_owned());
+                    }
+                }
+
+                if code.is_some() || error.is_some() {
+                    if let Some(tx) = result_tx.take() {
+                        let _ = tx.send(Ok(OAuthPayload {
+                            code,
+                            error,
+                            access_token: None,
+                            refresh_token: None,
+                        }));
+                    }
+                    break;
+                }
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = server_task => {},
+        _ = &mut cancel_rx => {
+            if let Some(tx) = result_tx.take() {
+                let _ = tx.send(Err("OAuth was cancelled".to_string()));
+            }
+        },
+        _ = tokio::time::sleep(Duration::from_secs(180)) => {
+            if let Some(tx) = result_tx.take() {
+                let _ = tx.send(Err("OAuth sign-in timed out. Please try again.".to_string()));
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn prepare_oauth_listener(
+    state: tauri::State<'_, OAuthServerState>,
+) -> Result<u16, CommandError> {
+    let listener = match tokio::net::TcpListener::bind("127.0.0.1:8000").await {
+        Ok(l) => l,
+        Err(_) => match tokio::net::TcpListener::bind("127.0.0.1:8001").await {
+            Ok(l) => l,
+            Err(_) => {
+                let port = portpicker::pick_unused_port().unwrap_or(8080);
+                tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await
+                    .map_err(|e| CommandError { message: format!("failed to bind OAuth callback port: {e}") })?
+            }
+        }
+    };
+
+    let local_addr = listener.local_addr().map_err(|e| CommandError { message: e.to_string() })?;
+    let port = local_addr.port();
+
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(run_oauth_loopback_server(listener, result_tx, cancel_rx));
+
+    let mut lock = state.0.lock().await;
+    *lock = Some(OAuthServerSession { cancel_tx, result_rx });
+
+    Ok(port)
+}
+
+#[tauri::command]
+async fn wait_for_oauth_callback(
+    state: tauri::State<'_, OAuthServerState>,
+) -> Result<OAuthPayload, CommandError> {
+    let rx = {
+        let mut lock = state.0.lock().await;
+        match lock.take() {
+            Some(session) => session.result_rx,
+            None => return Err(CommandError { message: "no active OAuth listener".to_string() }),
+        }
+    };
+
+    match rx.await {
+        Ok(Ok(payload)) => {
+            if let Some(err) = payload.error.as_deref() {
+                return Err(CommandError { message: err.to_string() });
+            }
+            Ok(payload)
+        }
+        Ok(Err(err)) => Err(CommandError { message: err }),
+        Err(_) => Err(CommandError { message: "OAuth listener stopped".to_string() }),
+    }
+}
+
+#[tauri::command]
+async fn cancel_oauth_listener(
+    state: tauri::State<'_, OAuthServerState>,
+) -> Result<(), CommandError> {
+    let mut lock = state.0.lock().await;
+    if let Some(session) = lock.take() {
+        let _ = session.cancel_tx.send(());
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize Discord RPC manager
@@ -5620,6 +5891,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main_window(app);
         }))
+        .manage(OAuthServerState(std::sync::Arc::new(tokio::sync::Mutex::new(None))))
         .manage(CacheLock(Mutex::new(())))
         .manage(AppSettingsLock(Mutex::new(())))
         .manage(AccountStoreLock(Mutex::new(())))
@@ -5796,6 +6068,9 @@ pub fn run() {
             discord_rpc_init,
             discord_rpc_pause,
             discord_rpc_resume,
+            prepare_oauth_listener,
+            wait_for_oauth_callback,
+            cancel_oauth_listener,
             #[cfg(target_os = "macos")]
             macos_media::update_macos_media_session,
             #[cfg(target_os = "windows")]
