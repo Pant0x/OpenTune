@@ -11,11 +11,13 @@ import {
 } from "./sidebarLibrary";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
+import { Loader } from "@/components/motion/loader";
 import { FloatingPanel } from "./FloatingPanel";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { requestAuthModal } from "./AuthModal";
 import { useAuthProfile } from "@/lib/authProfile";
 import { importPlaylistFile, importSpotifyPlaylist } from "../../player/playlistTransfer";
+import { matchSpotifyTracksToYouTube } from "../../services/SpotifyToYouTubeMatcher";
 import { isLikedSongsId, likedSongsCover } from "../likedSongsArtwork";
 import {
   AlbumIcon,
@@ -221,6 +223,7 @@ function CreatePlaylistButton({
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
   /*
    * Defaults to YouTube Music whenever that is possible. A local playlist is the narrower
    * choice — it cannot hold anything you have not downloaded — so it should be the one you
@@ -233,8 +236,8 @@ function CreatePlaylistButton({
   const spotifyUrlRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!canCreateRemote) setDestination("local");
-  }, [canCreateRemote]);
+    if (!canCreateRemote && destination === "youtube") setDestination("local");
+  }, [canCreateRemote, destination]);
 
   // Focus the field once the panel has finished unfolding, not while it animates.
   useEffect(() => {
@@ -293,18 +296,58 @@ function CreatePlaylistButton({
 
       setBusy(true);
       setError(null);
+      setImportProgress("Fetching Spotify playlist...");
       try {
         const imported = await importSpotifyPlaylist(spotifyUrl);
         if (!imported) return;
 
+        setImportProgress(`Matching tracks with YouTube Music (0/${imported.tracks.length})...`);
+
+        const spotifyInputs = imported.tracks.map((t) => ({
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          durationSec: t.durationSec,
+          artworkUrl: t.artworkUrl,
+        }));
+
+        const { matchedTracks } = await matchSpotifyTracksToYouTube(
+          spotifyInputs,
+          libraryController,
+          (current, total, matchedCount) => {
+            setImportProgress(`Matching with YouTube Music (${current}/${total})... [${matchedCount} found]`);
+          },
+        );
+
+        if (matchedTracks.length === 0) {
+          throw new Error("No tracks could be matched on YouTube Music.");
+        }
+
+        const isRemote = canCreateRemote;
+        setImportProgress(
+          isRemote
+            ? `Creating YouTube Music playlist "${imported.title}"...`
+            : `Creating playlist "${imported.title}"...`
+        );
+
+        // Prepopulate first batch of tracks on creation if remote
+        const initialTrackIds = isRemote ? matchedTracks.slice(0, 50).map((t) => t.id) : undefined;
         const created = await libraryController.createPlaylist(imported.title, {
-          local: true,
+          local: !isRemote,
+          trackIds: initialTrackIds,
         });
-        if (imported.artworkUrl) {
+
+        if (!isRemote && imported.artworkUrl) {
           created.artworkUrl = imported.artworkUrl;
           setLocalPlaylistArtwork(created.id, imported.artworkUrl);
         }
-        await libraryController.addTracksToPlaylist(imported.tracks, created);
+
+        // Add remaining tracks if remote, or all tracks if local
+        const remainingTracks = isRemote ? matchedTracks.slice(50) : matchedTracks;
+        if (remainingTracks.length > 0) {
+          setImportProgress(`Adding ${matchedTracks.length} songs to playlist...`);
+          await libraryController.addTracksToPlaylist(remainingTracks, created);
+        }
 
         setError(null);
         setOpen(false);
@@ -313,6 +356,7 @@ function CreatePlaylistButton({
         setError(cause instanceof Error ? cause.message : "Could not import the Spotify playlist.");
       } finally {
         setBusy(false);
+        setImportProgress(null);
       }
       return;
     }
@@ -386,42 +430,47 @@ function CreatePlaylistButton({
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium text-foreground">New playlist</span>
 
-        {/* Segmented control rather than a checkbox: these are two destinations, not a
-            modifier, and the description below changes with the choice so the consequence is
-            visible before you commit. */}
-        {canCreateRemote ? (
-          <div
-            className="mt-0.5 flex rounded-lg bg-card p-0.5"
-            role="radiogroup"
-            aria-label="Where to create the playlist"
-          >
-            {(["youtube", "spotify"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={destination === value}
-                onClick={() => setDestination(value)}
-                className={cn(
-                  "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  destination === value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {value === "youtube"
-                  ? "Playlists"
-                  : "Spotify"}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        {/* Segmented control rather than a checkbox: choices change based on sign-in */}
+        <div
+          className="mt-0.5 flex rounded-lg bg-card p-0.5"
+          role="radiogroup"
+          aria-label="Where to create the playlist"
+        >
+          {(canCreateRemote
+            ? (["youtube", "spotify"] as const)
+            : (["local", "spotify"] as const)
+          ).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={destination === value}
+              onClick={() => setDestination(value)}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                destination === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {value === "youtube"
+                ? "Playlists"
+                : value === "local"
+                  ? "Local"
+                  : "Spotify Import"}
+            </button>
+          ))}
+        </div>
 
         <span className="text-xs text-muted-foreground">
           {destination === "youtube"
-            ? "Saved to your library playlists, synced across devices."
-            : "Import a Spotify playlist by URL into your library."}
+            ? "Saved to your YouTube Music account, synced across devices."
+            : destination === "spotify"
+              ? canCreateRemote
+                ? "Clones Spotify playlist to your YouTube Music account via sigma67 matching engine."
+                : "Imports Spotify playlist into your local library via sigma67 matching engine."
+              : "Saved locally on this device only."}
         </span>
         {destination === "spotify" ? (
           <input
@@ -455,19 +504,26 @@ function CreatePlaylistButton({
           />
         )}
         {error ? <span className="text-xs text-destructive">{error}</span> : null}
+        {importProgress ? (
+          <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+            <Loader variant="spinner" size={13} />
+            <span className="truncate">{importProgress}</span>
+          </div>
+        ) : null}
         <button
           type="button"
-          className="mt-1 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1 flex items-center justify-center gap-2 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           disabled={busy}
           onClick={() => void submit()}
         >
-          {destination === "spotify"
-            ? busy
-              ? "Importing..."
-              : "Import playlist"
-            : busy
-              ? "Creating..."
-              : "Create playlist"}
+          {busy ? (
+            <>
+              <Loader variant="spinner" size={14} />
+              <span>{destination === "spotify" ? "Importing..." : "Creating..."}</span>
+            </>
+          ) : (
+            <span>{destination === "spotify" ? "Import playlist" : "Create playlist"}</span>
+          )}
         </button>
 
         {destination === "youtube" ? (
