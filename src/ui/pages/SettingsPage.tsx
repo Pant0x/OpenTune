@@ -40,6 +40,7 @@ import {
   FolderOpenIcon,
   FriendActivityIcon,
   GitHubIcon,
+  GoogleIcon,
   KeyIcon,
   LogFileIcon,
   LogoutIcon,
@@ -1066,7 +1067,7 @@ export function SettingsPage({
 
   return (
     <main className="flex min-h-0 flex-1 flex-col gap-7">
-      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <header className="sticky -top-1 z-30 flex flex-wrap items-start justify-between gap-x-6 gap-y-3 -mx-4 px-4 pt-2 pb-4 bg-background/95 backdrop-blur-md border-b border-border/40 shadow-xs">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-3">
             {onNavigateBack && (
@@ -1101,7 +1102,7 @@ export function SettingsPage({
           The nav sticks so the categories stay reachable while a long panel scrolls. */}
       <div className="flex min-h-0 flex-1 items-start gap-10">
         <nav
-          className="sticky top-0 flex w-56 shrink-0 flex-col gap-0.5"
+          className="sticky top-20 flex w-56 shrink-0 flex-col gap-0.5"
           role="tablist"
           aria-label="Settings categories"
         >
@@ -1180,11 +1181,22 @@ export function SettingsPage({
                     <span className="truncate text-base font-semibold text-foreground">
                       {cloudProfile?.username || "Guest User"}
                     </span>
-                    {cloudProfile?.provider && (
-                      <span className="rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                        {cloudProfile.provider}
+                    {cloudProfile?.provider === "google" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-0.5 text-[11px] font-medium border border-border/60 text-foreground shadow-2xs">
+                        <GoogleIcon size={12} />
+                        <span>Google</span>
                       </span>
-                    )}
+                    ) : cloudProfile?.provider === "discord" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#5865F2]/15 border border-[#5865F2]/30 px-2.5 py-0.5 text-[11px] font-medium text-[#5865F2] shadow-2xs">
+                        <DiscordIcon size={12} />
+                        <span>Discord</span>
+                      </span>
+                    ) : cloudProfile?.provider ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-card border border-border/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground shadow-2xs">
+                        <UserIcon size={12} className="text-primary" />
+                        <span className="capitalize">{cloudProfile.provider}</span>
+                      </span>
+                    ) : null}
                   </div>
                   <span className="truncate text-xs text-muted-foreground">
                     {cloudProfile?.email || "No email linked • Sign in to sync your library across devices"}
@@ -1476,12 +1488,6 @@ export function SettingsPage({
                   description="Broadcast the track you're currently playing to friends in real time"
                   checked={friendsSettings.sharingEnabled}
                   onCheckedChange={(checked) => setFriendsSettings({ sharingEnabled: checked })}
-                />
-                <SettingToggle
-                  title="Show Community & Suggested Activity"
-                  description="Keep the social panel lively with recommended music buddies"
-                  checked={friendsSettings.showCommunityFriends}
-                  onCheckedChange={(checked) => setFriendsSettings({ showCommunityFriends: checked })}
                 />
               </div>
 
