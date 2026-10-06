@@ -34,7 +34,6 @@ const ACTIVITY_CHANGED_EVENT = "opentune:listening-activity:changed";
 interface ListeningSettings {
   enabled: boolean;
   sharingEnabled: boolean;
-  showCommunityFriends: boolean;
 }
 
 function getStoredSettings(): ListeningSettings {
@@ -45,7 +44,6 @@ function getStoredSettings(): ListeningSettings {
   return {
     enabled: true,
     sharingEnabled: true,
-    showCommunityFriends: true,
   };
 }
 
@@ -70,86 +68,6 @@ function saveStoredCustomFriends(friends: FriendActivity[]) {
     window.dispatchEvent(new Event(ACTIVITY_CHANGED_EVENT));
   } catch {}
 }
-
-/** Pre-populated dynamic community listening activities so the panel is vibrant immediately */
-const COMMUNITY_FRIENDS: FriendActivity[] = [
-  {
-    id: "community-1",
-    username: "Ahmed M.",
-    avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60",
-    isPlaying: true,
-    track: {
-      id: "track-1",
-      title: "Starboy",
-      artist: "The Weeknd, Daft Punk",
-      album: "Starboy",
-      artworkUrl: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=100&auto=format&fit=crop&q=60",
-    },
-    context: {
-      type: "album",
-      name: "Starboy",
-    },
-    timestamp: Date.now() - 1000 * 60 * 2, // 2m ago
-    isOnline: true,
-  },
-  {
-    id: "community-2",
-    username: "Sarah K.",
-    avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=60",
-    isPlaying: true,
-    track: {
-      id: "track-2",
-      title: "Blinding Lights",
-      artist: "The Weeknd",
-      album: "After Hours",
-      artworkUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&auto=format&fit=crop&q=60",
-    },
-    context: {
-      type: "playlist",
-      name: "Today's Top Hits",
-    },
-    timestamp: Date.now() - 1000 * 60 * 14, // 14m ago
-    isOnline: true,
-  },
-  {
-    id: "community-3",
-    username: "Ziad Cyber",
-    avatarUrl: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=60",
-    isPlaying: false,
-    track: {
-      id: "track-3",
-      title: "FE!N",
-      artist: "Travis Scott, Playboi Carti",
-      album: "UTOPIA",
-      artworkUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=100&auto=format&fit=crop&q=60",
-    },
-    context: {
-      type: "album",
-      name: "UTOPIA",
-    },
-    timestamp: Date.now() - 1000 * 60 * 60 * 2, // 2h ago
-    isOnline: false,
-  },
-  {
-    id: "community-4",
-    username: "Nouran E.",
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=60",
-    isPlaying: false,
-    track: {
-      id: "track-4",
-      title: "Birds of a Feather",
-      artist: "Billie Eilish",
-      album: "HIT ME HARD AND SOFT",
-      artworkUrl: "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=100&auto=format&fit=crop&q=60",
-    },
-    context: {
-      type: "album",
-      name: "HIT ME HARD AND SOFT",
-    },
-    timestamp: Date.now() - 1000 * 60 * 60 * 5, // 5h ago
-    isOnline: false,
-  },
-];
 
 class FriendsListeningService {
   private settings: ListeningSettings = getStoredSettings();
@@ -259,11 +177,10 @@ class FriendsListeningService {
               artworkUrl: track.artworkUrl,
             }
           : undefined,
-        context: track?.album ? { type: "album", name: track.album } : undefined,
         timestamp: Date.now(),
       });
     } catch (err) {
-      console.warn("[friends] broadcast presence error:", err);
+      console.warn("[friends] Broadcast presence failed:", err);
     }
   }
 
@@ -281,23 +198,42 @@ class FriendsListeningService {
     if (!this.settings.enabled) return [];
 
     const result: FriendActivity[] = [];
+    const addedUsernames = new Set<string>();
 
-    // 1. Real online peers from Supabase
-    for (const peer of this.peerFriends.values()) {
-      result.push(peer);
-    }
-
-    // 2. Custom friends added by user
+    // 1. Custom friends added by the user
     for (const custom of this.customFriends) {
-      result.push(custom);
+      // Check if this friend is currently online in the presence room
+      let livePeer: FriendActivity | undefined;
+      for (const peer of this.peerFriends.values()) {
+        if (
+          peer.username.toLowerCase() === custom.username.toLowerCase() ||
+          peer.id === custom.id
+        ) {
+          livePeer = peer;
+          break;
+        }
+      }
+
+      if (livePeer) {
+        result.push({
+          ...custom,
+          isPlaying: livePeer.isPlaying,
+          track: livePeer.track,
+          context: livePeer.context,
+          avatarUrl: livePeer.avatarUrl || custom.avatarUrl,
+          isOnline: true,
+          timestamp: livePeer.timestamp,
+        });
+      } else {
+        result.push(custom);
+      }
+      addedUsernames.add(custom.username.toLowerCase());
     }
 
-    // 3. Fallback / community demo friends
-    if (this.settings.showCommunityFriends) {
-      for (const community of COMMUNITY_FRIENDS) {
-        if (!result.some((r) => r.username.toLowerCase() === community.username.toLowerCase())) {
-          result.push(community);
-        }
+    // 2. Real online peers connected to the same live room
+    for (const peer of this.peerFriends.values()) {
+      if (!addedUsernames.has(peer.username.toLowerCase())) {
+        result.push(peer);
       }
     }
 
@@ -313,27 +249,37 @@ class FriendsListeningService {
     const trimmed = name.trim();
     if (!trimmed) return;
 
+    // Check if an online peer has this username
+    let livePeer: FriendActivity | undefined;
+    for (const peer of this.peerFriends.values()) {
+      if (peer.username.toLowerCase() === trimmed.toLowerCase()) {
+        livePeer = peer;
+        break;
+      }
+    }
+
     const newFriend: FriendActivity = {
-      id: `custom-${Date.now()}`,
-      username: trimmed,
-      avatarUrl: avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(trimmed)}`,
-      isPlaying: true,
-      track: {
-        id: "custom-track",
-        title: "Popular Song",
-        artist: "Various Artists",
-        album: "OpenTune Favorites",
-      },
-      context: {
-        type: "playlist",
-        name: "Discover Weekly",
-      },
-      timestamp: Date.now(),
-      isOnline: true,
+      id: livePeer ? livePeer.id : `friend-${Date.now()}`,
+      username: livePeer ? livePeer.username : trimmed,
+      avatarUrl:
+        avatarUrl ||
+        livePeer?.avatarUrl ||
+        `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(trimmed)}`,
+      isPlaying: livePeer ? livePeer.isPlaying : false,
+      track: livePeer?.track,
+      context: livePeer?.context,
+      timestamp: livePeer ? livePeer.timestamp : Date.now(),
+      isOnline: Boolean(livePeer?.isOnline),
       isCustom: true,
     };
 
-    this.customFriends = [newFriend, ...this.customFriends];
+    // Prevent duplicate
+    this.customFriends = [
+      newFriend,
+      ...this.customFriends.filter(
+        (f) => f.username.toLowerCase() !== trimmed.toLowerCase()
+      ),
+    ];
     saveStoredCustomFriends(this.customFriends);
   }
 

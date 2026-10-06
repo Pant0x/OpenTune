@@ -1445,12 +1445,18 @@ export default function App() {
           }
           rightPanelWidth={
             playerUIState.isListeningActivityOpen
-              ? 280
+              ? sidebarWidth
               : isQueuePanelCollapsed
                 ? COLLAPSED_QUEUE_WIDTH
                 : queuePanelWidth
           }
-          onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange}
+          onRightPanelWidthChange={
+            playerUIState.isListeningActivityOpen
+              ? handleSidebarWidthChange
+              : isQueuePanelCollapsed
+                ? undefined
+                : handleQueuePanelWidthChange
+          }
           isQueuePanelCollapsed={isQueuePanelCollapsed}
           scrollKey={activeViewKey}
         >
