@@ -12,6 +12,14 @@ export interface UserProfile {
   isDiscordConnected: boolean;
 }
 
+export interface SessionDetails {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  createdAt?: string;
+  lastSignInAt?: string;
+}
+
 const LOCAL_PROFILE_KEY = "opentune_user_profile";
 const PROFILE_CHANGE_EVENT = "opentune:profile-change";
 let cachedProfileInMemory: UserProfile | null = null;
@@ -56,6 +64,7 @@ export function saveStoredProfile(profile: UserProfile | null) {
 
 export function useAuthProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(() => getStoredProfile());
+  const [sessionDetails, setSessionDetails] = useState<SessionDetails | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -86,6 +95,18 @@ export function useAuthProfile() {
           console.warn("[auth] getSession error:", error);
           if (mounted) setLoading(false);
           return;
+        }
+
+        if (session) {
+          if (mounted) {
+            setSessionDetails({
+              accessToken: session.access_token,
+              refreshToken: session.refresh_token,
+              expiresAt: session.expires_at,
+              createdAt: session.user?.created_at,
+              lastSignInAt: session.user?.last_sign_in_at,
+            });
+          }
         }
 
         if (session?.user) {
@@ -219,6 +240,41 @@ export function useAuthProfile() {
     }
   };
 
+  const resetPassword = async (email?: string) => {
+    if (!supabase) throw new Error("Authentication service is unavailable");
+    const targetEmail = (email || profile?.email || "").trim();
+    if (!targetEmail) throw new Error("Please provide a valid email address");
+    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+      redirectTo: "opentune://auth/reset-password",
+    });
+    if (error) throw error;
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    if (!supabase) throw new Error("Authentication service is unavailable");
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error("Password must be at least 6 characters long");
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  };
+
+  const refreshSession = async () => {
+    if (!supabase) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setSessionDetails({
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token,
+          expiresAt: session.expires_at,
+          createdAt: session.user?.created_at,
+          lastSignInAt: session.user?.last_sign_in_at,
+        });
+      }
+    } catch {}
+  };
+
   const signOut = async () => {
     if (supabase) {
       try {
@@ -226,14 +282,19 @@ export function useAuthProfile() {
       } catch {}
     }
     setProfile(null);
+    setSessionDetails(null);
     saveStoredProfile(null);
   };
 
   return {
     profile,
+    sessionDetails,
     loading,
     updateUsername,
     updateAvatarUrl,
+    resetPassword,
+    updatePassword,
+    refreshSession,
     signOut,
   };
 }

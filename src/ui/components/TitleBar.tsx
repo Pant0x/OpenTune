@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { LoginIcon, SettingsIcon } from "@/ui/icons";
+import { FriendActivityIcon, LoginIcon, SettingsIcon, UserIcon } from "@/ui/icons";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
   isLinux,
@@ -23,6 +23,7 @@ import { NotificationsPanel } from "./NotificationsPanel";
 import { useToolbarItemVisible } from "../settings/toolbarItems";
 import { AuthModal } from "./AuthModal";
 import { useAuthProfile } from "../../lib/authProfile";
+import { usePlayerUIState, playerUIStore } from "../stores/playerUIStore";
 import openTuneText from "../../../assets/img/opentune-text.png";
 import { SearchBar } from "./SearchBar";
 import type { Playlist } from "../../datasource/types";
@@ -32,6 +33,7 @@ interface TitleBarProps {
   isHomeActive: boolean;
   onNavigateHome: () => void;
   onOpenSettings: () => void;
+  onOpenProfile?: () => void;
   onOpenDownloads?: () => void;
   onSearch?: (query: string, openInNewTab?: boolean) => void;
   onOpenSearch?: () => void;
@@ -54,6 +56,7 @@ export function TitleBar({
   isHomeActive,
   onNavigateHome,
   onOpenSettings,
+  onOpenProfile,
   onOpenDownloads,
   onSearch,
   onOpenSearch,
@@ -72,6 +75,7 @@ export function TitleBar({
       || libraryState.status === "loading"
       || libraryState.status === "authorizing");
   const { profile: cloudProfile, signOut: signOutCloud } = useAuthProfile();
+  const playerUIState = usePlayerUIState();
   const hasUserAccount = Boolean(cloudProfile || isSignedIn);
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -90,6 +94,7 @@ export function TitleBar({
   const showCustomWindowControls = !nativeWindowControls
     && (!isLinux || !tilingWindowManager || forceWindowControls);
   const notificationsVisible = useToolbarItemVisible("notifications");
+  const friendActivityVisible = useToolbarItemVisible("friendActivity");
   const downloadsVisible = useToolbarItemVisible("downloads");
   const homePointerRef = useRef<{
     pointerId: number;
@@ -232,6 +237,23 @@ export function TitleBar({
         {notificationsVisible && (
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
         )}
+        {friendActivityVisible && (
+          <Tooltip side="bottom" content="Friend Activity">
+            <button
+              type="button"
+              aria-label="Friend Activity"
+              aria-pressed={playerUIState.isListeningActivityOpen}
+              onClick={() => playerUIStore.toggleListeningActivity()}
+              className={cn(
+                "grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer",
+                playerUIState.isListeningActivityOpen && "text-foreground bg-card shadow-sm ring-1 ring-border/50",
+              )}
+            >
+              <FriendActivityIcon size={18} />
+            </button>
+          </Tooltip>
+        )}
         {downloadsVisible && <DownloadsPanel onOpenDownloads={onOpenDownloads} />}
 
         {/* Only once signed in: an avatar that opens nothing is worse than no avatar. The
@@ -253,7 +275,7 @@ export function TitleBar({
                 aria-label={hasUserAccount ? `Account: ${cloudProfile?.username || account?.name || "User"}` : "Sign in"}
                 className={cn(
                   "ml-0.5 grid size-7 place-items-center rounded-full transition-shadow",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer",
                   isAccountPanelOpen && "ring-1 ring-border",
                 )}
               >
@@ -270,17 +292,29 @@ export function TitleBar({
             <div className="flex flex-col gap-1">
               {/* OpenTune Cloud Profile if logged in */}
               {cloudProfile && (
-                <div className="flex items-center gap-2.5 px-2 py-2">
-                  <AccountAvatar artworkUrl={cloudProfile.avatarUrl ?? undefined} className="size-9" iconSize={18} />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm font-semibold text-foreground">
-                      {cloudProfile.username}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAccountPanelOpen(false);
+                    onOpenProfile?.();
+                  }}
+                  className="flex w-full items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-card/90 group cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <AccountAvatar artworkUrl={cloudProfile.avatarUrl ?? undefined} className="size-9" iconSize={18} />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {cloudProfile.username}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {cloudProfile.email || "OpenTune Cloud"}
+                      </span>
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {cloudProfile.email || "OpenTune Cloud"}
-                    </span>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5 group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+                    Profile &rarr;
                   </span>
-                </div>
+                </button>
               )}
 
               {/* YouTube Music Account */}
@@ -326,6 +360,20 @@ export function TitleBar({
               )}
 
               <span className="my-0.5 h-px bg-border" aria-hidden="true" />
+
+              {onOpenProfile && (
+                <button
+                  type="button"
+                  className={ACCOUNT_PANEL_ITEM}
+                  onClick={() => {
+                    setIsAccountPanelOpen(false);
+                    onOpenProfile();
+                  }}
+                >
+                  <UserIcon size={16} aria-hidden="true" />
+                  View profile
+                </button>
+              )}
 
               <button
                 type="button"

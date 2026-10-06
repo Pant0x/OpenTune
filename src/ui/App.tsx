@@ -43,6 +43,8 @@ const LocalFilesPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const ProfilePage = lazy(() =>
+  import("./pages/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const LyricsView = lazy(() => import("./pages/LyricsView").then((m) => ({ default: m.LyricsView })));
 const NowPlayingFullscreenView = lazy(() => import("./pages/NowPlayingFullscreenView").then((m) => ({ default: m.NowPlayingFullscreenView })));
 const ReleasesPage = lazy(() => import("./pages/ReleasesPage").then((m) => ({ default: m.ReleasesPage })));
@@ -56,6 +58,7 @@ import { AlbumNavigationProvider, ArtistNavigationProvider, SongNavigationProvid
 import { TitleBar } from "./components/TitleBar";
 import { PlayerBar } from "./components/player/PlayerBar";
 import { QueuePanel } from "./components/player/QueuePanel";
+import { ListeningActivityPanel } from "./components/ListeningActivityPanel";
 import { MiniWindowSync } from "./components/player/MiniWindowSync";
 import {
   readQueuePanelWidth,
@@ -163,6 +166,8 @@ function getNavigationKey(state: AppViewState): string {
       return "local-files";
     case "settings":
       return "settings";
+    case "profile":
+      return "profile";
   }
 }
 
@@ -973,6 +978,11 @@ export default function App() {
     navigateToView({ view: "settings" });
   };
 
+  const handleOpenProfile = () => {
+    playerUIStore.setLyricsOpen(false);
+    navigateToView({ view: "profile", title: "Profile" });
+  };
+
   const handleOpenHistory = () => {
     playerUIStore.setLyricsOpen(false);
     navigateToView({ view: "history", title: "History" });
@@ -1349,6 +1359,7 @@ export default function App() {
           isHomeActive={currentView.view === "home"}
           onNavigateHome={handleNavigateHome}
           onOpenSettings={handleOpenSettings}
+          onOpenProfile={handleOpenProfile}
           onOpenDownloads={() => handleOpenBrowse("downloads")}
           onSearch={(q) => handleSearch(q)}
           onOpenSearch={() => setIsSearchOpen(true)}
@@ -1375,7 +1386,7 @@ export default function App() {
           onNavigateReleases={handleOpenReleases}
           onNavigateLocalFiles={handleOpenLocalFiles}
           onSearch={(q) => handleSearch(q)}
-          showSearchBar={currentView.view !== "settings" && !playerUIState.isLyricsOpen}
+          showSearchBar={currentView.view !== "settings" && currentView.view !== "profile" && !playerUIState.isLyricsOpen}
           onOpenSearch={() => setIsSearchOpen(true)}
           canGoBack={canNavigateBack}
           canGoForward={canNavigateForward}
@@ -1391,11 +1402,29 @@ export default function App() {
             && (currentView.view === "playlist" || currentView.view === "album")
           }
           rightPanel={
-            !playerUIState.isLyricsFullscreen && !playerUIState.isNowPlayingFullscreen && playerUIState.isQueueOpen
-              ? <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} onOpenHistory={handleOpenHistory} />
-              : undefined
+            !playerUIState.isLyricsFullscreen && !playerUIState.isNowPlayingFullscreen ? (
+              playerUIState.isQueueOpen ? (
+                <QueuePanel onClose={() => playerUIStore.setQueueOpen(false)} onOpenHistory={handleOpenHistory} />
+              ) : playerUIState.isListeningActivityOpen ? (
+                <ListeningActivityPanel
+                  onClose={() => playerUIStore.setListeningActivityOpen(false)}
+                  onOpenSettings={handleOpenSettings}
+                  onPlayTrack={(track) => {
+                    if (track.id) {
+                      void playerController.playTrackById(track.id);
+                    }
+                  }}
+                />
+              ) : undefined
+            ) : undefined
           }
-          rightPanelWidth={isQueuePanelCollapsed ? COLLAPSED_QUEUE_WIDTH : queuePanelWidth}
+          rightPanelWidth={
+            playerUIState.isListeningActivityOpen
+              ? 280
+              : isQueuePanelCollapsed
+                ? COLLAPSED_QUEUE_WIDTH
+                : queuePanelWidth
+          }
           onRightPanelWidthChange={isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange}
           isQueuePanelCollapsed={isQueuePanelCollapsed}
           scrollKey={activeViewKey}
@@ -1561,6 +1590,13 @@ export default function App() {
                 onSignIn={handleSignIn}
                 onDeleteAllAppData={handleDeleteAllAppData}
                 onNavigateBack={canNavigateBack ? handleNavigateBack : handleNavigateHome}
+                onNavigateProfile={handleOpenProfile}
+              />
+            )}
+            {currentView.view === "profile" && (
+              <ProfilePage
+                onBack={canNavigateBack ? handleNavigateBack : handleNavigateHome}
+                onOpenSettings={handleOpenSettings}
               />
             )}
           </div>

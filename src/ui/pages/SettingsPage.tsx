@@ -632,6 +632,7 @@ interface SettingsPageProps {
   onSignIn: () => Promise<void>;
   onDeleteAllAppData: () => Promise<void>;
   onNavigateBack?: () => void;
+  onNavigateProfile?: () => void;
 }
 
 export function SettingsPage({
@@ -641,6 +642,7 @@ export function SettingsPage({
   onSignIn: _onSignIn,
   onDeleteAllAppData,
   onNavigateBack,
+  onNavigateProfile,
 }: SettingsPageProps) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -1163,13 +1165,23 @@ export function SettingsPage({
 
                 {cloudProfile ? (
                   <div className="flex items-center gap-2">
+                    {onNavigateProfile && (
+                      <button
+                        className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-2 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/60 active:scale-95 cursor-pointer"
+                        type="button"
+                        onClick={onNavigateProfile}
+                      >
+                        <UserIcon size={14} />
+                        View Profile
+                      </button>
+                    )}
                     <button
                       className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-3.5 py-2 text-xs font-semibold text-foreground transition-all hover:bg-card hover:border-foreground/20 active:scale-95 cursor-pointer"
                       type="button"
                       onClick={isEditingProfile ? () => setIsEditingProfile(false) : handleStartEditProfile}
                     >
                       <PencilIcon size={14} />
-                      {isEditingProfile ? "Cancel" : "Edit Profile"}
+                      {isEditingProfile ? "Cancel" : "Edit"}
                     </button>
                     <button
                       className="flex items-center gap-1.5 rounded-full border border-border/60 px-3.5 py-2 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"

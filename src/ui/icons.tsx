@@ -307,6 +307,12 @@ export const UserPlusIcon: Icon = createSpotifyIcon(() => (
   <path d="M14 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm2 0a6 6 0 1 0-12 0 6 6 0 0 0 12 0zm-8 8c-3.866 0-7 2.239-7 5a1 1 0 0 0 2 0c0-1.657 2.239-3 5-3s5 1.343 5 3a1 1 0 0 0 2 0c0-2.761-3.134-5-7-5zm12-4h-2V9a1 1 0 1 0-2 0v3h-2a1 1 0 1 0 0 2h2v3a1 1 0 1 0 2 0v-3h2a1 1 0 1 0 0-2z" />
 ));
 
+export const FriendActivityIcon: Icon = createSpotifyIcon(() => (
+  <path d="M4.5 4.5a3 3 0 1 1 6 0 3 3 0 0 1-6 0zm3-1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm8 3.5a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0zm2.5-1a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-8 6.5c3.038 0 5.5 1.79 5.5 4v1.5a.75.75 0 0 1-.75.75H.75A.75.75 0 0 1 0 18.25V16.75c0-2.21 2.462-4 5.5-4zm0 1.5c-2.071 0-4 1.135-4 2.5v.75h8v-.75c0-1.365-1.929-2.5-4-2.5zm11 1c1.933 0 3.5 1.343 3.5 3v1a.75.75 0 0 1-.75.75H13a.75.75 0 0 1 0-1.5h4.25v-.25c0-.967-.933-1.5-2-1.5a.75.75 0 0 1 0-1.5z" />
+));
+export const FriendActivityActiveIcon: Icon = FriendActivityIcon;
+export const FriendsIcon: Icon = FriendActivityIcon;
+
 export const ClockIcon: Icon = createSpotifyIcon(() => (
   <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm.75-13h-1.5v6l5.25 3.15.75-1.23-4.5-2.67z" />
 ));
