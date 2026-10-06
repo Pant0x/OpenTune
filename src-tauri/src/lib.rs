@@ -1611,6 +1611,145 @@ fn minimize_to_tray_enabled(app: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SavedWindowGeometry {
+    x: Option<i32>,
+    y: Option<i32>,
+    width: Option<f64>,
+    height: Option<f64>,
+    is_maximized: Option<bool>,
+}
+
+fn window_geometry_intersects(
+    wx: i32,
+    wy: i32,
+    ww: i32,
+    wh: i32,
+    mx: i32,
+    my: i32,
+    mw: i32,
+    mh: i32,
+) -> bool {
+    wx < mx + mw && wx + ww > mx && wy < my + mh && wy + wh > my
+}
+
+fn restore_main_window_geometry(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    let settings = read_app_settings(app).unwrap_or_default();
+    let saved = settings
+        .get("main-window-geometry")
+        .and_then(|v| serde_json::from_value::<SavedWindowGeometry>(v.clone()).ok());
+
+    if let Some(saved) = saved {
+        let is_max = saved.is_maximized.unwrap_or(false);
+        if is_max {
+            if let (Some(w), Some(h)) = (saved.width, saved.height) {
+                if w >= 960.0 && h >= 540.0 {
+                    let _ = window.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
+                    if let (Some(x), Some(y)) = (saved.x, saved.y) {
+                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                }
+            }
+            let _ = window.maximize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            return;
+        }
+
+        let width = saved.width.unwrap_or(1280.0).max(960.0) as u32;
+        let height = saved.height.unwrap_or(720.0).max(540.0) as u32;
+        let _ = window.set_size(tauri::PhysicalSize::new(width, height));
+
+        if let (Some(x), Some(y)) = (saved.x, saved.y) {
+            let mut on_monitor = false;
+            if let Ok(monitors) = window.available_monitors() {
+                for monitor in monitors {
+                    let m_pos = monitor.position();
+                    let m_size = monitor.size();
+                    if window_geometry_intersects(
+                        x,
+                        y,
+                        width as i32,
+                        height as i32,
+                        m_pos.x,
+                        m_pos.y,
+                        m_size.width as i32,
+                        m_size.height as i32,
+                    ) {
+                        on_monitor = true;
+                        break;
+                    }
+                }
+            }
+            if on_monitor {
+                let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            } else {
+                let _ = window.center();
+            }
+        } else {
+            let _ = window.center();
+        }
+
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+
+    let _ = window.center();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn save_main_window_geometry_rust(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if window.is_minimized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+
+    let is_max = window.is_maximized().unwrap_or(false);
+    let mut settings = match read_app_settings(app) {
+        Ok(s) => s,
+        Err(_) => HashMap::new(),
+    };
+
+    if is_max {
+        let mut prev_geo = settings
+            .get("main-window-geometry")
+            .and_then(|v| serde_json::from_value::<SavedWindowGeometry>(v.clone()).ok())
+            .unwrap_or(SavedWindowGeometry {
+                x: None,
+                y: None,
+                width: Some(1280.0),
+                height: Some(720.0),
+                is_maximized: Some(true),
+            });
+        prev_geo.is_maximized = Some(true);
+        if let Ok(val) = serde_json::to_value(prev_geo) {
+            settings.insert("main-window-geometry".to_string(), val);
+            if let Ok(path) = app_settings_path(app) {
+                let _ = write_json_file(&path, &settings);
+            }
+        }
+    } else if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
+        let geo = SavedWindowGeometry {
+            x: Some(pos.x),
+            y: Some(pos.y),
+            width: Some(size.width.max(960) as f64),
+            height: Some(size.height.max(540) as f64),
+            is_maximized: Some(false),
+        };
+        if let Ok(val) = serde_json::to_value(geo) {
+            settings.insert("main-window-geometry".to_string(), val);
+            if let Ok(path) = app_settings_path(app) {
+                let _ = write_json_file(&path, &settings);
+            }
+        }
+    }
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -1625,6 +1764,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// disagree — a window that vanishes from one and quits from the other is the classic
 /// minimize-to-tray bug.
 fn close_or_hide_main_window(app: &tauri::AppHandle) {
+    save_main_window_geometry_rust(app);
     if minimize_to_tray_enabled(app) {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.hide();
@@ -1667,7 +1807,10 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 let _ = app.emit("tray-check-for-updates", ());
             }
             // The only path that always exits, whatever the setting says.
-            "tray-quit" => app.exit(0),
+            "tray-quit" => {
+                save_main_window_geometry_rust(app);
+                app.exit(0);
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -6356,6 +6499,12 @@ pub fn run() {
             // Always built, so toggling the setting takes effect without a restart.
             if let Err(error) = build_tray(app.handle()) {
                 std::eprintln!("[internal][tauri][warn] tray unavailable: {error}");
+            }
+            let main_win = app
+                .get_webview_window("main")
+                .or_else(|| app.webview_windows().values().next().cloned());
+            if let Some(main_win) = main_win {
+                restore_main_window_geometry(app.handle(), &main_win);
             }
             Ok(())
         })

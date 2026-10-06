@@ -93,23 +93,36 @@ async function isGeometryOnAnyMonitor(geometry: MainWindowGeometry): Promise<boo
 
 async function saveCurrentMainWindowGeometry(): Promise<void> {
   const win = getCurrentWindow();
-  const [position, size, isMaximized, isFullscreen] = await Promise.all([
-    win.outerPosition(),
-    win.outerSize(),
-    win.isMaximized(),
-    win.isFullscreen(),
+  const [position, size, isMaximized, isFullscreen, isMinimized] = await Promise.all([
+    win.outerPosition().catch(() => null),
+    win.outerSize().catch(() => null),
+    win.isMaximized().catch(() => false),
+    win.isFullscreen().catch(() => false),
+    win.isMinimized().catch(() => false),
   ]);
 
-  if (isFullscreen) return;
+  if (isFullscreen || isMinimized || !position || !size) return;
 
   if (!readMainWindowGeometryPersistenceEnabled()) return;
+
+  if (isMaximized) {
+    const previous = readLocalJsonSetting(STORAGE_KEY, isMainWindowGeometry);
+    writeLocalJsonSetting(STORAGE_KEY, {
+      x: previous?.x,
+      y: previous?.y,
+      width: previous?.width ?? 1280,
+      height: previous?.height ?? 720,
+      isMaximized: true,
+    });
+    return;
+  }
 
   writeLocalJsonSetting(STORAGE_KEY, {
     x: position.x,
     y: position.y,
     width: Math.max(MIN_WIDTH, size.width),
     height: Math.max(MIN_HEIGHT, size.height),
-    isMaximized,
+    isMaximized: false,
   });
 }
 
@@ -149,13 +162,24 @@ export async function restoreMainWindowGeometry(): Promise<void> {
 
   const win = getCurrentWindow();
   if (geometry.isMaximized) {
-    await win.maximize();
+    const isCurrentlyMax = await win.isMaximized().catch(() => false);
+    if (!isCurrentlyMax) {
+      await win.maximize().catch(() => {});
+    }
     return;
   }
 
   if (hasSavedPosition(geometry) && await isGeometryOnAnyMonitor(geometry)) {
-    await win.setSize(new PhysicalSize(geometry.width, geometry.height));
-    await win.setPosition(new PhysicalPosition(geometry.x, geometry.y));
+    const [currentPos, currentSize] = await Promise.all([
+      win.outerPosition().catch(() => null),
+      win.outerSize().catch(() => null),
+    ]);
+    if (!currentSize || Math.abs(currentSize.width - geometry.width) > 2 || Math.abs(currentSize.height - geometry.height) > 2) {
+      await win.setSize(new PhysicalSize(geometry.width, geometry.height)).catch(() => {});
+    }
+    if (!currentPos || Math.abs(currentPos.x - geometry.x) > 2 || Math.abs(currentPos.y - geometry.y) > 2) {
+      await win.setPosition(new PhysicalPosition(geometry.x, geometry.y)).catch(() => {});
+    }
   }
 }
 
@@ -201,7 +225,7 @@ function subscribeMainWindowGeometryPersistence(callback: () => void) {
 }
 
 function readMainWindowGeometryPersistenceEnabled(): boolean {
-  return readLocalBooleanSetting(GEOMETRY_ENABLED_STORAGE_KEY, false);
+  return readLocalBooleanSetting(GEOMETRY_ENABLED_STORAGE_KEY, true);
 }
 
 export function setMainWindowGeometryPersistenceEnabled(enabled: boolean): void {
