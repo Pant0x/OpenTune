@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
-import { FriendActivityIcon, LoginIcon, SettingsIcon, UserIcon } from "@/ui/icons";
+import { FriendActivityIcon, LoginIcon, RefreshIcon, SettingsIcon, UserIcon } from "@/ui/icons";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import {
   isLinux,
@@ -42,6 +42,7 @@ interface TitleBarProps {
   onNavigateBack?: () => void;
   onNavigateForward?: () => void;
   onNavigatePlaylist?: (playlist: Playlist) => void;
+  hasUpdateAvailable?: boolean;
 }
 
 const ACCOUNT_PANEL_ITEM =
@@ -65,6 +66,7 @@ export function TitleBar({
   onNavigateBack = () => {},
   onNavigateForward = () => {},
   onNavigatePlaylist,
+  hasUpdateAvailable = false,
 }: TitleBarProps) {
   const appWindow = getCurrentWindow();
   const libraryState = useLibraryState();
@@ -236,6 +238,19 @@ export function TitleBar({
         {/* Integration toggles */}
         {notificationsVisible && (
           <NotificationsPanel signedIn={libraryState.status === "ready"} />
+        )}
+        {hasUpdateAvailable && (
+          <Tooltip side="bottom" content="New OpenTune update available!">
+            <button
+              type="button"
+              aria-label="Update Available"
+              onClick={onOpenSettings}
+              className="flex items-center gap-1.5 rounded-full bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 px-2.5 py-1 text-xs font-semibold transition cursor-pointer shadow-sm"
+            >
+              <RefreshIcon size={13} className="text-primary" />
+              <span>Update</span>
+            </button>
+          </Tooltip>
         )}
         {friendActivityVisible && (
           <Tooltip side="bottom" content="Friend Activity">

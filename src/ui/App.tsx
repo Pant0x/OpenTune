@@ -114,6 +114,8 @@ import {
 } from "./settings/keyboardShortcuts";
 import { persistMainWindowGeometry } from "./settings/mainWindowGeometry";
 import { hydratePlaybackSettings } from "../player/playbackSettings";
+import { UpdateToast } from "./components/UpdateToast";
+import { checkForUpdates, isUpdateSnoozed, type UpdateInfo } from "../internal/updateChecker";
 const ONBOARDING_COMPLETE_KEY = "amber:onboarding-complete";
 const ONBOARDING_COMPLETE_SETTING_KEY = "onboardingComplete";
 const KEYCHAIN_NOTICE_COMPLETE_KEY = "amber:keychain-notice-complete";
@@ -231,6 +233,28 @@ export default function App() {
   const reduceMotion = useReduceMotion();
 
   const [isWindowMaximizedOrFullscreen, setIsWindowMaximizedOrFullscreen] = useState(true);
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
+
+  // Background check for updates 4 seconds after app starts
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const update = await checkForUpdates();
+        if (active && update && !isUpdateSnoozed(update.version)) {
+          setAvailableUpdate(update);
+        }
+      } catch (err) {
+        logInternalWarn("App startup update check failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, 4000);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // The window is transparent so the app root can round its own corners. When the window
   // is maximised or fullscreen those corners would expose the desktop, so drop the radius.
@@ -1368,6 +1392,7 @@ export default function App() {
           onNavigateBack={handleNavigateBack}
           onNavigateForward={handleNavigateForward}
           onNavigatePlaylist={handleNavigatePlaylist}
+          hasUpdateAvailable={Boolean(availableUpdate)}
         />
       )}
 
@@ -1681,6 +1706,13 @@ export default function App() {
           setIsAuthModalOpen(false);
         }}
       />
+
+      {availableUpdate && (
+        <UpdateToast
+          update={availableUpdate}
+          onDismiss={() => setAvailableUpdate(null)}
+        />
+      )}
 
 {/* <ReleaseNoteDialog
         version={releaseNoteVersion}

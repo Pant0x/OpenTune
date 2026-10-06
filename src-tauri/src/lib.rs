@@ -1683,6 +1683,205 @@ fn quit_app(app: tauri::AppHandle) {
     close_or_hide_main_window(&app);
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDownloadProgressPayload {
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    percent: Option<u32>,
+    status: String,
+}
+
+#[tauri::command]
+async fn download_and_install_github_update(
+    app: tauri::AppHandle,
+    asset_url: String,
+    file_name: String,
+) -> Result<String, CommandError> {
+    eprintln!(
+        "[internal][updater] download_and_install_github_update url: {}, filename: {}",
+        asset_url, file_name
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent("OpenTune/Updater")
+        .build()
+        .map_err(|e| CommandError {
+            message: format!("Failed to create download client: {e}"),
+        })?;
+
+    let response = client
+        .get(&asset_url)
+        .header(reqwest::header::ACCEPT, "application/octet-stream")
+        .send()
+        .await
+        .map_err(|e| CommandError {
+            message: format!("Failed to download update: {e}"),
+        })?;
+
+    if !response.status().is_success() {
+        return Err(CommandError {
+            message: format!("Download server returned HTTP status {}", response.status()),
+        });
+    }
+
+    let total_bytes = response.content_length();
+    let temp_dir = std::env::temp_dir();
+    let safe_name = if file_name.trim().is_empty() {
+        "OpenTune-update.exe".to_string()
+    } else {
+        file_name
+    };
+    let dest_path = temp_dir.join(&safe_name);
+
+    let mut dest_file = std::fs::File::create(&dest_path).map_err(|e| CommandError {
+        message: format!("Failed to create temporary file {}: {e}", dest_path.display()),
+    })?;
+
+    let mut downloaded: u64 = 0;
+    let mut last_emit = Instant::now();
+
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| CommandError {
+            message: format!("Error reading update stream: {e}"),
+        })?;
+
+        dest_file.write_all(&chunk).map_err(|e| CommandError {
+            message: format!("Error writing update file: {e}"),
+        })?;
+
+        downloaded += chunk.len() as u64;
+
+        if last_emit.elapsed() >= Duration::from_millis(150) {
+            let percent = total_bytes.map(|total| {
+                if total > 0 {
+                    ((downloaded as f64 / total as f64) * 100.0).round() as u32
+                } else {
+                    0
+                }
+            });
+            let _ = app.emit(
+                "update-download-progress",
+                UpdateDownloadProgressPayload {
+                    downloaded_bytes: downloaded,
+                    total_bytes,
+                    percent,
+                    status: "downloading".to_string(),
+                },
+            );
+            last_emit = Instant::now();
+        }
+    }
+
+    dest_file.flush().map_err(|e| CommandError {
+        message: format!("Failed to flush downloaded update: {e}"),
+    })?;
+
+    let _ = app.emit(
+        "update-download-progress",
+        UpdateDownloadProgressPayload {
+            downloaded_bytes: downloaded,
+            total_bytes,
+            percent: Some(100),
+            status: "ready".to_string(),
+        },
+    );
+
+    let dest_str = dest_path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        let lower = safe_name.to_lowercase();
+        if lower.ends_with(".msi") {
+            std::process::Command::new("msiexec")
+                .args(["/i", &dest_str])
+                .spawn()
+                .map_err(|e| CommandError {
+                    message: format!("Failed to launch MSI installer: {e}"),
+                })?;
+            std::thread::spawn(|| {
+                std::thread::sleep(Duration::from_millis(1500));
+                std::process::exit(0);
+            });
+        } else if lower.ends_with(".exe") {
+            if lower.contains("setup") || lower.contains("install") {
+                std::process::Command::new(&dest_path)
+                    .spawn()
+                    .map_err(|e| CommandError {
+                        message: format!("Failed to launch setup executable: {e}"),
+                    })?;
+                std::thread::spawn(|| {
+                    std::thread::sleep(Duration::from_millis(1500));
+                    std::process::exit(0);
+                });
+            } else {
+                // Portable OpenTune.exe: Replace current_exe and restart
+                if let Ok(current_exe) = std::env::current_exe() {
+                    let current_str = current_exe.to_string_lossy().to_string();
+                    let batch_cmd = format!(
+                        "ping 127.0.0.1 -n 2 > nul & move /Y \"{}\" \"{}\" & start \"\" \"{}\"",
+                        dest_str, current_str, current_str
+                    );
+                    std::process::Command::new("cmd")
+                        .args(["/C", &batch_cmd])
+                        .spawn()
+                        .map_err(|e| CommandError {
+                            message: format!("Failed to execute replacement script: {e}"),
+                        })?;
+                    std::thread::spawn(|| {
+                        std::thread::sleep(Duration::from_millis(800));
+                        std::process::exit(0);
+                    });
+                } else {
+                    std::process::Command::new(&dest_path)
+                        .spawn()
+                        .map_err(|e| CommandError {
+                            message: format!("Failed to launch executable: {e}"),
+                        })?;
+                    std::thread::spawn(|| {
+                        std::thread::sleep(Duration::from_millis(1200));
+                        std::process::exit(0);
+                    });
+                }
+            }
+        } else {
+            let _ = tauri_plugin_opener::open_path(&dest_path, None::<&str>);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let _ = tauri_plugin_opener::open_path(&dest_path, None::<&str>);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if safe_name.ends_with(".AppImage") {
+            #[cfg(target_family = "unix")]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = std::fs::metadata(&dest_path) {
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o755);
+                    let _ = std::fs::set_permissions(&dest_path, perms);
+                }
+            }
+            let _ = std::process::Command::new(&dest_path).spawn();
+            std::thread::spawn(|| {
+                std::thread::sleep(Duration::from_millis(1000));
+                std::process::exit(0);
+            });
+        } else {
+            let _ = tauri_plugin_opener::open_path(&dest_path, None::<&str>);
+        }
+    }
+
+    Ok(dest_str)
+}
+
 #[tauri::command]
 fn frontend_log(level: String, context: String, payload: String) {
     eprintln!("[internal][frontend][{}] {} {}", level, context, payload);
@@ -6212,6 +6411,7 @@ pub fn run() {
             greet,
             desktop_environment,
             quit_app,
+            download_and_install_github_update,
             frontend_log,
             app_setting_get,
             app_setting_set,
