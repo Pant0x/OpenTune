@@ -1643,12 +1643,14 @@ fn close_or_hide_main_window(app: &tauri::AppHandle) {
 }
 
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
     let show = MenuItem::with_id(app, "tray-show", "Show OpenTune", true, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "tray-updates", "Check for Updates", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "tray-quit", "Quit OpenTune", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &updates, &sep, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().cloned().ok_or_else(|| {
@@ -1660,6 +1662,10 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "tray-show" => show_main_window(app),
+            "tray-updates" => {
+                show_main_window(app);
+                let _ = app.emit("tray-check-for-updates", ());
+            }
             // The only path that always exits, whatever the setting says.
             "tray-quit" => app.exit(0),
             _ => {}

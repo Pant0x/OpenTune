@@ -20,6 +20,8 @@ export interface AppViewState {
   searchLoading?: boolean;
   /** Which Browse tab to open on. Only meaningful when `view` is "browse". */
   browseTab?: string;
+  /** Automatically check for updates when navigating to settings. */
+  autoCheckUpdates?: boolean;
 }
 
 export type TabViewState = AppViewState;

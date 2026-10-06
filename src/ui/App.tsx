@@ -973,10 +973,30 @@ export default function App() {
       });
   };
 
-  const handleOpenSettings = () => {
+  const handleOpenSettings = (autoCheckUpdates = false) => {
     playerUIStore.setLyricsOpen(false);
-    navigateToView({ view: "settings" });
+    navigateToView({ view: "settings", autoCheckUpdates });
   };
+
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    const unlistenPromise = listen("tray-check-for-updates", async () => {
+      handleOpenSettings(true);
+      try {
+        const update = await checkForUpdates();
+        if (update) {
+          setAvailableUpdate(update);
+        }
+      } catch (err) {
+        logInternalWarn("Tray update check failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   const handleOpenProfile = () => {
     playerUIStore.setLyricsOpen(false);
@@ -1590,6 +1610,7 @@ export default function App() {
                 onDeleteAllAppData={handleDeleteAllAppData}
                 onNavigateBack={canNavigateBack ? handleNavigateBack : handleNavigateHome}
                 onNavigateProfile={handleOpenProfile}
+                autoCheckUpdates={currentView.autoCheckUpdates}
               />
             )}
             {currentView.view === "profile" && (
