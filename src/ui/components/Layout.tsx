@@ -21,7 +21,7 @@ import {
 interface LayoutProps {
   children: ReactNode;
   sidebarWidth: number;
-  onSidebarWidthChange: (width: number) => void;
+  onSidebarWidthChange?: (width: number) => void;
   onNavigateAlbum: (album: Album) => void;
   onNavigatePlaylist: (playlist: Playlist) => void;
   onNavigateArtist: (artist: Artist) => void;
@@ -125,7 +125,7 @@ export function Layout({
     const clamped = Math.round(
       Math.max(SIDEBAR_MIN_EXPANDED_WIDTH, Math.min(SIDEBAR_MAX_EXPANDED_WIDTH, drag.startWidth + delta)),
     );
-    onSidebarWidthChange(clamped);
+    onSidebarWidthChange?.(clamped);
   };
 
   const handleLeftResizePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -364,7 +364,7 @@ export function Layout({
           <Sidebar
             width={sidebarWidth}
             isResizing={isDraggingLeft}
-            onWidthChange={onSidebarWidthChange}
+            onWidthChange={onSidebarWidthChange ?? (() => {})}
             onNavigateAlbum={onNavigateAlbum}
             onNavigatePlaylist={onNavigatePlaylist}
             onNavigateArtist={onNavigateArtist}
@@ -379,7 +379,7 @@ export function Layout({
         )}
 
         {/* Left Sidebar Resize Slider */}
-        {!hideSidebar && (
+        {!hideSidebar && Boolean(onSidebarWidthChange) && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -396,7 +396,7 @@ export function Layout({
             onPointerCancel={handleLeftResizePointerUp}
             onDoubleClick={() => {
               if (sidebarMode === "collapsed") setSidebarMode("expanded");
-              onSidebarWidthChange(SIDEBAR_EXPANDED_WIDTH);
+              onSidebarWidthChange?.(SIDEBAR_EXPANDED_WIDTH);
             }}
           >
             <div

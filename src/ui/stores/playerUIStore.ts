@@ -151,11 +151,7 @@ class PlayerUIStore {
   }
 
   setListeningActivityOpen(isListeningActivityOpen: boolean) {
-    if (isListeningActivityOpen) {
-      this.setState({ isListeningActivityOpen, isQueueOpen: false });
-    } else {
-      this.setState({ isListeningActivityOpen });
-    }
+    this.setState({ isListeningActivityOpen });
   }
 
   toggleListeningActivity() {
