@@ -10,6 +10,7 @@ export interface PlayerUIState {
   isLyricsFullscreen: boolean;
   isNowPlayingFullscreen: boolean;
   isQueueOpen: boolean;
+  isListeningActivityOpen: boolean;
   rightPanelTab: RightPanelTab;
   returnToLyricsOnFullscreenClose: boolean;
   isWaveMiniPlayerOpen: boolean;
@@ -28,6 +29,7 @@ class PlayerUIStore {
     isLyricsFullscreen: false,
     isNowPlayingFullscreen: false,
     isQueueOpen: false,
+    isListeningActivityOpen: false,
     rightPanelTab: "nowplaying",
     returnToLyricsOnFullscreenClose: false,
     isWaveMiniPlayerOpen: false,
@@ -137,11 +139,27 @@ class PlayerUIStore {
   }
 
   setQueueOpen(isQueueOpen: boolean) {
-    this.setState({ isQueueOpen });
+    if (isQueueOpen) {
+      this.setState({ isQueueOpen, isListeningActivityOpen: false });
+    } else {
+      this.setState({ isQueueOpen });
+    }
   }
 
   toggleQueue() {
-    this.setState({ isQueueOpen: !this.state.isQueueOpen });
+    this.setQueueOpen(!this.state.isQueueOpen);
+  }
+
+  setListeningActivityOpen(isListeningActivityOpen: boolean) {
+    if (isListeningActivityOpen) {
+      this.setState({ isListeningActivityOpen, isQueueOpen: false });
+    } else {
+      this.setState({ isListeningActivityOpen });
+    }
+  }
+
+  toggleListeningActivity() {
+    this.setListeningActivityOpen(!this.state.isListeningActivityOpen);
   }
 
   setRightPanelTab(rightPanelTab: RightPanelTab) {

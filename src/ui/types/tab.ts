@@ -1,6 +1,6 @@
 import type { Album, Artist, Playlist, SearchResults, Track } from "../../datasource/types";
 
-export type TabView = "home" | "album" | "song" | "artist" | "discography" | "playlist" | "related" | "search" | "history" | "browse" | "library" | "settings" | "local-files" | "releases";
+export type TabView = "home" | "album" | "song" | "artist" | "discography" | "playlist" | "related" | "search" | "history" | "browse" | "library" | "settings" | "local-files" | "releases" | "profile";
 export type NavigableTabView = Exclude<TabView, "settings">;
 export type AppViewType = TabView;
 
