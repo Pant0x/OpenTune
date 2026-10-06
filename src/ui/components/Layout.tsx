@@ -379,35 +379,39 @@ export function Layout({
         )}
 
         {/* Left Sidebar Resize Slider */}
-        {!hideSidebar && Boolean(onSidebarWidthChange) && (
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize library sidebar"
-            tabIndex={0}
-            className={cn(
-              "group relative z-20 flex h-full w-2 shrink-0 cursor-col-resize select-none items-center justify-center transition-colors",
-              "before:absolute before:-inset-x-1.5 before:inset-y-0 before:z-10",
-              isDraggingLeft && "cursor-col-resize",
-            )}
-            onPointerDown={handleLeftResizePointerDown}
-            onPointerMove={handleLeftResizePointerMove}
-            onPointerUp={handleLeftResizePointerUp}
-            onPointerCancel={handleLeftResizePointerUp}
-            onDoubleClick={() => {
-              if (sidebarMode === "collapsed") setSidebarMode("expanded");
-              onSidebarWidthChange?.(SIDEBAR_EXPANDED_WIDTH);
-            }}
-          >
+        {!hideSidebar && (
+          onSidebarWidthChange ? (
             <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize library sidebar"
+              tabIndex={0}
               className={cn(
-                "h-full w-0.5 rounded-full transition-colors duration-150",
-                isDraggingLeft
-                  ? "bg-white/40"
-                  : "bg-transparent group-hover:bg-white/20",
+                "group relative z-20 flex h-full w-2 shrink-0 cursor-col-resize select-none items-center justify-center transition-colors",
+                "before:absolute before:-inset-x-1.5 before:inset-y-0 before:z-10",
+                isDraggingLeft && "cursor-col-resize",
               )}
-            />
-          </div>
+              onPointerDown={handleLeftResizePointerDown}
+              onPointerMove={handleLeftResizePointerMove}
+              onPointerUp={handleLeftResizePointerUp}
+              onPointerCancel={handleLeftResizePointerUp}
+              onDoubleClick={() => {
+                if (sidebarMode === "collapsed") setSidebarMode("expanded");
+                onSidebarWidthChange(SIDEBAR_EXPANDED_WIDTH);
+              }}
+            >
+              <div
+                className={cn(
+                  "h-full w-0.5 rounded-full transition-colors duration-150",
+                  isDraggingLeft
+                    ? "bg-white/40"
+                    : "bg-transparent group-hover:bg-white/20",
+                )}
+              />
+            </div>
+          ) : (
+            <div className="w-2 shrink-0" aria-hidden="true" />
+          )
         )}
         {/* No backdrop-blur: `bg-background` is fully opaque, so a backdrop filter here costs a
             composited layer and a blur pass to render something nothing can see through. */}
