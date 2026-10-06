@@ -96,8 +96,10 @@ import {
 } from "../settings/playerAddons";
 import { setDownloadLocation, useDownloadLocation } from "../settings/downloadLocation";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { isTauriEnvironment } from "../../lib/oauthService";
 import {
   checkForUpdates,
   getUpdateFailureMessage,
@@ -639,6 +641,7 @@ interface SettingsPageProps {
   onDeleteAllAppData: () => Promise<void>;
   onNavigateBack?: () => void;
   onNavigateProfile?: () => void;
+  autoCheckUpdates?: boolean;
 }
 
 export function SettingsPage({
@@ -649,6 +652,7 @@ export function SettingsPage({
   onDeleteAllAppData,
   onNavigateBack,
   onNavigateProfile,
+  autoCheckUpdates,
 }: SettingsPageProps) {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -905,6 +909,24 @@ export function SettingsPage({
       setUpdateStatus("error");
     }
   };
+
+  useEffect(() => {
+    if (autoCheckUpdates) {
+      setActiveTab("about");
+      void handleCheckForUpdates();
+    }
+  }, [autoCheckUpdates]);
+
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    const unlistenPromise = listen("tray-check-for-updates", () => {
+      setActiveTab("about");
+      void handleCheckForUpdates();
+    });
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
