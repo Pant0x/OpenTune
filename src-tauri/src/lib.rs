@@ -1832,6 +1832,35 @@ fn quit_app(app: tauri::AppHandle) {
     close_or_hide_main_window(&app);
 }
 
+struct InitialDeepLinkState(Mutex<Option<String>>);
+
+#[tauri::command]
+fn get_initial_deep_link(state: tauri::State<'_, InitialDeepLinkState>) -> Option<String> {
+    state.0.lock().ok()?.take()
+}
+
+#[cfg(target_os = "windows")]
+fn register_deep_link_protocol() {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    if let Ok(exe_path) = std::env::current_exe() {
+        let exe_str = exe_path.to_string_lossy().to_string();
+        let cmd = format!("\"{}\" \"%1\"", exe_str);
+        let _ = std::process::Command::new("reg")
+            .args(&["add", "HKCU\\Software\\Classes\\opentune", "/ve", "/d", "URL:OpenTune Protocol", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        let _ = std::process::Command::new("reg")
+            .args(&["add", "HKCU\\Software\\Classes\\opentune", "/v", "URL Protocol", "/d", "", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        let _ = std::process::Command::new("reg")
+            .args(&["add", "HKCU\\Software\\Classes\\opentune\\shell\\open\\command", "/ve", "/d", &cmd, "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateDownloadProgressPayload {
@@ -6431,6 +6460,9 @@ pub fn run() {
     let discord_manager =
         std::sync::Arc::new(std::sync::Mutex::new(discord_rpc::DiscordRpcManager::new()));
 
+    let initial_link = std::env::args().find(|arg| arg.starts_with("opentune://"));
+    let initial_link_state = InitialDeepLinkState(Mutex::new(initial_link));
+
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
     #[allow(unused_mut)]
@@ -6446,9 +6478,15 @@ pub fn run() {
          * it immediately. Reuses the tray's own "bring to front" — a second launch is exactly
          * that, wherever it came from.
          */
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             show_main_window(app);
+            for arg in argv {
+                if arg.starts_with("opentune://") {
+                    let _ = app.emit("deep-link-received", arg);
+                }
+            }
         }))
+        .manage(initial_link_state)
         .manage(OAuthServerState(std::sync::Arc::new(tokio::sync::Mutex::new(None))))
         .manage(CacheLock(Mutex::new(())))
         .manage(AppSettingsLock(Mutex::new(())))
@@ -6500,6 +6538,9 @@ pub fn run() {
             if let Err(error) = build_tray(app.handle()) {
                 std::eprintln!("[internal][tauri][warn] tray unavailable: {error}");
             }
+            #[cfg(target_os = "windows")]
+            register_deep_link_protocol();
+
             let main_win = app
                 .get_webview_window("main")
                 .or_else(|| app.webview_windows().values().next().cloned());
@@ -6566,6 +6607,7 @@ pub fn run() {
             greet,
             desktop_environment,
             quit_app,
+            get_initial_deep_link,
             download_and_install_github_update,
             frontend_log,
             app_setting_get,

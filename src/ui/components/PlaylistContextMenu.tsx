@@ -9,7 +9,7 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { Loader } from "@/components/motion/loader";
-import { BookmarkActiveIcon, BookmarkIcon, CheckIcon, CopyIcon, DownloadIcon, EyeClosedIcon, EyeIcon, ImageIcon, ListIcon, PencilIcon, RefreshIcon, ShareIcon, ShuffleIcon, SkipNextIcon, TrashIcon } from "@/ui/icons";
+import { BookmarkActiveIcon, BookmarkIcon, CheckIcon, DownloadIcon, EyeClosedIcon, EyeIcon, ImageIcon, ListIcon, PencilIcon, RefreshIcon, ShareIcon, ShuffleIcon, SkipNextIcon, TrashIcon } from "@/ui/icons";
 import type { Album, Playlist } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import { playerController } from "../../player/playerStore";
@@ -23,6 +23,7 @@ import {
   PlaylistContext,
   type PlaylistContextMenuValue,
 } from "./playlistContextMenuContext";
+import { generatePlaylistShareLink } from "../../player/playlistShare";
 import { SpotifyService } from "../../services/SpotifyService";
 
 /* Re-exported so existing `from "./PlaylistContextMenu"` imports keep working; the context
@@ -169,7 +170,6 @@ export function PlaylistContextMenuProvider({
   );
   const canCopyPlaylistUrl = Boolean(
     playlist
-      && !isLocalPlaylistMenu
       && playlist.kind !== "liked-songs"
       && playlist.id !== "LM",
   );
@@ -281,16 +281,23 @@ export function PlaylistContextMenuProvider({
     if (!playlist || isSaving) return;
     setPosition(null);
     try {
-      const shareUrl = await SpotifyService.getSharableLink({
-        type: "playlist",
-        title: playlist.title,
-        id: playlist.id,
-        fallbackUrl: getPlaylistUrl(playlist),
-      });
+      let shareUrl: string;
+      if (isLocalPlaylist(playlist)) {
+        const tracks = await libraryController.getPlaylistTracks(playlist);
+        shareUrl = generatePlaylistShareLink(playlist, tracks);
+      } else {
+        const spotifyUrl = await SpotifyService.getSharableLink({
+          type: "playlist",
+          title: playlist.title,
+          id: playlist.id,
+          fallbackUrl: getPlaylistUrl(playlist),
+        }).catch(() => null);
+        shareUrl = spotifyUrl || generatePlaylistShareLink(playlist);
+      }
       await navigator.clipboard.writeText(shareUrl);
-      showToast(shareUrl.includes("spotify.com") ? "Spotify playlist link copied" : "Playlist link copied");
+      showToast("Playlist share link copied!");
     } catch {
-      showToast("Unable to copy the link.");
+      showToast("Unable to copy playlist link.");
     }
   };
 
@@ -502,8 +509,8 @@ export function PlaylistContextMenuProvider({
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               onClick={() => void copyPlaylistUrl()}
             >
-              <CopyIcon size={18} />
-              <span>Copy playlist URL</span>
+              <ShareIcon size={18} />
+              <span>Share playlist</span>
             </button>
           )}
           {playlist && (

@@ -661,7 +661,14 @@ function findBestTrackMatch(
 const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
       let track: Track;
-      if (videoId.startsWith("spotify:") && knownTrack) {
+      const isSharedOrSpotifyMatch = Boolean(
+        knownTrack && (
+          videoId.startsWith("spotify:") ||
+          (knownTrack.source === "local" && !knownTrack.localPath) ||
+          videoId.startsWith("shared-local:")
+        ),
+      );
+      if (isSharedOrSpotifyMatch && knownTrack) {
         let cached = spotifyToYoutubeTrackCache.get(videoId);
         if (!cached && typeof localStorage !== "undefined") {
           try {
