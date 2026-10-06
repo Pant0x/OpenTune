@@ -56,6 +56,7 @@ import {
   YouTubeMusicIcon,
 } from "@/ui/icons";
 import { motion } from "motion/react";
+import { Loader } from "@/components/motion/loader";
 import { cn } from "@/lib/utils";
 import { useFriendsActivity } from "../../lib/friendsListeningService";
 import { playerUIStore } from "../stores/playerUIStore";
@@ -894,8 +895,12 @@ export function SettingsPage({
     setUpdateError(null);
     try {
       await installUpdate(updateResult, setUpdateProgress);
-    } catch {
-      setUpdateError("Unable to install the update. You can download it from GitHub.");
+    } catch (err) {
+      setUpdateError(
+        err instanceof Error
+          ? err.message
+          : "Unable to install the update. You can download it directly from GitHub.",
+      );
       setUpdateStatus("error");
     }
   };
@@ -1735,38 +1740,102 @@ export function SettingsPage({
               </div>
 
               {updateResult && (
-                <div className="flex flex-col gap-1">
-                  <span>
-                    {updateStatus === "installing"
-                      ? updateProgress?.percent !== undefined
-                        ? `Downloading version ${updateResult.version}: ${updateProgress.percent}%`
-                        : `Preparing version ${updateResult.version}...`
-                      : `Version ${updateResult.version} is available.`}
-                  </span>
-                  {updateResult.canInstall && (
-                    <button
-                      className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-card disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer"
-                      type="button"
-                      disabled={updateStatus === "installing"}
-                      onClick={() => void handleInstallUpdate()}
-                    >
-                      {updateStatus === "installing" ? "Installing..." : "Install"}
-                    </button>
+                <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground">
+                        v{updateResult.version}
+                      </span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {updateResult.releaseTitle || `OpenTune v${updateResult.version}`}
+                      </span>
+                    </div>
+                    {updateResult.publishedAt && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Released: {new Date(updateResult.publishedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {updateResult.downloadAssetName && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground bg-card/60 px-3 py-2 rounded-xl border border-border/40">
+                      <span className="truncate font-mono">{updateResult.downloadAssetName}</span>
+                      {updateResult.downloadAssetSize && (
+                        <span className="shrink-0 font-medium ml-2">
+                          {(updateResult.downloadAssetSize / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                      )}
+                    </div>
                   )}
-                  {/* The one link where a silent failure strands the user: if this cannot
-                      open, they have no other route to the download. */}
-                  <ExternalLinkButton
-                    label={updateResult.canInstall ? "View changes" : "Download"}
-                    url={updateResult.releaseUrl}
-                    className="px-4 py-2"
-                  />
+
+                  {updateResult.releaseNotes && (
+                    <div className="max-h-40 overflow-y-auto rounded-xl bg-card/80 p-3 text-xs text-muted-foreground font-sans leading-relaxed border border-border/40 whitespace-pre-wrap select-text">
+                      {updateResult.releaseNotes}
+                    </div>
+                  )}
+
+                  {updateStatus === "installing" && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1.5 font-medium text-foreground">
+                          <Loader variant="spinner" size={13} />
+                          {updateProgress?.percent !== undefined && updateProgress.percent >= 100
+                            ? "Installing and restarting OpenTune..."
+                            : `Downloading update...`}
+                        </span>
+                        <span className="font-bold text-primary">{updateProgress?.percent ?? 0}%</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-card border border-border/40">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary to-emerald-400 transition-all duration-200"
+                          style={{ width: `${updateProgress?.percent ?? 0}%` }}
+                        />
+                      </div>
+                      {updateProgress?.downloadedBytes !== undefined && updateProgress.totalBytes && (
+                        <div className="flex justify-between text-[11px] text-muted-foreground">
+                          <span>{(updateProgress.downloadedBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                          <span>of {(updateProgress.totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    {updateResult.canInstall && (
+                      <button
+                        className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-5 py-2 transition shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                        type="button"
+                        disabled={updateStatus === "installing"}
+                        onClick={() => void handleInstallUpdate()}
+                      >
+                        {updateStatus === "installing" ? (
+                          <>
+                            <Loader variant="spinner" size={13} />
+                            <span>Installing...</span>
+                          </>
+                        ) : (
+                          <span>Download &amp; Install Update</span>
+                        )}
+                      </button>
+                    )}
+                    <ExternalLinkButton
+                      label="View on GitHub"
+                      url={updateResult.releaseUrl}
+                      className="px-4 py-2"
+                    />
+                  </div>
                 </div>
               )}
               {updateStatus === "current" && (
-                <p className="text-sm text-muted-foreground">You are up to date.</p>
+                <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/20">
+                  <span>✓</span>
+                  <span>You are up to date! You are using the latest version of OpenTune.</span>
+                </div>
               )}
               {updateStatus === "error" && (
-                <p className="text-sm text-destructive">{updateError}</p>
+                <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-xl border border-destructive/20">
+                  {updateError}
+                </p>
               )}
 
               <div className="h-px bg-border/40" />

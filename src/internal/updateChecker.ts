@@ -1,13 +1,13 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import { logInternalError } from "./logging";
 
 const RELEASE_TAG_PREFIX = "v";
-const RELEASES_URL =
-  "https://github.com/Pant0x/OpenTune/releases/tag";
-const RELEASES_API_URL =
-  "https://api.github.com/repos/Pant0x/OpenTune/releases/latest";
+const RELEASES_URL = "https://github.com/Pant0x/OpenTune/releases/tag";
+const RELEASES_API_URL = "https://api.github.com/repos/Pant0x/OpenTune/releases/latest";
 const SNOOZE_PREFIX = "just-another-music-client:update-snooze:";
 const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
 
@@ -15,7 +15,13 @@ export interface UpdateInfo {
   installedVersion: string;
   version: string;
   releaseUrl: string;
+  releaseTitle?: string;
+  releaseNotes?: string;
+  publishedAt?: string;
   canInstall: boolean;
+  downloadAssetUrl?: string;
+  downloadAssetName?: string;
+  downloadAssetSize?: number;
   update?: Update;
 }
 
@@ -30,7 +36,11 @@ export async function getInstalledVersion(): Promise<string> {
 }
 
 function parseVersion(version: string): number[] {
-  return version.replace(/^v/, "").split(".").map(Number);
+  const clean = version.replace(/^v/, "").split(/[-+]/)[0] ?? "";
+  return clean.split(".").map((part) => {
+    const num = Number(part);
+    return Number.isFinite(num) ? num : 0;
+  });
 }
 
 function isNewerVersion(installed: string, candidate: string): boolean {
@@ -47,106 +57,188 @@ function isNewerVersion(installed: string, candidate: string): boolean {
 
 async function checkViaGithubApi(): Promise<UpdateInfo | null> {
   try {
-    const response = await fetch(RELEASES_API_URL);
+    const installedVersion = await getVersion();
+    const response = await fetch(RELEASES_API_URL, {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
     if (!response.ok) return null;
-    const data = await response.json() as { tag_name?: string };
+    const data = (await response.json()) as {
+      tag_name?: string;
+      name?: string;
+      body?: string;
+      published_at?: string;
+      html_url?: string;
+      assets?: Array<{
+        name: string;
+        size: number;
+        browser_download_url: string;
+      }>;
+    };
     const tagName = data.tag_name ?? "";
     const latestVersion = tagName.replace(RELEASE_TAG_PREFIX, "");
-    const installedVersion = await getVersion();
 
     if (!latestVersion || !isNewerVersion(installedVersion, latestVersion)) {
       return null;
     }
 
+    const assets = data.assets || [];
+    const isWindows =
+      typeof navigator !== "undefined" && /Win/i.test(navigator.userAgent || navigator.platform);
+    const isMac =
+      typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent || navigator.platform);
+
+    let matchedAsset: { name: string; size: number; browser_download_url: string } | undefined;
+
+    if (isWindows) {
+      // 1. Setup / installer exe
+      // 2. Portable opentune.exe / OpenTune-Windows-portable.exe
+      // 3. MSI installer
+      matchedAsset =
+        assets.find(
+          (a) =>
+            a.name.toLowerCase().endsWith(".exe") &&
+            (a.name.toLowerCase().includes("setup") || a.name.toLowerCase().includes("install")),
+        ) ||
+        assets.find(
+          (a) =>
+            a.name.toLowerCase() === "opentune.exe" ||
+            a.name.toLowerCase() === "opentune-windows-portable.exe" ||
+            a.name.toLowerCase().endsWith(".exe"),
+        ) ||
+        assets.find((a) => a.name.toLowerCase().endsWith(".msi"));
+    } else if (isMac) {
+      matchedAsset = assets.find((a) => a.name.toLowerCase().endsWith(".dmg"));
+    } else {
+      matchedAsset =
+        assets.find((a) => a.name.toLowerCase().endsWith(".appimage")) ||
+        assets.find((a) => a.name.toLowerCase().endsWith(".deb")) ||
+        assets.find((a) => a.name.toLowerCase().endsWith(".rpm"));
+    }
+
+    const releaseUrl =
+      data.html_url || `${RELEASES_URL}/${encodeURIComponent(tagName || latestVersion)}`;
+
     return {
       installedVersion,
       version: latestVersion,
-      releaseUrl: `${RELEASES_URL}/${encodeURIComponent(tagName || latestVersion)}`,
-      canInstall: false,
+      releaseUrl,
+      releaseTitle: data.name || `OpenTune ${latestVersion}`,
+      releaseNotes: data.body || "",
+      publishedAt: data.published_at,
+      canInstall: Boolean(matchedAsset),
+      downloadAssetUrl: matchedAsset?.browser_download_url,
+      downloadAssetName: matchedAsset?.name,
+      downloadAssetSize: matchedAsset?.size,
     };
-  } catch {
+  } catch (error) {
+    logInternalError("checkViaGithubApi failed", error);
     return null;
   }
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
-  const isMacOS =
-    typeof navigator !== "undefined" && /Macintosh|Mac OS X/.test(navigator.userAgent);
-
-  if (isMacOS) {
-    return checkViaGithubApi();
-  }
-
-  let update: Update | null;
+  // First attempt: Tauri native updater (if valid signed latest.json exists)
   try {
-    update = await check();
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (
-      msg.includes("Could not fetch a valid release JSON") ||
-      msg.includes("404") ||
-      msg.includes("NotFound") ||
-      msg.includes("release JSON from the remote")
-    ) {
-      // No release published to Pant0x/Amber-Music-Platform yet. Treat gracefully as up-to-date.
-      return null;
+    const tauriUpdate = await check();
+    if (tauriUpdate) {
+      return {
+        installedVersion: tauriUpdate.currentVersion,
+        version: tauriUpdate.version,
+        releaseUrl: `${RELEASES_URL}/${RELEASE_TAG_PREFIX}${encodeURIComponent(tauriUpdate.version)}`,
+        releaseTitle: `OpenTune ${tauriUpdate.version}`,
+        releaseNotes: tauriUpdate.body,
+        publishedAt: tauriUpdate.date,
+        canInstall: true,
+        update: tauriUpdate,
+      };
     }
-    logInternalError("updateChecker.checkForUpdates failed", error);
-    throw error;
+  } catch {
+    // Normal when latest.json is not present on GitHub release.
+    // Gracefully proceed to GitHub Releases API.
   }
 
-  if (!update) return null;
-
-  return {
-    installedVersion: update.currentVersion,
-    version: update.version,
-    releaseUrl: `${RELEASES_URL}/${RELEASE_TAG_PREFIX}${encodeURIComponent(update.version)}`,
-    canInstall: true,
-    update,
-  };
+  // Second attempt: Direct GitHub Releases API
+  return checkViaGithubApi();
 }
 
 export async function installUpdate(
   info: UpdateInfo,
   onProgress?: (progress: UpdateInstallProgress) => void,
 ): Promise<void> {
-  if (!info.update) {
-    throw new Error(
-      "This update cannot be installed automatically. Please download it from the release page.",
-    );
-  }
+  // 1. If native Tauri update handle exists:
+  if (info.update) {
+    let downloadedBytes = 0;
+    let totalBytes: number | undefined;
 
-  let downloadedBytes = 0;
-  let totalBytes: number | undefined;
+    const reportProgress = (event: DownloadEvent) => {
+      if (event.event === "Started") {
+        downloadedBytes = 0;
+        totalBytes = event.data.contentLength;
+      } else if (event.event === "Progress") {
+        downloadedBytes += event.data.chunkLength;
+      } else if (event.event === "Finished" && totalBytes !== undefined) {
+        downloadedBytes = totalBytes;
+      }
 
-  const reportProgress = (event: DownloadEvent) => {
-    if (event.event === "Started") {
-      downloadedBytes = 0;
-      totalBytes = event.data.contentLength;
-    } else if (event.event === "Progress") {
-      downloadedBytes += event.data.chunkLength;
-    } else if (event.event === "Finished" && totalBytes !== undefined) {
-      downloadedBytes = totalBytes;
+      onProgress?.({
+        downloadedBytes,
+        totalBytes,
+        percent:
+          totalBytes && totalBytes > 0
+            ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
+            : undefined,
+      });
+    };
+
+    try {
+      await info.update.downloadAndInstall(reportProgress);
+      await relaunch();
+      return;
+    } catch (error) {
+      logInternalError("updateChecker.installUpdate (Tauri) failed", error, {
+        version: info.version,
+      });
+      // Fall through to try direct GitHub asset download if available
     }
-
-    onProgress?.({
-      downloadedBytes,
-      totalBytes,
-      percent: totalBytes && totalBytes > 0
-        ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-        : undefined,
-    });
-  };
-
-  try {
-    await info.update.downloadAndInstall(reportProgress);
-    await relaunch();
-  } catch (error) {
-    logInternalError("updateChecker.installUpdate failed", error, {
-      version: info.version,
-    });
-    throw error;
   }
+
+  // 2. Direct GitHub Asset download and installation via Rust:
+  if (info.downloadAssetUrl && info.downloadAssetName) {
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await listen<{
+        downloadedBytes: number;
+        totalBytes?: number;
+        percent?: number;
+        status: string;
+      }>("update-download-progress", (event) => {
+        onProgress?.({
+          downloadedBytes: event.payload.downloadedBytes,
+          totalBytes: event.payload.totalBytes,
+          percent: event.payload.percent,
+        });
+      });
+
+      await invoke("download_and_install_github_update", {
+        assetUrl: info.downloadAssetUrl,
+        fileName: info.downloadAssetName,
+      });
+    } catch (error) {
+      logInternalError("updateChecker.installUpdate (GitHub direct) failed", error, {
+        version: info.version,
+      });
+      throw error;
+    } finally {
+      unlisten?.();
+    }
+    return;
+  }
+
+  throw new Error(
+    "This update cannot be installed automatically. Please download it from the release page.",
+  );
 }
 
 export function getUpdateFailureMessage(error: unknown): string {
