@@ -7,6 +7,7 @@ import { TrackArtwork } from "./TrackArtwork";
 import { useTrackContextMenu } from "./TrackContextMenu";
 import { isMacOS, primaryModifierLabel } from "../platform";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
+import { parsePlaylistShareLink, registerSharedPlaylist } from "../../player/playlistShare";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 5;
@@ -178,7 +179,33 @@ export function SearchOverlay({
   if (!isOpen) return null;
 
   const libraryPreview = (() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const rawTrimmed = query.trim();
+    if (
+      rawTrimmed.startsWith("opentune://")
+      || rawTrimmed.includes("list=")
+      || rawTrimmed.includes("spotify.com/playlist/")
+      || rawTrimmed.startsWith("spotify:playlist:")
+    ) {
+      const share = parsePlaylistShareLink(rawTrimmed);
+      if (share) {
+        if (share.type === "data") {
+          const registered = registerSharedPlaylist(share.data);
+          return { type: "playlist" as const, value: registered };
+        }
+        if (share.type === "youtube") {
+          return {
+            type: "playlist" as const,
+            value: {
+              id: share.playlistId.startsWith("VL") ? share.playlistId : `VL${share.playlistId}`,
+              title: share.name || "YouTube Playlist",
+              owner: "",
+            },
+          };
+        }
+      }
+    }
+
+    const normalizedQuery = rawTrimmed.toLocaleLowerCase();
     if (normalizedQuery.length < 2) return null;
 
     const matchTitle = <T extends Album | Playlist>(items: T[]) => {

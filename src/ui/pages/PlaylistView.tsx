@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { ArrowDownIcon, ArrowUpIcon, CloseIcon, CloudIcon, FolderAddIcon, SearchIcon } from "@/ui/icons";
+import { ArrowDownIcon, ArrowUpIcon, BookmarkIcon, CheckIcon, CloseIcon, CloudIcon, FolderAddIcon, SearchIcon, ShareIcon } from "@/ui/icons";
 import type { Playlist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
@@ -9,6 +9,7 @@ import { markPlaylistPlayed } from "../../player/recentPlaylists";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { addLocalPlaylistPath, isLocalPlaylist } from "../../player/localPlaylists";
+import { generatePlaylistShareLink, saveSharedPlaylistToLibrary } from "../../player/playlistShare";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Tooltip } from "@/components/motion/tooltip";
 import { logInternalError } from "../../internal/logging";
@@ -49,6 +50,7 @@ interface PlaylistViewProps {
   playlist?: Playlist;
   playerController: PlayerControllerActions;
   libraryController: LibraryController;
+  onOpenPlaylist?: (playlist: Playlist) => void;
 }
 
 type PlaylistSort = "dateAdded" | "name" | "album";
@@ -231,11 +233,40 @@ function PlaylistDescription({
   );
 }
 
-export function PlaylistView({ playlist, playerController, libraryController }: PlaylistViewProps) {
+export function PlaylistView({ playlist, playerController, libraryController, onOpenPlaylist }: PlaylistViewProps) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu } = usePlaylistContextMenu();
   const keyboardShortcuts = useKeyboardShortcuts();
   const navigateArtist = useArtistNavigation();
+
+  const [isShareCopied, setIsShareCopied] = useState(false);
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
+  const isSharedPlaylistView = Boolean(playlist?.id?.startsWith("shared-playlist:"));
+
+  const handleSharePlaylist = async () => {
+    if (!playlist) return;
+    try {
+      const shareUrl = generatePlaylistShareLink(playlist, tracks);
+      await navigator.clipboard.writeText(shareUrl);
+      setIsShareCopied(true);
+      window.setTimeout(() => setIsShareCopied(false), 2000);
+    } catch (err) {
+      logInternalError("PlaylistView.handleSharePlaylist failed", err);
+    }
+  };
+
+  const handleSaveSharedToLibrary = async () => {
+    if (!playlist || isSavingToLibrary) return;
+    setIsSavingToLibrary(true);
+    try {
+      const saved = await saveSharedPlaylistToLibrary(playlist, tracks);
+      onOpenPlaylist?.(saved);
+    } catch (err) {
+      logInternalError("PlaylistView.handleSaveSharedToLibrary failed", err);
+    } finally {
+      setIsSavingToLibrary(false);
+    }
+  };
   /*
    * Only the identity of the current track and the transport status are needed here, and
    * both change at most once per track. Playback *position* deliberately never enters this
@@ -831,17 +862,49 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
               className="size-44 shrink-0 rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
             />
           ) : undefined}
-          {...(isLocalPlaylistView
-            ? {
-              actions: (
-                <div className="flex items-center gap-2">
+          actions={(
+            <div className="flex items-center gap-2">
+              {isSharedPlaylistView && (
+                <button
+                  type="button"
+                  disabled={isSavingToLibrary || tracks.length === 0}
+                  onClick={() => void handleSaveSharedToLibrary()}
+                  className="flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSavingToLibrary ? (
+                    <SpinnerSteps size={16} color="currentColor" />
+                  ) : (
+                    <BookmarkIcon size={16} aria-hidden="true" />
+                  )}
+                  <span>Save to Library</span>
+                </button>
+              )}
+
+              <Tooltip content={isShareCopied ? "Link copied!" : "Share playlist"}>
+                <button
+                  type="button"
+                  disabled={tracks.length === 0}
+                  onClick={() => void handleSharePlaylist()}
+                  aria-label="Share playlist"
+                  className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+                >
+                  {isShareCopied ? (
+                    <CheckIcon size={18} className="text-primary" aria-hidden="true" />
+                  ) : (
+                    <ShareIcon size={18} aria-hidden="true" />
+                  )}
+                </button>
+              </Tooltip>
+
+              {isLocalPlaylistView && (
+                <>
                   <Tooltip content="Add a folder of music to this playlist">
                     <button
                       type="button"
                       onClick={() => void handleAddLocalFolder()}
                       disabled={isChoosingFolder}
                       aria-label="Add a music folder"
-                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                     >
                       {isChoosingFolder ? (
                         <SpinnerSteps size={18} color="currentColor" />
@@ -856,15 +919,15 @@ export function PlaylistView({ playlist, playerController, libraryController }: 
                       type="button"
                       onClick={() => setShowCloudSyncModal(true)}
                       aria-label="Sync playlist to cloud"
-                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                     >
                       <CloudIcon size={18} aria-hidden="true" />
                     </button>
                   </Tooltip>
-                </div>
-              ),
-            }
-            : {})}
+                </>
+              )}
+            </div>
+          )}
           actionsDisabled={isLoading || Boolean(error) || tracks.length === 0}
           playback={{
             onToggle: () => void togglePlayCollection(),

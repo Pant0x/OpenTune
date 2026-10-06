@@ -544,6 +544,30 @@ export function addLocalTrackToPlaylist(
   return "added";
 }
 
+export function addTracksToLocalPlaylist(
+  tracks: Track[],
+  playlist: Playlist | LocalPlaylist,
+): number {
+  const playlistTracks = readLocalPlaylistTracks();
+  const existing = playlistTracks[playlist.id] ?? [];
+  const existingSet = new Set(existing.map((item) => (item.localPath ? item.localPath : item.id)));
+
+  const newTracks = tracks
+    .filter((track) => !existingSet.has(track.localPath ? track.localPath : track.id))
+    .map((track) => ({
+      ...track,
+      playlistItemId: getLocalPlaylistTrackItemId(playlist.id, track),
+    }));
+
+  if (newTracks.length === 0) return 0;
+
+  writeLocalPlaylistTracks({
+    ...playlistTracks,
+    [playlist.id]: [...existing, ...newTracks],
+  });
+  return newTracks.length;
+}
+
 export function removeLocalTrackFromPlaylist(track: Track, playlist: Playlist): void {
   const playlistTracks = readLocalPlaylistTracks();
   const tracks = playlistTracks[playlist.id] ?? [];

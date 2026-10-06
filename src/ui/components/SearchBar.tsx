@@ -19,6 +19,7 @@ import { TrackArtwork } from "./TrackArtwork";
 import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
 import { recordSearchSelection, simplifyText } from "../../player/searchAffinity";
 import { normTranslit, parseSubscriberCount } from "../../datasource/searchNormalize";
+import { parsePlaylistShareLink, registerSharedPlaylist } from "../../player/playlistShare";
 
 const RECENT_SEARCHES_KEY = "amber:recent-searches";
 const MAX_RECENT_SEARCHES = 6;
@@ -374,6 +375,31 @@ export function SearchBar({
   const matchingPlaylists = (previewResults?.playlists ?? []).slice(0, 2);
   const matchingTracks = (previewResults?.tracks ?? []).slice(0, 2);
 
+  const sharedPlaylistPreview = useMemo(() => {
+    const rawTrimmed = query.trim();
+    if (
+      rawTrimmed.startsWith("opentune://")
+      || rawTrimmed.includes("list=")
+      || rawTrimmed.includes("spotify.com/playlist/")
+      || rawTrimmed.startsWith("spotify:playlist:")
+    ) {
+      const share = parsePlaylistShareLink(rawTrimmed);
+      if (share) {
+        if (share.type === "data") {
+          return registerSharedPlaylist(share.data);
+        }
+        if (share.type === "youtube") {
+          return {
+            id: share.playlistId.startsWith("VL") ? share.playlistId : `VL${share.playlistId}`,
+            title: share.name || "YouTube Playlist",
+            owner: "YouTube",
+          } as Playlist;
+        }
+      }
+    }
+    return null;
+  }, [query]);
+
   return (
     <div ref={containerRef} data-tauri-drag-region="none" className="relative flex items-center gap-1.5 max-w-lg mx-auto w-full z-40">
       {showBackButton && (
@@ -452,6 +478,34 @@ export function SearchBar({
             >
               {hasQuery ? (
                 <>
+                  {/* Shared Playlist Link Quick Action */}
+                  {sharedPlaylistPreview && (
+                    <div className="pb-1.5 border-b border-border/30">
+                      <div className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                        Shared Playlist Link
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlaylist(sharedPlaylistPreview)}
+                        className="group flex items-center gap-3 w-full rounded-xl p-2.5 text-left bg-primary/10 hover:bg-primary/20 transition-colors"
+                      >
+                        <div className="size-10 shrink-0 overflow-hidden rounded-lg bg-primary/20 ring-1 ring-primary/40 flex items-center justify-center">
+                          {sharedPlaylistPreview.artworkUrl ? (
+                            <TrackArtwork artworkUrl={sharedPlaylistPreview.artworkUrl} size={40} className="size-full object-cover" />
+                          ) : (
+                            <PlayIcon size={20} className="text-primary" />
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                            {sharedPlaylistPreview.title}
+                          </span>
+                          <span className="text-xs text-muted-foreground">Click to open shared playlist</span>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
                   {/* 1. Query Text Suggestions */}
                   {suggestions.length > 0 && (
                     <div className="flex flex-col gap-0.5 pb-1 border-b border-border/30">

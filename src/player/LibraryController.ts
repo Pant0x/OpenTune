@@ -41,6 +41,7 @@ import {
   removeLocalPlaylistTrack,
   removeLocalTrackFromPlaylist,
 } from "./localPlaylists";
+import { getSharedPlaylist } from "./playlistShare";
 
 export type LibraryStatus = "restoring" | "signed-out" | "authorizing" | "loading" | "ready" | "error";
 
@@ -756,6 +757,15 @@ export class LibraryController {
   }
 
   async getPlaylistTracks(playlist: Playlist, onUpdate?: (tracks: Track[]) => void): Promise<Track[]> {
+    if (playlist.id.startsWith("shared-playlist:")) {
+      const found = getSharedPlaylist(playlist.id);
+      if (found) {
+        onUpdate?.(found.tracks);
+        return found.tracks;
+      }
+      return [];
+    }
+
     if (isLocalPlaylist(playlist)) {
       const page = await getLocalPlaylistTrackPage(playlist);
       if (page.tracks.length > 0) onUpdate?.(page.tracks);
@@ -777,6 +787,14 @@ export class LibraryController {
     pageKey?: string,
     onUpdate?: (page: TrackPage) => void,
   ): Promise<TrackPage> {
+    if (playlist.id.startsWith("shared-playlist:")) {
+      const found = getSharedPlaylist(playlist.id);
+      const tracks = pageKey ? [] : (found?.tracks ?? []);
+      const page = { tracks, hasMore: false };
+      if (tracks.length > 0) onUpdate?.(page);
+      return page;
+    }
+
     if (isLocalPlaylist(playlist)) {
       const page = pageKey ? { tracks: [], hasMore: false } : await getLocalPlaylistTrackPage(playlist);
       if (page.tracks.length > 0) onUpdate?.(page);

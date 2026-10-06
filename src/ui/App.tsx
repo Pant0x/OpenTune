@@ -108,6 +108,8 @@ import { useReduceMotion } from "./settings/renderEffects";
 
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { parsePlaylistShareLink, registerSharedPlaylist } from "../player/playlistShare";
+import { importSpotifyPlaylist } from "../player/playlistTransfer";
 import { isTauriEnvironment } from "../lib/oauthService";
 import { logInternalWarn } from "../internal/logging";
 import { setAutostartEnabled } from "./settings/autostart";
@@ -903,6 +905,59 @@ export default function App() {
   };
 
   const handleOpenLink = async (url: string): Promise<boolean> => {
+    try {
+      const parsedShare = parsePlaylistShareLink(url);
+      if (parsedShare) {
+        if (parsedShare.type === "data") {
+          const playlist = registerSharedPlaylist(parsedShare.data);
+          handleNavigatePlaylist(playlist);
+          return true;
+        }
+        if (parsedShare.type === "youtube") {
+          const cleanId = parsedShare.playlistId.replace(/^VL/, "");
+          const saved = libraryController.getState().library?.playlists.find(
+            (item) => item.id.replace(/^VL/, "") === cleanId,
+          );
+          handleNavigatePlaylist(saved ?? {
+            id: `VL${cleanId}`,
+            title: parsedShare.name || "YouTube Playlist",
+            owner: "",
+          });
+          return true;
+        }
+        if (parsedShare.type === "spotify") {
+          try {
+            const spotifyUrl = url.startsWith("http")
+              ? url
+              : `https://open.spotify.com/playlist/${parsedShare.playlistId}`;
+            const imported = await importSpotifyPlaylist(spotifyUrl);
+            if (imported) {
+              const playlist = registerSharedPlaylist({
+                v: 1,
+                name: imported.title,
+                artworkUrl: imported.artworkUrl,
+                tracks: imported.tracks.map((t) => ({
+                  id: t.id,
+                  title: t.title,
+                  artist: t.artist || "Unknown artist",
+                  album: t.album,
+                  durationSec: t.durationSec,
+                  artworkUrl: t.artworkUrl,
+                  source: "spotify",
+                })),
+              });
+              handleNavigatePlaylist(playlist);
+              return true;
+            }
+          } catch (e) {
+            logInternalWarn("Failed to import spotify shared playlist", { url, error: e });
+          }
+        }
+      }
+    } catch (e) {
+      logInternalWarn("Error handling share link", { url, error: e });
+    }
+
     let resolved: Awaited<ReturnType<typeof libraryController.resolveLink>> = null;
     try {
       resolved = await libraryController.resolveLink(url);
@@ -946,12 +1001,44 @@ export default function App() {
     return true;
   };
 
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+
+    // 1. Cold launch initial deep link (e.g. app opened by clicking opentune:// link)
+    void invoke<string | null>("get_initial_deep_link")
+      .then((initialLink) => {
+        if (initialLink) {
+          void handleOpenLink(initialLink);
+        }
+      })
+      .catch((err) => {
+        logInternalWarn("Failed to get initial deep link", { error: err });
+      });
+
+    // 2. Warm launch deep link received via single-instance event
+    const unlistenPromise = listen<string>("deep-link-received", (event) => {
+      if (event.payload) {
+        void handleOpenLink(event.payload);
+      }
+    });
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
   const handleSearch = (query: string) => {
     playerUIStore.setLyricsOpen(false);
 
-    if (looksLikeYouTubeLink(query)) {
-      void handleOpenLink(query).then((opened) => {
-        if (!opened) runSearch(query);
+    const trimmed = query.trim();
+    if (
+      looksLikeYouTubeLink(trimmed)
+      || trimmed.startsWith("opentune://")
+      || trimmed.includes("spotify.com/playlist/")
+      || trimmed.startsWith("spotify:playlist:")
+    ) {
+      void handleOpenLink(trimmed).then((opened) => {
+        if (!opened) runSearch(trimmed);
       });
       return;
     }
@@ -1571,6 +1658,7 @@ export default function App() {
                 playlist={currentView.playlist}
                 playerController={playerController}
                 libraryController={libraryController}
+                onOpenPlaylist={handleNavigatePlaylist}
               />
             )}
             {currentView.view === "related" && currentView.relatedTrack && (
