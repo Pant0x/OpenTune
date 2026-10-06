@@ -23,7 +23,7 @@ const DEFAULT_MODE: SidebarMode = "expanded";
 export const SIDEBAR_COLLAPSED_WIDTH = 62;
 export const SIDEBAR_EXPANDED_WIDTH = 281;
 export const SIDEBAR_MIN_EXPANDED_WIDTH = 214;
-export const SIDEBAR_MAX_EXPANDED_WIDTH = 281;
+export const SIDEBAR_MAX_EXPANDED_WIDTH = 380;
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "amber:sidebar-width";
 const SIDEBAR_WIDTH_CHANGE_EVENT = "sidebar-width-change";

@@ -19,7 +19,7 @@ const CHANGE_EVENT = "queue-panel-change";
 
 export const DEFAULT_QUEUE_PANEL_WIDTH = 352;
 export const MIN_QUEUE_PANEL_WIDTH = 290;
-export const MAX_QUEUE_PANEL_WIDTH = 352;
+export const MAX_QUEUE_PANEL_WIDTH = 420;
 
 const QUEUE_PANEL_WIDTH_STORAGE_KEY = "amber:queue-panel-width";
 const QUEUE_PANEL_WIDTH_CHANGE_EVENT = "queue-panel-width-change";

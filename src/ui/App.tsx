@@ -61,10 +61,14 @@ import { QueuePanel } from "./components/player/QueuePanel";
 import { ListeningActivityPanel } from "./components/ListeningActivityPanel";
 import { MiniWindowSync } from "./components/player/MiniWindowSync";
 import {
-  DEFAULT_QUEUE_PANEL_WIDTH,
+  readQueuePanelWidth,
   useQueuePanelCollapsed,
+  writeQueuePanelWidth,
 } from "./settings/queuePanel";
-import { SIDEBAR_EXPANDED_WIDTH } from "./settings/sidebarMode";
+import {
+  readSidebarWidth,
+  writeSidebarWidth,
+} from "./settings/sidebarMode";
 import { useNativeWindowControls } from "./settings/windowControls";
 
 /** Wide enough for a 44px cover plus breathing room, matching the sidebar rail's feel. */
@@ -356,8 +360,30 @@ export default function App() {
     window.addEventListener(OPEN_AUTH_MODAL_EVENT, openAuthModal);
     return () => window.removeEventListener(OPEN_AUTH_MODAL_EVENT, openAuthModal);
   }, []);
-  const sidebarWidth = SIDEBAR_EXPANDED_WIDTH;
-  const queuePanelWidth = DEFAULT_QUEUE_PANEL_WIDTH;
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [queuePanelWidth, setQueuePanelWidth] = useState(readQueuePanelWidth);
+
+  useEffect(() => {
+    const handleSidebarWidthChange = () => setSidebarWidth(readSidebarWidth());
+    const handleQueuePanelWidthChange = () => setQueuePanelWidth(readQueuePanelWidth());
+    window.addEventListener("sidebar-width-change", handleSidebarWidthChange);
+    window.addEventListener("queue-panel-width-change", handleQueuePanelWidthChange);
+    return () => {
+      window.removeEventListener("sidebar-width-change", handleSidebarWidthChange);
+      window.removeEventListener("queue-panel-width-change", handleQueuePanelWidthChange);
+    };
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((newWidth: number) => {
+    setSidebarWidth(newWidth);
+    writeSidebarWidth(newWidth);
+  }, []);
+
+  const handleQueuePanelWidthChange = useCallback((newWidth: number) => {
+    setQueuePanelWidth(newWidth);
+    writeQueuePanelWidth(newWidth);
+  }, []);
+
   const isQueuePanelCollapsed = useQueuePanelCollapsed();
   const nativeWindowControls = useNativeWindowControls();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(() =>
@@ -1395,7 +1421,7 @@ export default function App() {
       <div className="flex min-h-0 flex-1 flex-col">
         <Layout
           sidebarWidth={sidebarWidth}
-          onSidebarWidthChange={undefined}
+          onSidebarWidthChange={handleSidebarWidthChange}
           onNavigateAlbum={handleNavigateAlbum}
           onNavigatePlaylist={handleNavigatePlaylist}
           onNavigateArtist={handleNavigateArtist}
@@ -1444,7 +1470,9 @@ export default function App() {
               ? COLLAPSED_QUEUE_WIDTH
               : queuePanelWidth
           }
-          onRightPanelWidthChange={undefined}
+          onRightPanelWidthChange={
+            isQueuePanelCollapsed ? undefined : handleQueuePanelWidthChange
+          }
           isQueuePanelCollapsed={isQueuePanelCollapsed}
           scrollKey={activeViewKey}
         >
