@@ -399,6 +399,10 @@ export const InAppFullscreenIcon: Icon = createSpotifyIcon(() => (
   <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
 ));
 
+export const UploadIcon: Icon = createSpotifyIcon(() => (
+  <path d="M11 14.5V3.83l-3.3 3.3a1 1 0 0 1-1.4-1.42l5-5a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1-1.4 1.42L13 3.83V14.5a1 1 0 0 1-2 0zM4 18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4a1 1 0 0 0-2 0v4H6v-4a1 1 0 0 0-2 0v4z" />
+));
+
 export const VideoIcon: Icon = createSpotifyIcon(() => (
   <g fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="4" width="14" height="16" rx="2" />
