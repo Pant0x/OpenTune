@@ -38,6 +38,7 @@ import {
   DownloadIcon,
   FolderIcon,
   FolderOpenIcon,
+  FriendActivityIcon,
   GitHubIcon,
   KeyIcon,
   LogFileIcon,
@@ -51,10 +52,13 @@ import {
   SettingsIcon,
   TrashIcon,
   UserIcon,
+  UserPlusIcon,
   YouTubeMusicIcon,
 } from "@/ui/icons";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
+import { useFriendsActivity } from "../../lib/friendsListeningService";
+import { playerUIStore } from "../stores/playerUIStore";
 import {
   setThemePreference,
   useThemePreference,
@@ -578,7 +582,7 @@ const SETTINGS_TABS: Array<{
   description: string;
   icon: typeof UserIcon;
 }> = [
-  { id: "about", label: "Account", description: "Sign-in, integrations, updates", icon: UserIcon },
+  { id: "about", label: "Profile & Account", description: "Identity, friends, security", icon: UserIcon },
   { id: "appearance", label: "Appearance", description: "Theme and motion", icon: PaletteIcon },
   {
     id: "playback",
@@ -734,6 +738,25 @@ export function SettingsPage({
     } catch (err) {
       console.error("Sign out error:", err);
     }
+  };
+
+  const {
+    settings: friendsSettings,
+    friends: friendsList,
+    setSettings: setFriendsSettings,
+    addFriend,
+    removeFriend,
+  } = useFriendsActivity();
+  const [settingsNewFriendName, setSettingsNewFriendName] = useState("");
+  const [settingsFriendAddedMsg, setSettingsFriendAddedMsg] = useState<string | null>(null);
+
+  const handleAddFriendInSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settingsNewFriendName.trim()) return;
+    addFriend(settingsNewFriendName.trim());
+    setSettingsNewFriendName("");
+    setSettingsFriendAddedMsg("Friend added to your listening feed!");
+    setTimeout(() => setSettingsFriendAddedMsg(null), 3000);
   };
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("about");
@@ -1348,6 +1371,129 @@ export function SettingsPage({
                   </div>
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* Friends & Social Listening Section */}
+          <section className={SETTINGS_CARD} aria-labelledby="friends-settings-title">
+            <SettingsCardHeader
+              title="Friends & Social Activity"
+              titleId="friends-settings-title"
+              icon={<FriendActivityIcon size={18} aria-hidden="true" />}
+              description="Manage your friends feed, what you're listening to, and discover music together"
+              status={
+                <span className="text-primary font-semibold text-xs">
+                  {friendsList.length} Friends
+                </span>
+              }
+            />
+
+            <div className="flex flex-col gap-4">
+              {/* Add Friend Form */}
+              <form onSubmit={handleAddFriendInSettings} className="flex flex-col sm:flex-row items-stretch gap-2 rounded-xl border border-border/40 bg-background/30 p-3.5">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={settingsNewFriendName}
+                    onChange={(e) => setSettingsNewFriendName(e.target.value)}
+                    placeholder="Enter friend username or music handle..."
+                    className="w-full rounded-lg border border-border/60 bg-card/60 px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!settingsNewFriendName.trim()}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  <UserPlusIcon size={14} />
+                  <span>Add Friend</span>
+                </button>
+              </form>
+
+              {settingsFriendAddedMsg && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/25 px-3 py-1.5 text-xs text-emerald-400 font-medium">
+                  <CheckIcon size={14} />
+                  <span>{settingsFriendAddedMsg}</span>
+                </div>
+              )}
+
+              {/* Friends List Preview */}
+              <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-background/20 p-3 max-h-56 overflow-y-auto">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-1">
+                  Active Friends ({friendsList.length})
+                </span>
+                {friendsList.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No friends added yet. Add friends above to see their live activity.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {friendsList.map((friend) => (
+                      <div key={friend.id} className="flex items-center justify-between gap-3 rounded-lg bg-card/50 px-3 py-2 border border-border/30">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="relative shrink-0">
+                            {friend.avatarUrl ? (
+                              <img src={friend.avatarUrl} alt={friend.username} className="size-7 rounded-full object-cover" />
+                            ) : (
+                              <div className="size-7 rounded-full bg-primary/20 text-primary grid place-items-center font-bold text-xs">
+                                {friend.username[0]?.toUpperCase() || "F"}
+                              </div>
+                            )}
+                            {friend.isPlaying && (
+                              <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-blue-500 ring-2 ring-card" />
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate text-xs font-semibold text-foreground">{friend.username}</span>
+                            <span className="truncate text-[10px] text-muted-foreground">
+                              {friend.track ? `${friend.track.title} • ${friend.track.artist}` : "Online"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => removeFriend(friend.id)}
+                            className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded-md hover:bg-card cursor-pointer"
+                            title="Remove friend"
+                          >
+                            <TrashIcon size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Social Preferences Toggles */}
+              <div className="flex flex-col gap-2 pt-1 border-t border-border/30">
+                <SettingToggle
+                  title="Share My Listening Activity"
+                  description="Broadcast the track you're currently playing to friends in real time"
+                  checked={friendsSettings.sharingEnabled}
+                  onCheckedChange={(checked) => setFriendsSettings({ sharingEnabled: checked })}
+                />
+                <SettingToggle
+                  title="Show Community & Suggested Activity"
+                  description="Keep the social panel lively with recommended music buddies"
+                  checked={friendsSettings.showCommunityFriends}
+                  onCheckedChange={(checked) => setFriendsSettings({ showCommunityFriends: checked })}
+                />
+              </div>
+
+              {/* Drawer Button */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/20">
+                <span className="text-xs text-muted-foreground">
+                  View Spotify-style live listening activity drawer:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => playerUIStore.setListeningActivityOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-3.5 py-1.5 text-xs font-semibold text-foreground hover:bg-card transition cursor-pointer"
+                >
+                  <FriendActivityIcon size={14} />
+                  <span>Open Activity Drawer</span>
+                </button>
+              </div>
             </div>
           </section>
 
