@@ -93,7 +93,8 @@
       "delete_youtube_music_cookie",
       "prepare_oauth_listener",
       "wait_for_oauth_callback",
-      "cancel_oauth_listener"
+      "cancel_oauth_listener",
+      "upload_audio_file"
     ]
   }
 }

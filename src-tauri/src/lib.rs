@@ -1108,6 +1108,74 @@ fn local_audio_read(path: String) -> Result<AudioPayload, CommandError> {
     })
 }
 
+#[tauri::command]
+async fn upload_audio_file(file_path: String) -> Result<String, CommandError> {
+    let path = PathBuf::from(&file_path);
+    if !path.is_file() || !is_local_audio_file(&path) {
+        return Err(CommandError {
+            message: "Audio file is unavailable or unsupported.".to_string(),
+        });
+    }
+
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("audio.mp3")
+        .to_string();
+
+    let mime = local_audio_mime_type(&path).to_string();
+    let bytes = tokio::fs::read(&path).await.map_err(|error| CommandError {
+        message: format!("Failed to read audio file: {error}"),
+    })?;
+
+    if bytes.len() > 200 * 1024 * 1024 {
+        return Err(CommandError {
+            message: "Audio file exceeds 200MB limit.".to_string(),
+        });
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|error| CommandError {
+            message: format!("Failed to create HTTP client: {error}"),
+        })?;
+
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(file_name)
+        .mime_str(&mime)
+        .map_err(|error| CommandError {
+            message: format!("Failed to create multipart body: {error}"),
+        })?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("reqtype", "fileupload")
+        .part("fileToUpload", part);
+
+    let response = client
+        .post("https://catbox.moe/user/api.php")
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|error| CommandError {
+            message: format!("Audio upload request failed: {error}"),
+        })?;
+
+    let status = response.status();
+    let body = response.text().await.map_err(|error| CommandError {
+        message: format!("Failed to read upload response body: {error}"),
+    })?;
+
+    let direct_url = body.trim().to_string();
+    if !status.is_success() || !direct_url.starts_with("https://") {
+        return Err(CommandError {
+            message: format!("Upload failed: {direct_url}"),
+        });
+    }
+
+    Ok(direct_url)
+}
+
 fn cache_root(app: &tauri::AppHandle) -> Result<PathBuf, CommandError> {
     app.path()
         .app_cache_dir()
@@ -6679,6 +6747,7 @@ pub fn run() {
             prepare_oauth_listener,
             wait_for_oauth_callback,
             cancel_oauth_listener,
+            upload_audio_file,
             #[cfg(target_os = "macos")]
             macos_media::update_macos_media_session,
             #[cfg(target_os = "windows")]

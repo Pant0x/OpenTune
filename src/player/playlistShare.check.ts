@@ -58,6 +58,7 @@ const customTracks: Track[] = [
     durationSec: 180,
     source: "local",
     localPath: "C:\\Music\\track1.mp3",
+    streamUrl: "https://files.catbox.moe/test1234.mp3",
   },
   {
     id: "yt_video_999",
@@ -77,6 +78,7 @@ if (parsedCustom?.type === "data") {
   equal(parsedCustom.data.tracks.length, 2, "track count matches");
   equal(parsedCustom.data.tracks[0].title, "Track One", "first track title matches");
   equal(parsedCustom.data.tracks[0].isLocal, true, "isLocal preserved");
+  equal(parsedCustom.data.tracks[0].streamUrl, "https://files.catbox.moe/test1234.mp3", "streamUrl preserved");
   equal(parsedCustom.data.tracks[1].title, "Track Two", "second track title matches");
 }
 
@@ -90,4 +92,5 @@ if (parsedCustom?.type === "data") {
   check(fromRegistry !== null, "registry finds playlist");
   equal(fromRegistry?.tracks.length, 2, "registry tracks retrieved");
   equal(fromRegistry?.tracks[0].title, "Track One", "registry track title matches");
+  equal(fromRegistry?.tracks[0].streamUrl, "https://files.catbox.moe/test1234.mp3", "registry streamUrl matches");
 }
