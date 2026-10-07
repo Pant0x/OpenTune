@@ -3,7 +3,6 @@ import { RangeSlider } from "@/components/motion/range-slider";
 import { VolumeLoudIcon, VolumeMutedIcon, VolumeSmallIcon } from "@/ui/icons";
 import { playerController, shallowEqual, usePlayerSelector } from "../../../player/playerStore";
 import { FloatingPanel } from "../FloatingPanel";
-import { useVolumeBadge } from "../../settings/playerAddons";
 
 /** Scroll step over the icon, matching the old inline slider's wheel behaviour. */
 const WHEEL_STEP_PERCENT = 5;
@@ -28,7 +27,6 @@ export function VolumeControl() {
   const [isOpen, setIsOpen] = useState(false);
   const [volume, setVolume] = useState(() => playerController.getVolume());
   const [isMuted, setIsMuted] = useState(() => playerController.isMuted());
-  const showVolumeBadge = useVolumeBadge();
 
   // The engine is the source of truth: the mini player and OS media keys change it too.
   useEffect(() => {
@@ -84,11 +82,6 @@ export function VolumeControl() {
           >
             <VolumeGlyph size={18} aria-hidden="true" />
           </button>
-          {showVolumeBadge && (
-            <span className="text-[11px] tabular-nums font-semibold text-muted-foreground/80 min-w-[26px] antialiased select-none">
-              {percent}%
-            </span>
-          )}
         </div>
       }
     >

@@ -11,7 +11,6 @@ import type {
   Track,
 } from "../../datasource/types";
 import { libraryController, searchController, type PlayerControllerActions } from "../../player/playerStore";
-import { playerUIStore } from "../stores/playerUIStore";
 import { AlbumCard } from "../components/AlbumCard";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -271,9 +270,7 @@ export function SearchResultsPage({
   }, [currentTrack?.artist, currentTrack?.artists, libraryController, playerController, query, scopedResults.tracks]);
 
   const playVideoTrack = useCallback((track: Track) => {
-    const videoTrack: Track = { ...track, isVideo: true };
-    playTrack(videoTrack);
-    playerUIStore.setNowPlayingFullscreen(true);
+    playTrack(track);
   }, [playTrack]);
 
   const flatItems = useMemo(
