@@ -349,7 +349,7 @@ export function PlaylistView({ playlist, playerController, libraryController, on
 
       setTracks([...tracks]);
 
-      const shareUrl = generatePlaylistShareLink(playlist, tracks);
+      const shareUrl = generatePlaylistShareLink({ ...playlist, privacy }, tracks);
       await navigator.clipboard.writeText(shareUrl);
       setIsShareCopied(true);
       setSharingStatus("Link copied!");
