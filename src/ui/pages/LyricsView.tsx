@@ -29,6 +29,7 @@ import type { Lyrics, LyricsSourceAttempt, LyricsSourceStatus, Track } from "../
 import { LYRICS_SOURCES } from "../../datasource/youtube/lyricsSources";
 import { FloatingPanel } from "../components/FloatingPanel";
 import { logInternalWarn } from "../../internal/logging";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 import { playerController, shallowEqual, usePlayerSelector, useLibraryState } from "../../player/playerStore";
 import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
 import { useTrackContextMenu } from "../components/trackContextMenuContext";
@@ -205,12 +206,21 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     }
   });
 
+  useEffect(() => {
+    void getAppSetting<boolean>("lyrics_fullscreen_split").then((stored) => {
+      if (typeof stored === "boolean") {
+        setShowPlaybackCard(stored);
+      }
+    });
+  }, []);
+
   const toggleSplitMode = () => {
     setShowPlaybackCard((prev) => {
       const next = !prev;
       try {
         localStorage.setItem("lyrics_fullscreen_split", String(next));
       } catch {}
+      void setAppSetting("lyrics_fullscreen_split", next);
       return next;
     });
   };

@@ -27,6 +27,8 @@ export interface FriendActivity {
   isCustom?: boolean;
 }
 
+import { getAppSetting, setAppSetting } from "../internal/appSettings";
+
 const SETTINGS_KEY = "opentune:listening-activity:settings";
 const CUSTOM_FRIENDS_KEY = "opentune:listening-activity:custom-friends";
 const ACTIVITY_CHANGED_EVENT = "opentune:listening-activity:changed";
@@ -52,6 +54,7 @@ function saveStoredSettings(settings: ListeningSettings) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     window.dispatchEvent(new Event(ACTIVITY_CHANGED_EVENT));
   } catch {}
+  void setAppSetting(SETTINGS_KEY, settings);
 }
 
 function getStoredCustomFriends(): FriendActivity[] {
@@ -65,6 +68,21 @@ function getStoredCustomFriends(): FriendActivity[] {
 function saveStoredCustomFriends(friends: FriendActivity[]) {
   try {
     localStorage.setItem(CUSTOM_FRIENDS_KEY, JSON.stringify(friends));
+    window.dispatchEvent(new Event(ACTIVITY_CHANGED_EVENT));
+  } catch {}
+  void setAppSetting(CUSTOM_FRIENDS_KEY, friends);
+}
+
+export async function hydrateFriendsListeningSettings(): Promise<void> {
+  try {
+    const storedSettings = await getAppSetting<ListeningSettings>(SETTINGS_KEY);
+    if (storedSettings && typeof storedSettings.enabled === "boolean") {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(storedSettings));
+    }
+    const storedFriends = await getAppSetting<FriendActivity[]>(CUSTOM_FRIENDS_KEY);
+    if (Array.isArray(storedFriends)) {
+      localStorage.setItem(CUSTOM_FRIENDS_KEY, JSON.stringify(storedFriends));
+    }
     window.dispatchEvent(new Event(ACTIVITY_CHANGED_EVENT));
   } catch {}
 }

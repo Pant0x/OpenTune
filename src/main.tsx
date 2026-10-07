@@ -43,6 +43,15 @@ import { applyRenderEffects, hydrateRenderEffects } from "./ui/settings/renderEf
 import { purgeAllSnippets } from "./ui/settings/snippets";
 import { hydratePlayerAddonSettings } from "./ui/settings/playerAddons";
 import { startMemoryReport } from "./internal/memoryReport";
+import { applyStoredZoom, hydrateZoom } from "./ui/hooks/useZoom";
+import { hydrateCoverAmbience } from "./ui/settings/coverAmbience";
+import { hydrateLyricsEnhancements } from "./ui/settings/lyricsEnhancements";
+import { hydrateLyricsSourcePreference } from "./internal/lyricsSourcePreference";
+import { hydrateLyricsFontScale } from "./ui/settings/lyricsFontScale";
+import { hydrateLyricsTranslation } from "./ui/settings/lyricsTranslation";
+import { hydrateLyricsOffset } from "./ui/settings/lyricsOffset";
+import { hydrateLocalMusicFolder } from "./player/localFilesManager";
+import { hydrateFriendsListeningSettings } from "./lib/friendsListeningService";
 
 function checkAndHandleWebOAuthCallback(): boolean {
   if (typeof window === "undefined") return false;
@@ -146,6 +155,7 @@ void detectTilingWindowManager();
 // Before React mounts: a late theme apply shows a flash of the wrong palette.
 applyTheme();
 watchSystemTheme();
+applyStoredZoom();
 applyPaperPcMode();
 applyRenderEffects();
 purgeAllSnippets();
@@ -185,6 +195,15 @@ void Promise.all([
   hydrateSessionRestoreSetting(),
   // Same convention: durable wins, localStorage is backfilled, so saves survive a restart.
   hydrateFollowedArtists(),
+  hydrateCoverAmbience(),
+  hydrateLyricsEnhancements(),
+  hydrateLyricsSourcePreference(),
+  hydrateLyricsFontScale(),
+  hydrateLyricsTranslation(),
+  hydrateLyricsOffset(),
+  hydrateZoom(),
+  hydrateLocalMusicFolder(),
+  hydrateFriendsListeningSettings(),
 ]).catch((error) => {
   logInternalError("settings hydration failed", error);
 });

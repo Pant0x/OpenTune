@@ -13,6 +13,7 @@ import { generatePlaylistShareLink, saveSharedPlaylistToLibrary } from "../../pl
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Tooltip } from "@/components/motion/tooltip";
 import { logInternalError, logInternalWarn } from "../../internal/logging";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 import { SelectionBar } from "../components/SelectionBar";
 import { useTrackSelection } from "../hooks/useTrackSelection";
 import { queueDownloads, useOfflineState } from "../../player/offlineStore";
@@ -261,13 +262,22 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   useEffect(() => {
     setPrivacy(getInitialPlaylistPrivacy(playlist));
     setCustomArtworkOverride(null);
+    if (playlist?.id) {
+      void getAppSetting<string>(`opentune:playlist-privacy:${playlist.id}`).then((stored) => {
+        if (stored === "public" || stored === "private") {
+          setPrivacy(stored);
+        }
+      });
+    }
   }, [playlist?.id, playlist?.privacy]);
 
   const handleTogglePrivacy = () => {
     if (!playlist) return;
     const next = privacy === "private" ? "public" : "private";
     setPrivacy(next);
-    localStorage.setItem(`opentune:playlist-privacy:${playlist.id}`, next);
+    const key = `opentune:playlist-privacy:${playlist.id}`;
+    localStorage.setItem(key, next);
+    void setAppSetting(key, next);
     if (playlist.id.startsWith("local-playlist:")) {
       setLocalPlaylistPrivacy(playlist.id, next);
       notifyLocalPlaylistsChanged();
