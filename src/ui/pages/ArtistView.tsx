@@ -38,6 +38,7 @@ import {
   setArtistFollowedLocally,
   subscribeToFollowedArtists,
 } from "../../player/followedArtists";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 import { AlbumCard } from "../components/AlbumCard";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -219,6 +220,17 @@ export function ArtistView({
       return [];
     }
   });
+
+  useEffect(() => {
+    void getAppSetting<string[]>("amber_blocked_artists").then((stored) => {
+      if (Array.isArray(stored)) {
+        setBlockedArtists(stored);
+        try {
+          localStorage.setItem("amber_blocked_artists", JSON.stringify(stored));
+        } catch {}
+      }
+    });
+  }, []);
 
   // Spotify data
   const [spotifyOverview, setSpotifyOverview] = useState<SpotifyArtistOverview | null>(null);
@@ -409,6 +421,7 @@ export function ArtistView({
     try {
       localStorage.setItem("amber_blocked_artists", JSON.stringify(next));
     } catch {}
+    void setAppSetting("amber_blocked_artists", next);
   };
 
   const copyArtistShareLink = async () => {

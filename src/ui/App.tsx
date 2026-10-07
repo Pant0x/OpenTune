@@ -400,6 +400,19 @@ export default function App() {
   const [showOnboardingWelcome, setShowOnboardingWelcome] = useState(false);
 
   useEffect(() => {
+    if (isMacOS) {
+      void getAppSetting<boolean>(KEYCHAIN_NOTICE_COMPLETE_KEY).then((done) => {
+        if (done) {
+          setShowKeychainNotice(false);
+          try {
+            localStorage.setItem(KEYCHAIN_NOTICE_COMPLETE_KEY, "true");
+          } catch {}
+        }
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void hydratePlaybackSettings().then((settings) => {
       if (cancelled) return;
@@ -1213,7 +1226,10 @@ export default function App() {
   };
 
   const handleKeychainNoticeContinue = () => {
-    localStorage.setItem(KEYCHAIN_NOTICE_COMPLETE_KEY, "true");
+    try {
+      localStorage.setItem(KEYCHAIN_NOTICE_COMPLETE_KEY, "true");
+    } catch {}
+    void setAppSetting(KEYCHAIN_NOTICE_COMPLETE_KEY, true);
     setShowKeychainNotice(false);
   };
 

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 
 /**
  * Per-track lyric timing offset, in seconds.
@@ -78,7 +79,24 @@ export function setLyricsOffset(trackId: string, seconds: number): void {
   } catch {
     // Quota or a locked profile: the offset still applies for this session.
   }
+  void setAppSetting(STORAGE_KEY, cache);
   for (const listener of listeners) listener();
+}
+
+export async function hydrateLyricsOffset(): Promise<void> {
+  const stored = await getAppSetting<unknown>(STORAGE_KEY);
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    cache = pruneOffsets(stored as Record<string, number>);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+    } catch {}
+    for (const listener of listeners) listener();
+  } else {
+    const local = readAll();
+    if (Object.keys(local).length > 0) {
+      void setAppSetting(STORAGE_KEY, local);
+    }
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -102,3 +120,4 @@ export function useLyricsOffset(trackId: string | undefined): number {
     () => DEFAULT_OFFSET_SEC,
   );
 }
+

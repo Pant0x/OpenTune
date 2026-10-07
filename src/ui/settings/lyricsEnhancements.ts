@@ -1,37 +1,35 @@
 import { useSyncExternalStore } from "react";
+import {
+  hydrateLocalBooleanSetting,
+  readLocalBooleanSetting,
+  writeLocalBooleanSetting,
+} from "../../internal/durableLocalSetting";
 
 const DUET_STORAGE_KEY = "amber_lyrics_duet_mode";
 const ADLIB_STORAGE_KEY = "amber_lyrics_adlibs_mode";
 const EVENT_NAME = "amber-lyrics-enhancements-changed";
 
 function readDuetSetting(): boolean {
-  try {
-    return localStorage.getItem(DUET_STORAGE_KEY) !== "false";
-  } catch {
-    return true;
-  }
+  return readLocalBooleanSetting(DUET_STORAGE_KEY, true);
 }
 
 function readAdlibSetting(): boolean {
-  try {
-    return localStorage.getItem(ADLIB_STORAGE_KEY) !== "false";
-  } catch {
-    return true;
-  }
+  return readLocalBooleanSetting(ADLIB_STORAGE_KEY, true);
 }
 
 export function setLyricsDuetMode(enabled: boolean): void {
-  try {
-    localStorage.setItem(DUET_STORAGE_KEY, String(enabled));
-  } catch {}
-  window.dispatchEvent(new Event(EVENT_NAME));
+  writeLocalBooleanSetting(DUET_STORAGE_KEY, enabled, EVENT_NAME);
 }
 
 export function setLyricsAdlibsMode(enabled: boolean): void {
-  try {
-    localStorage.setItem(ADLIB_STORAGE_KEY, String(enabled));
-  } catch {}
-  window.dispatchEvent(new Event(EVENT_NAME));
+  writeLocalBooleanSetting(ADLIB_STORAGE_KEY, enabled, EVENT_NAME);
+}
+
+export async function hydrateLyricsEnhancements(): Promise<void> {
+  await Promise.all([
+    hydrateLocalBooleanSetting(DUET_STORAGE_KEY, true, EVENT_NAME),
+    hydrateLocalBooleanSetting(ADLIB_STORAGE_KEY, true, EVENT_NAME),
+  ]);
 }
 
 function subscribe(callback: () => void) {
@@ -50,3 +48,4 @@ export function useLyricsDuetMode(): boolean {
 export function useLyricsAdlibsMode(): boolean {
   return useSyncExternalStore(subscribe, readAdlibSetting, () => true);
 }
+

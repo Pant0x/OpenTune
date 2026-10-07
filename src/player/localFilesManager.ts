@@ -22,6 +22,8 @@ interface LocalAudioFile {
   hasArtwork: boolean;
 }
 
+import { getAppSetting, removeAppSetting, setAppSetting } from "../internal/appSettings";
+
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -36,12 +38,34 @@ export function getLocalMusicFolder(): string | null {
 export function setLocalMusicFolder(folderPath: string | null): void {
   if (typeof window === "undefined") return;
   if (folderPath) {
-    localStorage.setItem(LOCAL_FOLDER_STORAGE_KEY, folderPath);
+    try {
+      localStorage.setItem(LOCAL_FOLDER_STORAGE_KEY, folderPath);
+    } catch {}
+    void setAppSetting(LOCAL_FOLDER_STORAGE_KEY, folderPath);
   } else {
-    localStorage.removeItem(LOCAL_FOLDER_STORAGE_KEY);
+    try {
+      localStorage.removeItem(LOCAL_FOLDER_STORAGE_KEY);
+    } catch {}
+    void removeAppSetting(LOCAL_FOLDER_STORAGE_KEY);
   }
   window.dispatchEvent(new CustomEvent(LOCAL_FOLDER_CHANGE_EVENT));
   notify();
+}
+
+export async function hydrateLocalMusicFolder(): Promise<void> {
+  const stored = await getAppSetting<string>(LOCAL_FOLDER_STORAGE_KEY);
+  if (typeof stored === "string" && stored.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_FOLDER_STORAGE_KEY, stored);
+    } catch {}
+    window.dispatchEvent(new CustomEvent(LOCAL_FOLDER_CHANGE_EVENT));
+    notify();
+  } else {
+    const local = getLocalMusicFolder();
+    if (local) {
+      void setAppSetting(LOCAL_FOLDER_STORAGE_KEY, local);
+    }
+  }
 }
 
 function subscribeFolder(callback: () => void) {
@@ -58,6 +82,7 @@ function subscribeFolder(callback: () => void) {
 export function useLocalMusicFolder(): string | null {
   return useSyncExternalStore(subscribeFolder, getLocalMusicFolder, () => null);
 }
+
 
 export function localAudioFileToTrack(file: LocalAudioFile): Track {
   const filename = file.path.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") || "Unknown title";

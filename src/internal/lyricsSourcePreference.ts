@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getAppSetting, removeAppSetting, setAppSetting } from "./appSettings";
 
 /**
  * Which lyric source the listener wants tried first.
@@ -37,7 +38,27 @@ export function setPreferredLyricsSourceId(id: string): void {
   } catch {
     // Quota or a locked profile: the choice still applies for this session.
   }
+  if (id === AUTO_LYRICS_SOURCE) {
+    void removeAppSetting(STORAGE_KEY);
+  } else {
+    void setAppSetting(STORAGE_KEY, id);
+  }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export async function hydrateLyricsSourcePreference(): Promise<void> {
+  const stored = await getAppSetting<string>(STORAGE_KEY);
+  if (typeof stored === "string" && stored.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY, stored);
+    } catch {}
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  } else {
+    const local = getPreferredLyricsSourceId();
+    if (local !== AUTO_LYRICS_SOURCE) {
+      void setAppSetting(STORAGE_KEY, local);
+    }
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -53,3 +74,4 @@ function subscribe(listener: () => void): () => void {
 export function usePreferredLyricsSourceId(): string {
   return useSyncExternalStore(subscribe, getPreferredLyricsSourceId, () => AUTO_LYRICS_SOURCE);
 }
+

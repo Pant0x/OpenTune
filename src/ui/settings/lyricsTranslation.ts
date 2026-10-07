@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getAppSetting, removeAppSetting, setAppSetting } from "../../internal/appSettings";
 
 /**
  * Target language for lyric translation, or "off".
@@ -45,7 +46,28 @@ export function setLyricsTranslationLang(lang: string): void {
   } catch {
     // Quota or a locked profile: the choice still applies for this session.
   }
+  if (lang === TRANSLATION_OFF) {
+    void removeAppSetting(STORAGE_KEY);
+  } else {
+    void setAppSetting(STORAGE_KEY, lang);
+  }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export async function hydrateLyricsTranslation(): Promise<void> {
+  const stored = await getAppSetting<string>(STORAGE_KEY);
+  if (typeof stored === "string" && stored.length > 0) {
+    try {
+      if (stored === TRANSLATION_OFF) localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, stored);
+    } catch {}
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  } else {
+    const local = getLyricsTranslationLang();
+    if (local !== TRANSLATION_OFF) {
+      void setAppSetting(STORAGE_KEY, local);
+    }
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -61,3 +83,4 @@ function subscribe(listener: () => void): () => void {
 export function useLyricsTranslationLang(): string {
   return useSyncExternalStore(subscribe, getLyricsTranslationLang, () => TRANSLATION_OFF);
 }
+

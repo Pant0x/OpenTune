@@ -91,3 +91,105 @@ export async function hydrateLocalJsonSetting<T>(
     void setAppSetting(key, localValue);
   }
 }
+
+export function readLocalStringSetting(key: string, defaultValue: string): string {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === null) return defaultValue;
+    return stored;
+  } catch {
+    return defaultValue;
+  }
+}
+
+export function writeLocalStringSetting(
+  key: string,
+  value: string,
+  changeEvent?: string,
+): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+
+  if (changeEvent) {
+    window.dispatchEvent(new Event(changeEvent));
+  }
+  void setAppSetting(key, value);
+}
+
+export async function hydrateLocalStringSetting(
+  key: string,
+  defaultValue: string,
+  changeEvent?: string,
+  apply?: (value: string) => void | Promise<void>,
+): Promise<void> {
+  const stored = await getAppSetting<string>(key);
+  const nextValue = typeof stored === "string" && stored.length > 0
+    ? stored
+    : readLocalStringSetting(key, defaultValue);
+
+  try {
+    localStorage.setItem(key, nextValue);
+  } catch {}
+
+  await apply?.(nextValue);
+  if (changeEvent) {
+    window.dispatchEvent(new Event(changeEvent));
+  }
+
+  if (typeof stored !== "string") {
+    void setAppSetting(key, nextValue);
+  }
+}
+
+export function readLocalNumberSetting(key: string, defaultValue: number): number {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === null) return defaultValue;
+    const num = Number(stored);
+    return Number.isFinite(num) ? num : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+export function writeLocalNumberSetting(
+  key: string,
+  value: number,
+  changeEvent?: string,
+): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {}
+
+  if (changeEvent) {
+    window.dispatchEvent(new Event(changeEvent));
+  }
+  void setAppSetting(key, value);
+}
+
+export async function hydrateLocalNumberSetting(
+  key: string,
+  defaultValue: number,
+  changeEvent?: string,
+  apply?: (value: number) => void | Promise<void>,
+): Promise<void> {
+  const stored = await getAppSetting<number>(key);
+  const nextValue = typeof stored === "number" && Number.isFinite(stored)
+    ? stored
+    : readLocalNumberSetting(key, defaultValue);
+
+  try {
+    localStorage.setItem(key, String(nextValue));
+  } catch {}
+
+  await apply?.(nextValue);
+  if (changeEvent) {
+    window.dispatchEvent(new Event(changeEvent));
+  }
+
+  if (typeof stored !== "number") {
+    void setAppSetting(key, nextValue);
+  }
+}
+

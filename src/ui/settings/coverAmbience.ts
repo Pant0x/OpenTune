@@ -1,22 +1,23 @@
 import { useSyncExternalStore } from "react";
+import {
+  hydrateLocalBooleanSetting,
+  readLocalBooleanSetting,
+  writeLocalBooleanSetting,
+} from "../../internal/durableLocalSetting";
 
 const STORAGE_KEY = "amber_cover_ambience";
 const EVENT_NAME = "amber-cover-ambience-changed";
 
 function readSetting(): boolean {
-  try {
-    const val = localStorage.getItem(STORAGE_KEY);
-    return val !== "false";
-  } catch {
-    return true;
-  }
+  return readLocalBooleanSetting(STORAGE_KEY, true);
 }
 
 export function setCoverAmbienceEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(enabled));
-  } catch {}
-  window.dispatchEvent(new Event(EVENT_NAME));
+  writeLocalBooleanSetting(STORAGE_KEY, enabled, EVENT_NAME);
+}
+
+export async function hydrateCoverAmbience(): Promise<void> {
+  await hydrateLocalBooleanSetting(STORAGE_KEY, true, EVENT_NAME);
 }
 
 function subscribe(callback: () => void) {
@@ -31,3 +32,4 @@ function subscribe(callback: () => void) {
 export function useCoverAmbienceEnabled(): boolean {
   return useSyncExternalStore(subscribe, readSetting, () => true);
 }
+

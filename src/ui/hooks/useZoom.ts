@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 
 const ZOOM_STORAGE_KEY = "amber-ui-zoom";
 export const MIN_ZOOM = 0.5;
@@ -20,7 +21,7 @@ function getStoredZoom(): number {
   return 1;
 }
 
-function applyDocumentZoom(zoomValue: number) {
+export function applyDocumentZoom(zoomValue: number) {
   const zoomStr = String(zoomValue);
   document.documentElement.style.zoom = zoomStr;
   if (document.body) {
@@ -58,6 +59,10 @@ function triggerHud() {
   }, 1600);
 }
 
+export function applyStoredZoom(): void {
+  applyDocumentZoom(globalZoom);
+}
+
 export function applyZoom(nextZoom: number, showHud = true) {
   const clamped = Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom)) * 100) / 100;
   if (clamped === globalZoom) return;
@@ -65,14 +70,34 @@ export function applyZoom(nextZoom: number, showHud = true) {
   try {
     localStorage.setItem(ZOOM_STORAGE_KEY, String(clamped));
   } catch {}
+  void setAppSetting(ZOOM_STORAGE_KEY, clamped);
   applyDocumentZoom(clamped);
   notifyZoom();
   if (showHud) triggerHud();
 }
 
+export async function hydrateZoom(): Promise<void> {
+  const stored = await getAppSetting<number>(ZOOM_STORAGE_KEY);
+  if (typeof stored === "number" && stored >= MIN_ZOOM && stored <= MAX_ZOOM) {
+    const clamped = Math.round(stored * 100) / 100;
+    globalZoom = clamped;
+    try {
+      localStorage.setItem(ZOOM_STORAGE_KEY, String(clamped));
+    } catch {}
+    applyDocumentZoom(clamped);
+    notifyZoom();
+  } else {
+    const local = getStoredZoom();
+    if (local !== 1) {
+      void setAppSetting(ZOOM_STORAGE_KEY, local);
+    }
+  }
+}
+
 export function resetZoom() {
   applyZoom(1, true);
 }
+
 
 export function zoomIn() {
   applyZoom(globalZoom + STEP, true);

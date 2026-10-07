@@ -117,7 +117,11 @@ export function getOfflineMaxBytes(): number {
 }
 
 export function setOfflineMaxBytes(maxBytes: number): void {
-  localStorage.setItem(MAX_BYTES_KEY, String(Math.max(0, maxBytes)));
+  const normalized = Math.max(0, maxBytes);
+  try {
+    localStorage.setItem(MAX_BYTES_KEY, String(normalized));
+  } catch {}
+  void setAppSetting(MAX_BYTES_KEY, normalized);
   void prune();
 }
 
@@ -175,6 +179,13 @@ export function reconcileManifest(
 export async function hydrateOfflineStore(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
+
+  try {
+    const storedMaxBytes = await getAppSetting<number>(MAX_BYTES_KEY);
+    if (typeof storedMaxBytes === "number" && storedMaxBytes > 0) {
+      localStorage.setItem(MAX_BYTES_KEY, String(storedMaxBytes));
+    }
+  } catch {}
 
   const manifest = { ...(await readDurableManifest()), ...readManifest() };
   try {

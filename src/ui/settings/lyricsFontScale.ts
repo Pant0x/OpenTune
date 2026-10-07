@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getAppSetting, removeAppSetting, setAppSetting } from "../../internal/appSettings";
 
 /**
  * Multiplier applied to the lyric type scale.
@@ -44,7 +45,29 @@ export function setLyricsFontScale(value: number): void {
   } catch {
     // Quota or a locked profile: the choice still applies for this session.
   }
+  if (scale === DEFAULT_LYRICS_FONT_SCALE) {
+    void removeAppSetting(STORAGE_KEY);
+  } else {
+    void setAppSetting(STORAGE_KEY, scale);
+  }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export async function hydrateLyricsFontScale(): Promise<void> {
+  const stored = await getAppSetting<number>(STORAGE_KEY);
+  if (typeof stored === "number" && Number.isFinite(stored)) {
+    const scale = normalizeFontScale(stored);
+    try {
+      if (scale === DEFAULT_LYRICS_FONT_SCALE) localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, String(scale));
+    } catch {}
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  } else {
+    const local = getLyricsFontScale();
+    if (local !== DEFAULT_LYRICS_FONT_SCALE) {
+      void setAppSetting(STORAGE_KEY, local);
+    }
+  }
 }
 
 function subscribe(listener: () => void): () => void {
@@ -64,3 +87,4 @@ export function useLyricsFontScale(): number {
     () => DEFAULT_LYRICS_FONT_SCALE,
   );
 }
+

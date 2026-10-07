@@ -1004,7 +1004,16 @@ export function Sidebar({
     } catch {
       // Sort preference is a convenience; losing it is not worth failing a render over.
     }
+    void setAppSetting(LIBRARY_SORT_KEY, librarySort);
   }, [librarySort]);
+
+  useEffect(() => {
+    void getAppSetting<string>(LIBRARY_SORT_KEY).then((stored) => {
+      if (stored === "recent" || stored === "name" || stored === "custom") {
+        setLibrarySort(stored);
+      }
+    });
+  }, []);
 
   /*
    * The filter is scoped to the list you are looking at, so switching views clears it. Carrying

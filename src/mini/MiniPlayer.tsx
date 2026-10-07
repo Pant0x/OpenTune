@@ -32,6 +32,7 @@ import {
   useMiniPlayback,
   useMiniPosition,
 } from "./playerBridge";
+import { getAppSetting, setAppSetting } from "../internal/appSettings";
 
 export type MiniMode = "compact" | "expanded" | "lyrics";
 
@@ -71,11 +72,20 @@ export function MiniPlayer() {
     try {
       localStorage.setItem(MODE_STORAGE_KEY, mode);
     } catch {}
+    void setAppSetting(MODE_STORAGE_KEY, mode);
     const size = MODE_SIZE[mode];
     try {
       void getCurrentWebviewWindow().setSize(new LogicalSize(size.width, size.height));
     } catch {}
   }, [mode]);
+
+  useEffect(() => {
+    void getAppSetting<MiniMode>(MODE_STORAGE_KEY).then((stored) => {
+      if (stored === "compact" || stored === "expanded" || stored === "lyrics") {
+        setMode(stored);
+      }
+    });
+  }, []);
 
   const closeWindow = () => {
     sendMiniCommand({ type: "close" });
