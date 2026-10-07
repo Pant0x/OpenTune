@@ -25,6 +25,7 @@ export interface SharedPlaylistPayload {
   description?: string;
   artworkUrl?: string;
   covers?: string[];
+  privacy?: "public" | "private";
   tracks: SharedTrackItem[];
 }
 
@@ -86,6 +87,7 @@ export function generatePlaylistShareLink(playlist: Playlist, tracks?: Track[]):
     v: 1,
     name: playlist.title,
     description: playlist.description,
+    privacy: playlist.privacy,
     artworkUrl: playlist.artworkUrl && !playlist.artworkUrl.startsWith("local-") ? playlist.artworkUrl : undefined,
     covers: covers.length > 0 ? covers : undefined,
     tracks: resolvedTracks.map((t) => ({
@@ -199,6 +201,7 @@ export function registerSharedPlaylist(payload: SharedPlaylistPayload): Playlist
     owner: "Shared with you",
     isEditable: false,
     kind: "playlist",
+    privacy: payload.privacy ?? "private",
   };
 
   sharedPlaylistsRegistry.set(id, { playlist, tracks });
