@@ -33,6 +33,7 @@ export interface LocalPlaylist {
    * list, and filtering the list by its path removed nothing at all.
    */
   excludedPaths?: string[];
+  privacy?: "public" | "private";
 }
 
 interface LocalAudioFile {
@@ -84,6 +85,7 @@ function normalizePlaylist(value: unknown): LocalPlaylist | null {
     paths: Array.from(new Set(paths.map((path) => path.trim()))),
     artworkPath,
     excludedPaths: Array.from(new Set(excluded.map((path) => path.trim()))),
+    privacy: candidate.privacy === "public" ? "public" : "private",
   };
 }
 
@@ -408,6 +410,7 @@ export function localPlaylistToPlaylist(playlist: LocalPlaylist): Playlist {
     kind: "local",
     isEditable: true,
     localPaths: playlist.paths,
+    privacy: playlist.privacy ?? "private",
     artworkUrl: playlist.artworkPath
       ? (playlist.artworkPath.startsWith("http")
           ? playlist.artworkPath
@@ -422,6 +425,16 @@ export function setLocalPlaylistArtwork(playlistId: string, artworkPath: string 
   const next = playlists.map((playlist) =>
     playlist.id === playlistId
       ? { ...playlist, artworkPath: artworkPath ?? undefined }
+      : playlist);
+  writeLocalPlaylists(next);
+}
+
+/** Sets privacy (public vs private) for a local playlist. */
+export function setLocalPlaylistPrivacy(playlistId: string, privacy: "public" | "private"): void {
+  const playlists = readLocalPlaylists();
+  const next = playlists.map((playlist) =>
+    playlist.id === playlistId
+      ? { ...playlist, privacy }
       : playlist);
   writeLocalPlaylists(next);
 }

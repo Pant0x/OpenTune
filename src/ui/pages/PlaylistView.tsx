@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { ArrowDownIcon, ArrowUpIcon, BookmarkIcon, CheckIcon, CloseIcon, CloudIcon, FolderAddIcon, SearchIcon, ShareIcon } from "@/ui/icons";
+import { ArrowDownIcon, ArrowUpIcon, BookmarkIcon, CheckIcon, CloseIcon, CloudIcon, FolderAddIcon, GlobeIcon, LockIcon, PencilIcon, SearchIcon, ShareIcon } from "@/ui/icons";
 import type { Playlist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import { markPlaylistPlayed } from "../../player/recentPlaylists";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
-import { addLocalPlaylistPath, isLocalPlaylist } from "../../player/localPlaylists";
+import { addLocalPlaylistPath, isLocalPlaylist, LOCAL_IMAGE_PREFIX, notifyLocalPlaylistsChanged, setLocalPlaylistArtwork, setLocalPlaylistPrivacy } from "../../player/localPlaylists";
 import { generatePlaylistShareLink, saveSharedPlaylistToLibrary } from "../../player/playlistShare";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Tooltip } from "@/components/motion/tooltip";
-import { logInternalError } from "../../internal/logging";
+import { logInternalError, logInternalWarn } from "../../internal/logging";
 import { SelectionBar } from "../components/SelectionBar";
 import { useTrackSelection } from "../hooks/useTrackSelection";
 import { queueDownloads, useOfflineState } from "../../player/offlineStore";
@@ -233,6 +233,18 @@ function PlaylistDescription({
   );
 }
 
+function getInitialPlaylistPrivacy(playlist?: Playlist): "private" | "public" {
+  if (!playlist?.id) return "private";
+  if (playlist.privacy === "public" || playlist.privacy === "private") {
+    return playlist.privacy;
+  }
+  const stored = typeof localStorage !== "undefined"
+    ? localStorage.getItem(`opentune:playlist-privacy:${playlist.id}`)
+    : null;
+  if (stored === "public" || stored === "private") return stored;
+  return "private";
+}
+
 export function PlaylistView({ playlist, playerController, libraryController, onOpenPlaylist }: PlaylistViewProps) {
   const { openPlaylistPicker, openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu } = usePlaylistContextMenu();
@@ -242,6 +254,42 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   const [isShareCopied, setIsShareCopied] = useState(false);
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
   const isSharedPlaylistView = Boolean(playlist?.id?.startsWith("shared-playlist:"));
+
+  const [privacy, setPrivacy] = useState<"private" | "public">(() => getInitialPlaylistPrivacy(playlist));
+  const [customArtworkOverride, setCustomArtworkOverride] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrivacy(getInitialPlaylistPrivacy(playlist));
+    setCustomArtworkOverride(null);
+  }, [playlist?.id, playlist?.privacy]);
+
+  const handleTogglePrivacy = () => {
+    if (!playlist) return;
+    const next = privacy === "private" ? "public" : "private";
+    setPrivacy(next);
+    localStorage.setItem(`opentune:playlist-privacy:${playlist.id}`, next);
+    if (playlist.id.startsWith("local-playlist:")) {
+      setLocalPlaylistPrivacy(playlist.id, next);
+      notifyLocalPlaylistsChanged();
+    }
+  };
+
+  const handleChooseCustomArtwork = async () => {
+    if (!playlist) return;
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        title: "Choose playlist cover image",
+        filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "bmp", "webp"] }],
+      });
+      if (typeof selected !== "string") return;
+      setLocalPlaylistArtwork(playlist.id, selected);
+      setCustomArtworkOverride(`${LOCAL_IMAGE_PREFIX}${selected}`);
+      notifyLocalPlaylistsChanged();
+    } catch (error) {
+      logInternalWarn("PlaylistView.handleChooseCustomArtwork failed", { error });
+    }
+  };
 
   const handleSharePlaylist = async () => {
     if (!playlist) return;
@@ -565,6 +613,18 @@ export function PlaylistView({ playlist, playerController, libraryController, on
     return arts;
   }, [enrichedTracks]);
 
+  const hasCustomArtwork = useMemo(() => {
+    return Boolean(
+      playlist?.artworkUrl
+      && !playlist.artworkUrl.endsWith("playlistplaceholder.svg")
+      && !playlist.artworkUrl.includes("playlistplaceholder")
+      && !playlist.artworkUrl.startsWith("dynamic:")
+    );
+  }, [playlist?.artworkUrl]);
+
+  const effectiveArtwork = customArtworkOverride
+    ?? (hasCustomArtwork ? playlist?.artworkUrl : undefined);
+
   const sortedTracks = useMemo(() => {
     if (sort === "dateAdded") {
       return sortDirection === "desc" ? enrichedTracks : [...enrichedTracks].reverse();
@@ -816,24 +876,48 @@ export function PlaylistView({ playlist, playerController, libraryController, on
           eyebrow="Playlist"
           title={playlist.title}
           subtitle={
-            playlist.owner && playlist.owner !== "Local files" ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (navigateArtist && playlist.owner) {
-                    navigateArtist({ id: playlist.authorId || "", name: playlist.owner }, false);
-                  }
-                }}
-                className="inline-flex items-center text-foreground hover:text-primary transition-colors cursor-pointer font-medium hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded text-left"
+            <div className="flex flex-wrap items-center gap-2">
+              {playlist.owner && playlist.owner !== "Local files" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigateArtist && playlist.owner) {
+                      navigateArtist({ id: playlist.authorId || "", name: playlist.owner }, false);
+                    }
+                  }}
+                  className="inline-flex items-center text-foreground hover:text-primary transition-colors cursor-pointer font-medium hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded text-left"
+                >
+                  {playlist.owner}
+                </button>
+              ) : (
+                <span className="font-medium text-foreground">{playlist.owner || "You"}</span>
+              )}
+              <span className="text-muted-foreground/50">•</span>
+              <Tooltip
+                content={
+                  privacy === "private"
+                    ? "Private playlist — only people with the link can open it. Click to make Public"
+                    : "Public playlist. Click to make Private"
+                }
               >
-                {playlist.owner}
-              </button>
-            ) : (
-              playlist.owner
-            )
+                <button
+                  type="button"
+                  onClick={handleTogglePrivacy}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-all border cursor-pointer select-none",
+                    privacy === "private"
+                      ? "border-white/10 bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10"
+                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
+                  )}
+                >
+                  {privacy === "private" ? <LockIcon size={12} className="shrink-0" /> : <GlobeIcon size={12} className="shrink-0" />}
+                  <span>{privacy === "private" ? "Private" : "Public"}</span>
+                </button>
+              </Tooltip>
+            </div>
           }
           meta={formatCollectionMeta(tracks, hasMoreTracks)}
-          artworkUrl={dynamicPlaylistArtworks.length > 0 ? dynamicPlaylistArtworks[0] : playlist.artworkUrl}
+          artworkUrl={effectiveArtwork ?? (dynamicPlaylistArtworks.length > 0 ? dynamicPlaylistArtworks[0] : playlist.artworkUrl)}
           artworkVariant="playlist"
           artworkSlot={isLikedSongs ? (
             <img
@@ -841,26 +925,84 @@ export function PlaylistView({ playlist, playerController, libraryController, on
               src={likedSongsCover}
               alt=""
             />
+          ) : effectiveArtwork ? (
+            <div className="group relative size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
+              <TrackArtwork
+                artworkUrl={effectiveArtwork}
+                size={400}
+                variant="playlist"
+                preferProxy
+                className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+              />
+              {isLocalPlaylistView && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleChooseCustomArtwork();
+                  }}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 text-white text-xs font-semibold cursor-pointer z-10"
+                  title="Change playlist cover"
+                >
+                  <PencilIcon size={20} />
+                  <span>Change cover</span>
+                </button>
+              )}
+            </div>
           ) : dynamicPlaylistArtworks.length >= 4 ? (
-            <div className="size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 grid grid-cols-2 grid-rows-2 bg-neutral-900">
-              {dynamicPlaylistArtworks.slice(0, 4).map((art, idx) => (
-                <img
-                  key={idx}
-                  src={art}
-                  alt=""
-                  className="size-full object-cover"
-                  loading="eager"
-                />
-              ))}
+            <div className="group relative size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
+              <div className="size-full grid grid-cols-2 grid-rows-2 bg-neutral-900 transition-transform duration-200 group-hover:scale-105">
+                {dynamicPlaylistArtworks.slice(0, 4).map((art, idx) => (
+                  <TrackArtwork
+                    key={idx}
+                    artworkUrl={art}
+                    size={120}
+                    variant="album"
+                    preferProxy
+                    className="size-full object-cover"
+                    loading="eager"
+                  />
+                ))}
+              </div>
+              {isLocalPlaylistView && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleChooseCustomArtwork();
+                  }}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 text-white text-xs font-semibold cursor-pointer z-10"
+                  title="Set single cover image for this playlist"
+                >
+                  <PencilIcon size={20} />
+                  <span>Set cover image</span>
+                </button>
+              )}
             </div>
           ) : dynamicPlaylistArtworks.length > 0 ? (
-            <TrackArtwork
-              artworkUrl={dynamicPlaylistArtworks[0]}
-              size={400}
-              variant="album"
-              preferProxy
-              className="size-44 shrink-0 rounded-xl object-cover shadow-2xl ring-1 ring-white/10"
-            />
+            <div className="group relative size-44 shrink-0 overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10">
+              <TrackArtwork
+                artworkUrl={dynamicPlaylistArtworks[0]}
+                size={400}
+                variant="album"
+                preferProxy
+                className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+              />
+              {isLocalPlaylistView && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleChooseCustomArtwork();
+                  }}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 text-white text-xs font-semibold cursor-pointer z-10"
+                  title="Set single cover image for this playlist"
+                >
+                  <PencilIcon size={20} />
+                  <span>Set cover image</span>
+                </button>
+              )}
+            </div>
           ) : undefined}
           actions={(
             <div className="flex items-center gap-2">
@@ -879,6 +1021,38 @@ export function PlaylistView({ playlist, playerController, libraryController, on
                   <span>Save to Library</span>
                 </button>
               )}
+
+              <Tooltip
+                content={
+                  privacy === "private"
+                    ? "Playlist is Private (only accessible via shared link). Click to make Public"
+                    : "Playlist is Public. Click to make Private"
+                }
+              >
+                <button
+                  type="button"
+                  onClick={handleTogglePrivacy}
+                  aria-label={privacy === "private" ? "Make playlist public" : "Make playlist private"}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3.5 py-2.5 text-xs font-semibold transition-all border cursor-pointer select-none",
+                    privacy === "private"
+                      ? "border-border/40 bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
+                  )}
+                >
+                  {privacy === "private" ? (
+                    <>
+                      <LockIcon size={14} className="shrink-0" />
+                      <span>Private</span>
+                    </>
+                  ) : (
+                    <>
+                      <GlobeIcon size={14} className="shrink-0" />
+                      <span>Public</span>
+                    </>
+                  )}
+                </button>
+              </Tooltip>
 
               <Tooltip content={isShareCopied ? "Link copied!" : "Share playlist"}>
                 <button

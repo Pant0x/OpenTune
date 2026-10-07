@@ -91,6 +91,7 @@ export interface Playlist {
   isSaved?: boolean;
   isEditable?: boolean;
   localPaths?: string[];
+  privacy?: "public" | "private";
 }
 
 /**
