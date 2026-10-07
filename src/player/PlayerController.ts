@@ -668,7 +668,9 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
           videoId.startsWith("shared-local:")
         ),
       );
-      if (isSharedOrSpotifyMatch && knownTrack) {
+      if (knownTrack?.streamUrl) {
+        track = knownTrack;
+      } else if (isSharedOrSpotifyMatch && knownTrack) {
         let cached = spotifyToYoutubeTrackCache.get(videoId);
         if (!cached && typeof localStorage !== "undefined") {
           try {
@@ -783,7 +785,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       });
 
       // Proactively ensure track uses authentic official release artwork
-      if (track.source !== "local") {
+      if (track.source !== "local" && !track.streamUrl) {
         if (!track.artworkUrl || isVideoThumbnailUrl(track.artworkUrl)) {
           const cachedCover = SpotifyService.getCachedTrackCoverUrl(track.title, track.artist, track.album);
           if (cachedCover) {
@@ -825,7 +827,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
             .catch(() => {});
         }
       }
-      if (autoplayWhenQueueEnds && playbackQueue?.length === 1) {
+      if (autoplayWhenQueueEnds && playbackQueue?.length === 1 && !track.streamUrl) {
         void this.primeRadioQueue(track, requestId);
       }
       /*
@@ -1678,7 +1680,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
         });
       }
 
-      if (track.source === "local") {
+      if (track.source === "local" || track.streamUrl) {
         const audioData = await this.dataSource.getStreamData?.(track);
         if (!audioData) {
           throw new Error("The data source does not support local audio playback.");
@@ -1990,6 +1992,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
   /** Whether a track can be handed to a standby deck rather than loaded on the spot. */
   private usesPreloadDeck(track: Track): boolean {
+    if (track.streamUrl) return false;
     return hasPreloadDeck(getAudioEngineMode(), {
       isLocal: track.source === "local",
       isDownloaded: isTrackDownloaded(track.id),

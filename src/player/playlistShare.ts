@@ -17,6 +17,7 @@ export interface SharedTrackItem {
   artworkUrl?: string;
   source?: Track["source"];
   isLocal?: boolean;
+  streamUrl?: string;
 }
 
 export interface SharedPlaylistPayload {
@@ -99,6 +100,7 @@ export function generatePlaylistShareLink(playlist: Playlist, tracks?: Track[]):
       artworkUrl: t.artworkUrl && !t.artworkUrl.startsWith("local-") ? t.artworkUrl : undefined,
       source: t.source || (t.localPath ? "local" : "youtube"),
       isLocal: Boolean(t.localPath || t.source === "local"),
+      streamUrl: t.streamUrl,
     })),
   };
 
@@ -191,6 +193,7 @@ export function registerSharedPlaylist(payload: SharedPlaylistPayload): Playlist
     artworkUrl: t.artworkUrl,
     source: (t.source as Track["source"]) ?? (t.isLocal ? "local" : "youtube"),
     playlistItemId: `${id}:${idx}`,
+    streamUrl: t.streamUrl,
   }));
 
   const playlist: Playlist = {

@@ -8151,6 +8151,13 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   async getStreamData(track: Track): Promise<StreamData> {
+    if (track.streamUrl) {
+      return {
+        mimeType: track.mimeType ?? "audio/mpeg",
+        sourceUrl: track.streamUrl,
+      };
+    }
+
     if (usesRustAudioEngine()) {
       return this.getRustStreamData(track);
     }
@@ -8243,6 +8250,13 @@ export class YouTubeMusicDataSource extends DataSource {
    * was only ever in service of an `<audio>` element that no longer exists on this path.
    */
   private async getRustStreamData(track: Track): Promise<StreamData> {
+    if (track.streamUrl) {
+      return {
+        mimeType: track.mimeType ?? "audio/mpeg",
+        sourceUrl: track.streamUrl,
+      };
+    }
+
     if (track.source === "local") {
       if (!track.localPath) {
         throw new Error("Local track path is missing.");

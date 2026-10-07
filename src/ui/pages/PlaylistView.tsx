@@ -10,6 +10,7 @@ import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { addLocalPlaylistPath, isLocalPlaylist, LOCAL_IMAGE_PREFIX, notifyLocalPlaylistsChanged, setLocalPlaylistArtwork, setLocalPlaylistPrivacy } from "../../player/localPlaylists";
 import { generatePlaylistShareLink, saveSharedPlaylistToLibrary } from "../../player/playlistShare";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Tooltip } from "@/components/motion/tooltip";
 import { logInternalError, logInternalWarn } from "../../internal/logging";
@@ -253,6 +254,8 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   const navigateArtist = useArtistNavigation();
 
   const [isShareCopied, setIsShareCopied] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [sharingStatus, setSharingStatus] = useState<string | null>(null);
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
   const isSharedPlaylistView = Boolean(playlist?.id?.startsWith("shared-playlist:"));
 
@@ -302,14 +305,64 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   };
 
   const handleSharePlaylist = async () => {
-    if (!playlist) return;
+    if (!playlist || isSharing) return;
+    setIsSharing(true);
+    setSharingStatus(null);
     try {
+      const tracksToUpload = tracks.filter((t) => (t.localPath || t.source === "local") && !t.streamUrl);
+      let count = 0;
+      const total = tracksToUpload.length;
+
+      for (const trackToUpload of tracksToUpload) {
+        if (!trackToUpload.localPath) continue;
+
+        const cacheKey = `opentune:audio_upload:${trackToUpload.localPath}`;
+        let directUrl: string | null = null;
+        try {
+          directUrl = localStorage.getItem(cacheKey);
+        } catch {}
+
+        if (!directUrl) {
+          count++;
+          setSharingStatus(`Uploading audio (${count}/${total})...`);
+          try {
+            directUrl = await invoke<string>("upload_audio_file", {
+              filePath: trackToUpload.localPath,
+            });
+            if (directUrl) {
+              try {
+                localStorage.setItem(cacheKey, directUrl);
+              } catch {}
+            }
+          } catch (uploadError) {
+            logInternalWarn("PlaylistView.handleSharePlaylist upload failed", {
+              track: trackToUpload.title,
+              error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+            });
+          }
+        }
+
+        if (directUrl) {
+          trackToUpload.streamUrl = directUrl;
+        }
+      }
+
+      setTracks([...tracks]);
+
       const shareUrl = generatePlaylistShareLink(playlist, tracks);
       await navigator.clipboard.writeText(shareUrl);
       setIsShareCopied(true);
-      window.setTimeout(() => setIsShareCopied(false), 2000);
+      setSharingStatus("Link copied!");
+      window.setTimeout(() => {
+        setIsShareCopied(false);
+        setSharingStatus(null);
+      }, 3000);
     } catch (err) {
       logInternalError("PlaylistView.handleSharePlaylist failed", err);
+      setSharingStatus("Failed to share");
+      window.setTimeout(() => setSharingStatus(null), 3000);
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -1064,15 +1117,17 @@ export function PlaylistView({ playlist, playerController, libraryController, on
                 </button>
               </Tooltip>
 
-              <Tooltip content={isShareCopied ? "Link copied!" : "Share playlist"}>
+              <Tooltip content={sharingStatus || (isShareCopied ? "Link copied!" : "Share playlist")}>
                 <button
                   type="button"
-                  disabled={tracks.length === 0}
+                  disabled={tracks.length === 0 || isSharing}
                   onClick={() => void handleSharePlaylist()}
                   aria-label="Share playlist"
                   className="flex size-11 items-center justify-center rounded-full bg-card text-foreground transition-colors hover:bg-muted hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
-                  {isShareCopied ? (
+                  {isSharing ? (
+                    <SpinnerSteps size={18} color="currentColor" />
+                  ) : isShareCopied ? (
                     <CheckIcon size={18} className="text-primary" aria-hidden="true" />
                   ) : (
                     <ShareIcon size={18} aria-hidden="true" />
