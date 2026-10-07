@@ -57,7 +57,7 @@ function resizeImageToDataUrl(file: File): Promise<string> {
   });
 }
 
-export function ProfilePage({ onBack }: ProfilePageProps) {
+export function ProfilePage({ onBack, onOpenSettings }: ProfilePageProps) {
   const {
     profile,
     sessionDetails,
@@ -218,9 +218,9 @@ export function ProfilePage({ onBack }: ProfilePageProps) {
       <div className="flex items-center justify-between">
         <button
           type="button"
-          onClick={onBack}
+          onClick={onOpenSettings || onBack}
           className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-card/70 transition-colors cursor-pointer"
-          aria-label="Go back"
+          aria-label="Back to settings"
         >
           <ArrowLeftIcon size={18} />
           <span>Back</span>

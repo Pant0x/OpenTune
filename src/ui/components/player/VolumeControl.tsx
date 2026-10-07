@@ -85,7 +85,7 @@ export function VolumeControl() {
             <VolumeGlyph size={18} aria-hidden="true" />
           </button>
           {showVolumeBadge && (
-            <span className="text-[11px] tabular-nums font-semibold text-muted-foreground/80 min-w-[26px]">
+            <span className="text-[11px] tabular-nums font-semibold text-muted-foreground/80 min-w-[26px] antialiased select-none">
               {percent}%
             </span>
           )}

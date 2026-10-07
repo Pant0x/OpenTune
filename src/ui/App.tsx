@@ -1751,7 +1751,7 @@ export default function App() {
             )}
             {currentView.view === "profile" && (
               <ProfilePage
-                onBack={canNavigateBack ? handleNavigateBack : handleNavigateHome}
+                onBack={handleOpenSettings}
                 onOpenSettings={handleOpenSettings}
               />
             )}

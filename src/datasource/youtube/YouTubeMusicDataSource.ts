@@ -8515,7 +8515,7 @@ export class YouTubeMusicDataSource extends DataSource {
     const empty: SearchResults = { artists: [], tracks: [], albums: [], playlists: [] };
     if (!normalizedQuery) return empty;
 
-    const cacheKey = `youtube-music:search:${category}:v3:${normalizedQuery.toLocaleLowerCase()}`;
+    const cacheKey = `youtube-music:search:${category}:v4:${normalizedQuery.toLocaleLowerCase()}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached) return cached;
 
@@ -8524,22 +8524,33 @@ export class YouTubeMusicDataSource extends DataSource {
       let response: any = await client.music.search(normalizedQuery, { type: category });
       let items = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
 
-      // Fast single continuation: gives 40-50 high-relevance items instantly with zero lag
+      // Deep continuations: fetch up to 4 continuation batches to bring 80-100+ items
       if (
         (category === "song" || category === "video") &&
         response?.has_continuation &&
         typeof response.getContinuation === "function"
       ) {
-        try {
-          const next = await response.getContinuation();
-          if (next?.page) {
-            items = items.concat(this.collectMusicItems(next.page, BROWSE_ITEM_TYPES));
+        let currentResp = response;
+        for (
+          let c = 0;
+          c < 4 &&
+          currentResp?.has_continuation &&
+          typeof currentResp.getContinuation === "function";
+          c++
+        ) {
+          try {
+            const next = await currentResp.getContinuation();
+            if (next?.page) {
+              items = items.concat(this.collectMusicItems(next.page, BROWSE_ITEM_TYPES));
+            }
+            currentResp = next;
+          } catch (contErr) {
+            logInternalWarn("YouTubeMusicDataSource.searchCategory continuation skipped", {
+              category,
+              error: contErr instanceof Error ? contErr.message : String(contErr),
+            });
+            break;
           }
-        } catch (contErr) {
-          logInternalWarn("YouTubeMusicDataSource.searchCategory fast continuation skipped", {
-            category,
-            error: contErr instanceof Error ? contErr.message : String(contErr),
-          });
         }
       }
 

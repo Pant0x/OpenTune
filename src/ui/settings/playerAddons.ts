@@ -9,7 +9,7 @@ import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 const EVENT_NAME = "amber-player-addons-changed";
 
 const KEYS = {
-  volumeBadge: "amber_show_volume_badge",
+  volumeBadge: "amber_show_volume_badge_v2",
   waveSeekbar: "amber_wave_seekbar",
   djTrackInfo: "amber_dj_track_info",
   oneko: "amber_oneko_enabled",
@@ -59,8 +59,8 @@ function subscribe(callback: () => void) {
 export function useVolumeBadge(): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => readLocalBooleanSetting(KEYS.volumeBadge, true),
-    () => true,
+    () => readLocalBooleanSetting(KEYS.volumeBadge, false),
+    () => false,
   );
 }
 export function setVolumeBadge(enabled: boolean): void {
@@ -135,7 +135,7 @@ export function setRewindButton(enabled: boolean): void {
 
 export async function hydratePlayerAddonSettings(): Promise<void> {
   await Promise.all([
-    hydrateLocalBooleanSetting(KEYS.volumeBadge, true, EVENT_NAME),
+    hydrateLocalBooleanSetting(KEYS.volumeBadge, false, EVENT_NAME),
     hydrateLocalBooleanSetting(KEYS.waveSeekbar, false, EVENT_NAME),
     hydrateLocalBooleanSetting(KEYS.djTrackInfo, false, EVENT_NAME),
     hydrateLocalBooleanSetting(KEYS.oneko, false, EVENT_NAME),
