@@ -1771,7 +1771,7 @@ export default function App() {
         <div
           className={cn(
             "group/immersive-playerbar",
-            "px-2 pb-2 pt-2",
+            "w-full",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

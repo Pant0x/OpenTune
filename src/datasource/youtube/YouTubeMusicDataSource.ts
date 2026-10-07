@@ -6428,7 +6428,7 @@ export class YouTubeMusicDataSource extends DataSource {
       return { artists: [], tracks: [], albums: [], playlists: [] };
     }
     const cacheId = normalizedQuery.toLocaleLowerCase();
-    const cacheKey = `youtube-music:mixed-search:v6:${cacheId}`;
+    const cacheKey = `youtube-music:mixed-search:v7:${cacheId}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached && this.hasSearchResults(cached)) {
       if (cached.artists) {
@@ -6469,11 +6469,12 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private async fetchMixedSearchFresh(query: string): Promise<SearchResults> {
     const client = await this.getMusicClient();
-    const [response, artistResponse, channelResponse, spotifyArtists] = await Promise.all([
+    const [response, artistResponse, channelResponse, spotifyArtists, songResponse] = await Promise.all([
       client.music.search(query),
       client.music.search(query, { type: "artist" }).catch(() => null),
       this.getWebClient().then((web) => web.search(query, { type: "channel" })).catch(() => null),
       SpotifyService.searchArtists(query, 3).catch(() => []),
+      client.music.search(query, { type: "song" }).catch(() => null),
     ]);
     const fromShelf = <T>(
       shelf: { contents?: unknown[] } | undefined,
@@ -6575,9 +6576,16 @@ export class YouTubeMusicDataSource extends DataSource {
         isSaved: libraryPlaylistIds.has(playlist.id.replace(/^VL/, "")),
       }));
 
+    const songDirectItems = songResponse
+      ? this.collectMusicItems(songResponse.page, BROWSE_ITEM_TYPES)
+      : [];
+
     let tracks = this.uniqueById([
       ...shelfTracks,
       ...shelfVideos,
+      ...this.songOrVideoItems(songDirectItems)
+        .map((item) => this.toTrack(item))
+        .filter((item): item is Track => Boolean(item)),
       ...this.songOrVideoItems(fallbackItems)
         .map((item) => this.toTrack(item))
         .filter((item): item is Track => Boolean(item)),
@@ -8507,14 +8515,40 @@ export class YouTubeMusicDataSource extends DataSource {
     const empty: SearchResults = { artists: [], tracks: [], albums: [], playlists: [] };
     if (!normalizedQuery) return empty;
 
-    const cacheKey = `youtube-music:search:${category}:v1:${normalizedQuery.toLocaleLowerCase()}`;
+    const cacheKey = `youtube-music:search:${category}:v2:${normalizedQuery.toLocaleLowerCase()}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached) return cached;
 
     try {
       const client = await this.getMusicClient();
-      const response = await client.music.search(normalizedQuery, { type: category });
-      const items = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
+      let response: any = await client.music.search(normalizedQuery, { type: category });
+      let items = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
+
+      let continuationCount = 0;
+      // Fetch continuation pages for deep search results (up to 100+ items instead of 20)
+      const maxContinuations = (category === "song" || category === "video") ? 4 : 2;
+      while (
+        response &&
+        response.has_continuation &&
+        typeof response.getContinuation === "function" &&
+        continuationCount < maxContinuations
+      ) {
+        try {
+          response = await response.getContinuation();
+          continuationCount++;
+          if (response?.page) {
+            const moreItems = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
+            items = items.concat(moreItems);
+          }
+        } catch (contErr) {
+          logInternalWarn("YouTubeMusicDataSource.searchCategory continuation failed", {
+            category,
+            continuationCount,
+            error: contErr instanceof Error ? contErr.message : String(contErr),
+          });
+          break;
+        }
+      }
 
       const results: SearchResults = {
         artists: this.uniqueById(

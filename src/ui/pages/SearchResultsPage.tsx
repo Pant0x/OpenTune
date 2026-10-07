@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { SpinnerSteps } from "@/components/motion/loader";
-import { PlayActiveIcon, PlayIcon, SearchIcon } from "@/ui/icons";
+import { PauseIcon, PlayActiveIcon, PlayIcon, SearchIcon } from "@/ui/icons";
 import type {
   Album,
   Artist,
@@ -20,6 +20,8 @@ import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { getVideoArtworkFallback } from "../../datasource/youtube/artwork";
 import { recordSearchSelection } from "../../player/searchAffinity";
 import { deduplicateArtists, normSimp, normTranslit } from "../../datasource/searchNormalize";
+import { SpotifyService, type SpotifyArtistOverview } from "../../services/SpotifyService";
+import { useNowPlaying } from "../hooks/useNowPlaying";
 
 function normalizeSearchKey(value: string): string {
   return normTranslit(value);
@@ -219,11 +221,54 @@ export function SearchResultsPage({
     onOpenPlaylist(playlist);
   }, [onOpenPlaylist, query]);
 
+  const { currentTrack, isPlaying } = useNowPlaying();
+  const [isPlayingArtist, setIsPlayingArtist] = useState(false);
+
   const playTrack = useCallback((track: Track) => {
     recordSearchSelection(query, { id: track.id, title: track.title, artist: track.artist });
     if (onPlayTrack) void onPlayTrack(track);
     else void playerController.playTrackById(track.id, scopedResults.tracks, true);
   }, [onPlayTrack, playerController, query, scopedResults.tracks]);
+
+  const handlePlayArtist = useCallback(async (artist: Artist) => {
+    recordSearchSelection(query, { id: artist.id, name: artist.name });
+    const artistName = artist.name.toLowerCase().trim();
+    const trackArtist = (currentTrack?.artist || "").toLowerCase().trim();
+    const matchesArtist = trackArtist === artistName ||
+      trackArtist.includes(artistName) ||
+      (currentTrack?.artists || []).some((a) => a.name.toLowerCase().trim() === artistName);
+
+    if (matchesArtist) {
+      playerController.togglePlayPause();
+      return;
+    }
+
+    setIsPlayingArtist(true);
+    try {
+      const page = await libraryController.getArtist(artist.id).catch(() => null);
+      const matchingTracks = scopedResults.tracks.filter((t) =>
+        t.artist?.toLowerCase().includes(artistName) ||
+        t.artists?.some((a) => a.name.toLowerCase().includes(artistName))
+      );
+
+      const tracksToPlay = (page?.popularSongs && page.popularSongs.length > 0)
+        ? page.popularSongs
+        : (page?.allSongs && page.allSongs.length > 0)
+        ? page.allSongs
+        : matchingTracks;
+
+      if (tracksToPlay.length > 0) {
+        await playerController.playTrackById(tracksToPlay[0].id, tracksToPlay, true);
+      } else {
+        const searchRes = await libraryController.searchCategory(artist.name, "song").catch(() => null);
+        if (searchRes?.tracks?.[0]) {
+          await playerController.playTrackById(searchRes.tracks[0].id, searchRes.tracks, true);
+        }
+      }
+    } finally {
+      setIsPlayingArtist(false);
+    }
+  }, [currentTrack?.artist, currentTrack?.artists, libraryController, playerController, query, scopedResults.tracks]);
 
   const playVideoTrack = useCallback((track: Track) => {
     const videoTrack: Track = { ...track, isVideo: true };
@@ -332,6 +377,35 @@ export function SearchResultsPage({
     return null;
   }, [scopedResults, scope, query, songsFirst]);
 
+  const [artistOverview, setArtistOverview] = useState<SpotifyArtistOverview | null>(null);
+
+  useEffect(() => {
+    if (topResult?.kind !== "artist" || !topResult.item.name) {
+      setArtistOverview(null);
+      return;
+    }
+    let active = true;
+    void SpotifyService.getArtistOverview(topResult.item.name)
+      .then((overview) => {
+        if (active) setArtistOverview(overview);
+      })
+      .catch(() => {
+        if (active) setArtistOverview(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [topResult?.kind, topResult?.kind === "artist" ? topResult.item.name : null]);
+
+  const isTopArtistPlaying = useMemo(() => {
+    if (topResult?.kind !== "artist" || !currentTrack) return false;
+    const artistName = topResult.item.name.toLowerCase().trim();
+    const trackArtist = (currentTrack.artist || "").toLowerCase().trim();
+    return (trackArtist === artistName ||
+      trackArtist.includes(artistName) ||
+      (currentTrack.artists || []).some((a) => a.name.toLowerCase().trim() === artistName)) && isPlaying;
+  }, [topResult, currentTrack, isPlaying]);
+
   const displayedArtists = useMemo(() => {
     if (scope !== "all") return scopedResults.artists;
     const topArtist = topResult?.kind === "artist" ? topResult.item : null;
@@ -433,14 +507,14 @@ export function SearchResultsPage({
                         iconSize={topResult.kind === "track" ? 34 : 40}
                         variant={topResult.kind}
                       />
-                      <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex flex-col gap-1.5 min-w-0">
                         <span className={cn(
                           "text-white tracking-tight truncate line-clamp-1",
-                          topResult.kind === "track" ? "text-xl font-bold" : "text-2xl font-black"
+                          topResult.kind === "artist" ? "text-2xl font-black" : "text-xl font-bold"
                         )}>
                           {topResult.kind === "artist" ? topResult.item.name : topResult.item.title}
                         </span>
-                        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
                           {topResult.kind === "track" && (
                             <>
                               <ArtistLinks artists={topResult.item.artists} fallback={topResult.item.artist} />
@@ -450,25 +524,63 @@ export function SearchResultsPage({
                           <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">
                             {topResult.kind === "artist" ? (topResult.item.isCreator ? "Channel" : "Artist") : topResult.kind === "track" ? "Song" : "Album"}
                           </span>
+                          {topResult.kind === "artist" && (
+                            <>
+                              {artistOverview?.monthlyListeners ? (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-white/80 font-medium">
+                                    {artistOverview.monthlyListeners.toLocaleString()} monthly listeners
+                                  </span>
+                                </>
+                              ) : topResult.item.subscriberCount ? (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-white/80 font-medium">
+                                    {topResult.item.subscriberCount}
+                                  </span>
+                                </>
+                              ) : null}
+                              {artistOverview?.worldRank && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-primary font-bold">
+                                    #{artistOverview.worldRank} in the world
+                                  </span>
+                                </>
+                              )}
+                            </>
+                          )}
                         </div>
+                        {topResult.kind === "artist" && (artistOverview?.cleanBio || artistOverview?.bio) && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1 max-w-lg leading-relaxed">
+                            {artistOverview.cleanBio || artistOverview.bio}
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <button
                       type="button"
                       className={cn(
-                        "absolute flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200 cursor-pointer",
+                        "absolute flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-2xl shadow-primary/40 opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-200 cursor-pointer z-10",
                         topResult.kind === "track" ? "bottom-4 right-4 size-11" : "bottom-5 right-5 size-12"
                       )}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (topResult.kind === "artist") handleOpenArtist(topResult.item);
+                        if (topResult.kind === "artist") void handlePlayArtist(topResult.item);
                         else if (topResult.kind === "track") playTrack(topResult.item);
                         else if (topResult.kind === "album") handleOpenAlbum(topResult.item);
                       }}
-                      aria-label="Play"
+                      aria-label={isTopArtistPlaying ? "Pause" : "Play"}
                     >
-                      <PlayIcon size={topResult.kind === "track" ? 20 : 22} fill="currentColor" className="ml-0.5" />
+                      {isPlayingArtist ? (
+                        <SpinnerSteps size={20} color="currentColor" />
+                      ) : isTopArtistPlaying ? (
+                        <PauseIcon size={22} fill="currentColor" />
+                      ) : (
+                        <PlayIcon size={topResult.kind === "track" ? 20 : 22} fill="currentColor" className="ml-0.5" />
+                      )}
                     </button>
                   </div>
                 </section>
@@ -478,18 +590,18 @@ export function SearchResultsPage({
                 <section className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold tracking-tight text-foreground">Songs</h2>
-                    {scopedResults.tracks.length > 8 && (
+                    {scopedResults.tracks.length > 10 && (
                       <button
                         type="button"
                         onClick={() => setScope("songs")}
                         className="text-xs font-semibold text-muted-foreground hover:text-white transition-colors cursor-pointer"
                       >
-                        See all
+                        See all ({scopedResults.tracks.length})
                       </button>
                     )}
                   </div>
                   <div className="flex flex-col gap-1">
-                    {scopedResults.tracks.slice(0, 8).map((track, displayIndex) => {
+                    {scopedResults.tracks.slice(0, 10).map((track, displayIndex) => {
                       const index = flatItems.findIndex(
                         (item) => item.kind === "track" && item.track.id === track.id,
                       );
@@ -505,7 +617,7 @@ export function SearchResultsPage({
                           )}
                           style={enterStyle(index)}
                           onContextMenu={(event) => openTrackMenu(event, track)}
-                          onClick={() => playVideoTrack(track)}
+                          onClick={() => playTrack(track)}
                           onMouseEnter={() => handleMouseEnter(index)}
                         >
                           <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
