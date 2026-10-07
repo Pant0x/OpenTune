@@ -275,11 +275,13 @@ export default function App() {
           invoke<boolean>("app_is_fullscreen").catch(() => appWindow.isFullscreen()),
         ]);
         if (disposed) return;
-        setIsWindowMaximizedOrFullscreen(Boolean(maximized || fullscreen));
+        const isMaxOrFs = Boolean(maximized || fullscreen);
+        setIsWindowMaximizedOrFullscreen(isMaxOrFs);
         document.documentElement.toggleAttribute(
           "data-window-maximized",
-          Boolean(maximized || fullscreen),
+          isMaxOrFs,
         );
+        document.body.style.backgroundColor = isMaxOrFs ? "#000" : "transparent";
       } catch (error) {
         logInternalWarn("App.syncWindowRadius failed", {
           error: error instanceof Error ? error.message : String(error),
@@ -288,10 +290,12 @@ export default function App() {
     };
 
     void syncWindowRadius();
+    window.addEventListener("resize", syncWindowRadius);
     const unlistenResized = appWindow.onResized(() => void syncWindowRadius());
 
     return () => {
       disposed = true;
+      window.removeEventListener("resize", syncWindowRadius);
       void unlistenResized.then((unlisten) => unlisten());
     };
   }, []);
@@ -1771,7 +1775,7 @@ export default function App() {
         <div
           className={cn(
             "group/immersive-playerbar",
-            "w-full",
+            "px-2 pb-2 pt-2",
           )}
         >
           {/* Its own boundary: the player bar is the one region whose loss ends the session —

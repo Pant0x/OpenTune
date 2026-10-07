@@ -335,10 +335,21 @@ html[data-theme="galaxy"] {
  */
 html[data-window-maximized],
 html[data-native-window-controls],
-html[data-platform-linux] {
-  --window-radius: 0px;
-  --window-edge: transparent;
-  --window-edge-highlight: transparent;
+html[data-platform-linux],
+html:fullscreen {
+  --window-radius: 0px !important;
+  --window-edge: transparent !important;
+  --window-edge-highlight: transparent !important;
+}
+
+html[data-window-maximized],
+html[data-window-maximized] body,
+html[data-window-maximized] #root,
+html:fullscreen,
+html:fullscreen body,
+html:fullscreen #root {
+  background: #000 !important;
+  background-color: #000 !important;
 }
 
 html,

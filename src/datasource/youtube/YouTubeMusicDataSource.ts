@@ -8515,7 +8515,7 @@ export class YouTubeMusicDataSource extends DataSource {
     const empty: SearchResults = { artists: [], tracks: [], albums: [], playlists: [] };
     if (!normalizedQuery) return empty;
 
-    const cacheKey = `youtube-music:search:${category}:v2:${normalizedQuery.toLocaleLowerCase()}`;
+    const cacheKey = `youtube-music:search:${category}:v3:${normalizedQuery.toLocaleLowerCase()}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached) return cached;
 
@@ -8524,29 +8524,22 @@ export class YouTubeMusicDataSource extends DataSource {
       let response: any = await client.music.search(normalizedQuery, { type: category });
       let items = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
 
-      let continuationCount = 0;
-      // Fetch continuation pages for deep search results (up to 100+ items instead of 20)
-      const maxContinuations = (category === "song" || category === "video") ? 4 : 2;
-      while (
-        response &&
-        response.has_continuation &&
-        typeof response.getContinuation === "function" &&
-        continuationCount < maxContinuations
+      // Fast single continuation: gives 40-50 high-relevance items instantly with zero lag
+      if (
+        (category === "song" || category === "video") &&
+        response?.has_continuation &&
+        typeof response.getContinuation === "function"
       ) {
         try {
-          response = await response.getContinuation();
-          continuationCount++;
-          if (response?.page) {
-            const moreItems = this.collectMusicItems(response.page, BROWSE_ITEM_TYPES);
-            items = items.concat(moreItems);
+          const next = await response.getContinuation();
+          if (next?.page) {
+            items = items.concat(this.collectMusicItems(next.page, BROWSE_ITEM_TYPES));
           }
         } catch (contErr) {
-          logInternalWarn("YouTubeMusicDataSource.searchCategory continuation failed", {
+          logInternalWarn("YouTubeMusicDataSource.searchCategory fast continuation skipped", {
             category,
-            continuationCount,
             error: contErr instanceof Error ? contErr.message : String(contErr),
           });
-          break;
         }
       }
 

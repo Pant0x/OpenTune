@@ -232,7 +232,7 @@ export function PlayerBar({ onToggleLyrics, onToggleQueue: _onToggleQueue, isQue
 
       <div
         style={coverAmbienceStyle}
-        className="group/playerbar flex shrink-0 items-center w-full bg-card text-foreground border-t border-border/40 shadow-lg px-4 py-2 min-h-[72px]"
+        className="group/playerbar flex shrink-0 items-center rounded-2xl bg-card text-foreground border border-border/30 shadow-md px-4 py-2 min-h-[72px]"
       >
         <div className="grid w-full grid-cols-[minmax(250px,1.3fr)_minmax(320px,2fr)_minmax(180px,1fr)] items-center gap-4">
           {/* Left: Track Info & Like */}

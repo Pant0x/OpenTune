@@ -1,6 +1,6 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { SpinnerSteps } from "@/components/motion/loader";
+import { MusicVisualizer, SpinnerSteps } from "@/components/motion/loader";
 import { PauseIcon, PlayActiveIcon, PlayIcon, SearchIcon } from "@/ui/icons";
 import type {
   Album,
@@ -221,7 +221,7 @@ export function SearchResultsPage({
     onOpenPlaylist(playlist);
   }, [onOpenPlaylist, query]);
 
-  const { currentTrack, isPlaying } = useNowPlaying();
+  const { currentTrack, currentTrackId, isPlaying } = useNowPlaying();
   const [isPlayingArtist, setIsPlayingArtist] = useState(false);
 
   const playTrack = useCallback((track: Track) => {
@@ -606,6 +606,8 @@ export function SearchResultsPage({
                         (item) => item.kind === "track" && item.track.id === track.id,
                       );
                       const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                      const isTrackCurrent = currentTrackId === track.id;
+                      const isTrackPlaying = isTrackCurrent && isPlaying;
                       return (
                         <button
                           key={track.id}
@@ -613,6 +615,7 @@ export function SearchResultsPage({
                           data-selectable-index={index}
                           className={cn(
                             "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                            isTrackCurrent && "bg-white/[0.08]",
                             selected(index)
                           )}
                           style={enterStyle(index)}
@@ -620,7 +623,20 @@ export function SearchResultsPage({
                           onClick={() => playTrack(track)}
                           onMouseEnter={() => handleMouseEnter(index)}
                         >
-                          <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground flex items-center justify-end">
+                            {isTrackCurrent ? (
+                              isTrackPlaying ? (
+                                <MusicVisualizer
+                                  bars={4}
+                                  className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+                                />
+                              ) : (
+                                <PlayActiveIcon size={14} className="text-primary" />
+                              )
+                            ) : (
+                              <span>{displayIndex + 1}</span>
+                            )}
+                          </span>
                           <TrackArtwork
                             className="size-10 shrink-0 rounded-lg object-cover"
                             size={40}
@@ -629,13 +645,21 @@ export function SearchResultsPage({
                             iconSize={20}
                           />
                           <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                            <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                            <strong className={cn(
+                              "transition-colors",
+                              isTrackCurrent ? "text-primary" : "text-white group-hover/row:text-primary"
+                            )}>
+                              {track.title}
+                            </strong>
                             <ArtistLinks artists={track.artists} fallback={track.artist} />
                           </span>
                           <span className="text-xs tabular-nums text-muted-foreground pr-2">
                             {track.duration || ""}
                           </span>
-                          <PlayActiveIcon size={16} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                          <PlayActiveIcon size={16} className={cn(
+                            "transition-colors",
+                            isTrackCurrent ? "text-primary" : "text-muted-foreground group-hover/row:text-white"
+                          )} />
                         </button>
                       );
                     })}
@@ -654,6 +678,8 @@ export function SearchResultsPage({
                     (item) => item.kind === "track" && item.track.id === track.id,
                   );
                   const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                  const isTrackCurrent = currentTrackId === track.id;
+                  const isTrackPlaying = isTrackCurrent && isPlaying;
                   return (
                     <button
                       key={track.id}
@@ -661,6 +687,7 @@ export function SearchResultsPage({
                       data-selectable-index={index}
                       className={cn(
                         "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                        isTrackCurrent && "bg-white/[0.08]",
                         selected(index)
                       )}
                       style={enterStyle(index)}
@@ -668,7 +695,20 @@ export function SearchResultsPage({
                       onClick={() => playTrack(track)}
                       onMouseEnter={() => handleMouseEnter(index)}
                     >
-                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground flex items-center justify-end">
+                        {isTrackCurrent ? (
+                          isTrackPlaying ? (
+                            <MusicVisualizer
+                              bars={4}
+                              className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+                            />
+                          ) : (
+                            <PlayActiveIcon size={14} className="text-primary" />
+                          )
+                        ) : (
+                          <span>{displayIndex + 1}</span>
+                        )}
+                      </span>
                       <TrackArtwork
                         className="size-11 shrink-0 rounded-lg object-cover"
                         size={44}
@@ -677,13 +717,21 @@ export function SearchResultsPage({
                         iconSize={24}
                       />
                       <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                        <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                        <strong className={cn(
+                          "transition-colors",
+                          isTrackCurrent ? "text-primary" : "text-white group-hover/row:text-primary"
+                        )}>
+                          {track.title}
+                        </strong>
                         <ArtistLinks artists={track.artists} fallback={track.artist} />
                       </span>
                       <span className="text-xs tabular-nums text-muted-foreground pr-2">
                         {track.duration || ""}
                       </span>
-                      <PlayActiveIcon size={18} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                      <PlayActiveIcon size={18} className={cn(
+                        "transition-colors",
+                        isTrackCurrent ? "text-primary" : "text-muted-foreground group-hover/row:text-white"
+                      )} />
                     </button>
                   );
                 })}
@@ -700,6 +748,8 @@ export function SearchResultsPage({
                     (item) => item.kind === "track" && item.track.id === track.id,
                   );
                   const art = track.artworkUrl || (track.id ? getVideoArtworkFallback(track.id) : undefined);
+                  const isTrackCurrent = currentTrackId === track.id;
+                  const isTrackPlaying = isTrackCurrent && isPlaying;
                   return (
                     <button
                       key={track.id}
@@ -707,6 +757,7 @@ export function SearchResultsPage({
                       data-selectable-index={index}
                       className={cn(
                         "group/row flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring cursor-pointer",
+                        isTrackCurrent && "bg-white/[0.08]",
                         selected(index)
                       )}
                       style={enterStyle(index)}
@@ -714,7 +765,20 @@ export function SearchResultsPage({
                       onClick={() => playVideoTrack(track)}
                       onMouseEnter={() => handleMouseEnter(index)}
                     >
-                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{displayIndex + 1}</span>
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground flex items-center justify-end">
+                        {isTrackCurrent ? (
+                          isTrackPlaying ? (
+                            <MusicVisualizer
+                              bars={4}
+                              className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+                            />
+                          ) : (
+                            <PlayActiveIcon size={14} className="text-primary" />
+                          )
+                        ) : (
+                          <span>{displayIndex + 1}</span>
+                        )}
+                      </span>
                       <TrackArtwork
                         className="size-11 shrink-0 rounded-lg object-cover"
                         size={44}
@@ -723,13 +787,21 @@ export function SearchResultsPage({
                         iconSize={24}
                       />
                       <span className="flex min-w-0 flex-1 flex-col [&_span]:truncate [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                        <strong className="text-white group-hover/row:text-primary transition-colors">{track.title}</strong>
+                        <strong className={cn(
+                          "transition-colors",
+                          isTrackCurrent ? "text-primary" : "text-white group-hover/row:text-primary"
+                        )}>
+                          {track.title}
+                        </strong>
                         <ArtistLinks artists={track.artists} fallback={track.artist} />
                       </span>
                       <span className="text-xs tabular-nums text-muted-foreground pr-2">
                         {track.duration || ""}
                       </span>
-                      <PlayActiveIcon size={18} className="text-muted-foreground group-hover/row:text-white transition-colors" />
+                      <PlayActiveIcon size={18} className={cn(
+                        "transition-colors",
+                        isTrackCurrent ? "text-primary" : "text-muted-foreground group-hover/row:text-white"
+                      )} />
                     </button>
                   );
                 })}

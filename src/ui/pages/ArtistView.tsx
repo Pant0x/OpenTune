@@ -43,6 +43,7 @@ import { AlbumCard } from "../components/AlbumCard";
 import { AlbumGridSkeleton, TrackListSkeleton } from "../components/Skeleton";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
+import { MusicVisualizer } from "@/components/motion/loader";
 import { ArtistLinks, parseTrackArtistsWithFeatures } from "../components/ArtistLinks";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "../components/PlaylistContextMenu";
@@ -1203,8 +1204,15 @@ export function ArtistView({
                       >
                         {/* Index or Play Icon */}
                         <div className="w-10 flex items-center justify-center shrink-0">
-                          {isItemPlaying ? (
-                            <PlayActiveIcon size={16} className="text-primary animate-pulse" />
+                          {isItemCurrent ? (
+                            isItemPlaying ? (
+                              <MusicVisualizer
+                                bars={4}
+                                className="[--music-gap:2px] [--music-height:13px] [--music-width:17px]"
+                              />
+                            ) : (
+                              <PlayActiveIcon size={14} className="text-primary" />
+                            )
                           ) : (
                             <>
                               <span className={cn(
