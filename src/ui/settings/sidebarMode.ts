@@ -50,7 +50,7 @@ export function writeSidebarWidth(width: number): void {
 
 export function toggleSidebarMode() {
   const current = getSidebarMode();
-  const next = current === "collapsed" ? "expanded" : "collapsed";
+  const next = current === "expanded" ? "collapsed" : "expanded";
   setSidebarMode(next);
 }
 

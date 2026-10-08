@@ -1877,7 +1877,14 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             // The only path that always exits, whatever the setting says.
             "tray-quit" => {
                 save_main_window_geometry_rust(app);
-                app.exit(0);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("os-close-requested", ());
+                }
+                let app_handle = app.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    app_handle.exit(0);
+                });
             }
             _ => {}
         })

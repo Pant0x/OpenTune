@@ -5549,7 +5549,7 @@ export class YouTubeMusicDataSource extends DataSource {
      * The preferred source is part of the key because it changes which source wins. Sharing
      * one key would mean changing the setting appears to do nothing until the cache expires.
      */
-    const cacheKey = `lyrics:synced:v3:${getPreferredLyricsSourceId()}:${track.id}`;
+    const cacheKey = `lyrics:synced:v4:${getPreferredLyricsSourceId()}:${track.id}`;
     const cached = await getCachedJson<Lyrics>(cacheKey);
     if (cached?.timing === "synced" && cached.lines.length > 0) return cached;
 
@@ -6040,7 +6040,28 @@ export class YouTubeMusicDataSource extends DataSource {
       ...(track.artists?.map((a) => a.name) ?? []),
     ].filter(Boolean);
 
-    for (const query of this.getLyricsQueries(track)) {
+    // Extract potential artist from title if uploaded as "Artist - Title" (common for unreleased leaks)
+    const titleDashMatch = track.title.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
+    if (titleDashMatch) {
+      const possibleArtist = titleDashMatch[1]!.trim();
+      if (possibleArtist && possibleArtist.length >= 2 && possibleArtist.length <= 40) {
+        expectedArtists.push(possibleArtist);
+      }
+    }
+
+    const queries = this.getLyricsQueries(track);
+    if (titleDashMatch) {
+      const artistPart = titleDashMatch[1]!.trim();
+      const titlePart = titleDashMatch[2]!.trim();
+      if (artistPart && titlePart) {
+        queries.push({
+          title: this.cleanLyricsLookupText(titlePart),
+          artist: this.cleanLyricsLookupText(artistPart),
+        });
+      }
+    }
+
+    for (const query of queries) {
       try {
         const searchQuery = `${query.title} ${query.artist}`.trim();
         const searchUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(searchQuery)}`;
@@ -6095,7 +6116,11 @@ export class YouTubeMusicDataSource extends DataSource {
           return isLyricsArtistMatch(expectedArtists, candArtist);
         });
 
-        const chosenSong = matched[0] || allSongHits[0];
+        // STRICT: NEVER fall back to allSongHits[0] if artist does not match!
+        // Unreleased uploads by third-party channels must never show a random bogus song!
+        if (matched.length === 0) continue;
+
+        const chosenSong = matched[0];
         if (!chosenSong?.id) continue;
 
         // Fetch official embed.js
@@ -6110,32 +6135,27 @@ export class YouTubeMusicDataSource extends DataSource {
         if (!embedResponse.ok) continue;
 
         const embedJsText = await embedResponse.text();
-        const jsonMatch = embedJsText.match(/JSON\.parse\('(.*?)'\)/s);
-        let rawHtml = "";
+        const startIdx = embedJsText.indexOf("JSON.parse('");
+        const endIdx = embedJsText.lastIndexOf("')");
+        if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) continue;
 
-        if (jsonMatch) {
-          try {
-            const unescapedJs = jsonMatch[1]
-              .replace(/\\"/g, '"')
-              .replace(/\\'/g, "'")
-              .replace(/\\n/g, "\n")
-              .replace(/\\\//g, "/");
-            const bodyIdx = unescapedJs.indexOf('class="rg_embed_body"');
-            if (bodyIdx !== -1) {
-              const start = unescapedJs.indexOf(">", bodyIdx) + 1;
-              const end = unescapedJs.indexOf("</div>", start);
-              rawHtml = unescapedJs.slice(start, end !== -1 ? end : undefined);
-            } else {
-              rawHtml = unescapedJs;
-            }
-          } catch {
-            rawHtml = embedJsText;
-          }
-        } else {
-          rawHtml = embedJsText;
-        }
+        let inside = embedJsText.slice(startIdx + "JSON.parse('".length, endIdx);
+        if (inside.startsWith('\\"')) inside = inside.slice(2);
+        if (inside.endsWith('\\"')) inside = inside.slice(0, -2);
 
-        if (!rawHtml) continue;
+        const html = inside
+          .replace(/\\\\\\"/g, '"')
+          .replace(/\\"/g, '"')
+          .replace(/\\'/g, "'")
+          .replace(/\\\\n/g, "\n")
+          .replace(/\\n/g, "\n")
+          .replace(/\\\//g, "/")
+          .replace(/\\\\/g, "");
+
+        const bodyMatch = html.match(/class=["']rg_embed_body["'][^>]*>(.*?)<\/div>/s);
+        if (!bodyMatch || !bodyMatch[1]) continue;
+
+        const rawHtml = bodyMatch[1];
 
         // Clean lyrics HTML into plain lines
         const cleanedText = rawHtml
@@ -6157,9 +6177,13 @@ export class YouTubeMusicDataSource extends DataSource {
           .map((line) => line.trim())
           .filter((line) => line.length > 0 && !isSectionHeaderLine(line))
           .map((line) => unmaskProfanity(stripSectionHeaderPrefix(line)))
-          .filter((line) => line.length > 0 && !/^\[.*?\]$/.test(line));
+          .map((line) => line.replace(/\\+/g, "").trim())
+          .filter((line) => line.length > 0)
+          .filter((line) => !/^\[.*?\]$/.test(line))
+          .filter((line) => !/powered by genius/i.test(line))
+          .filter((line) => !/genius/i.test(line));
 
-        if (rawLines.length === 0) continue;
+        if (rawLines.length < 3) continue;
 
         const timedLines = this.synthesizeLyricTimings(rawLines, track.durationSec);
         if (timedLines.length === 0) continue;
@@ -6188,11 +6212,14 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private calculateAutoIntroOffsetSec(track: Track, providerDurationSec?: number): number | undefined {
-    if (!track.durationSec || !providerDurationSec || providerDurationSec <= 0) return undefined;
+    // Only real music videos with visual intro skits should ever be offset.
+    // Standard audio and topic releases must NEVER be shifted backwards,
+    // otherwise outro padding delays the lyrics by 15-20 seconds!
+    if (!track.isVideo || !track.durationSec || !providerDurationSec || providerDurationSec <= 0) {
+      return undefined;
+    }
     const diff = track.durationSec - providerDurationSec;
-    // If the YouTube stream is longer than the provider recording by 1.2s to 120s,
-    // the leading excess is the YouTube intro.
-    if (diff >= 1.2 && diff <= 120.0) {
+    if (diff >= 2.5 && diff <= 30.0) {
       return Number(diff.toFixed(2));
     }
     return undefined;
@@ -6203,8 +6230,8 @@ export class YouTubeMusicDataSource extends DataSource {
     trackDurationSec?: number,
   ): Lyrics["lines"] {
     const totalDurationSec = trackDurationSec && trackDurationSec > 10 ? trackDurationSec : 180;
-    const introSec = Math.max(6.0, Math.min(18.0, totalDurationSec * 0.065));
-    const outroSec = Math.max(5.0, Math.min(15.0, totalDurationSec * 0.05));
+    const introSec = Math.max(3.0, Math.min(8.0, totalDurationSec * 0.035));
+    const outroSec = Math.max(3.0, Math.min(10.0, totalDurationSec * 0.04));
     const singingDuration = Math.max(10.0, totalDurationSec - introSec - outroSec);
 
     const lineWeights = plainLines.map((line) => Math.max(2, line.split(/\s+/).filter(Boolean).length));
@@ -6217,8 +6244,8 @@ export class YouTubeMusicDataSource extends DataSource {
       const lineText = plainLines[i]!;
       const weight = lineWeights[i]!;
       const lineDuration = Math.max(
-        2.2,
-        Math.min(6.5, (weight / Math.max(1, totalWeight)) * singingDuration),
+        2.0,
+        Math.min(6.0, (weight / Math.max(1, totalWeight)) * singingDuration),
       );
       const start = Number(currentTimeSec.toFixed(2));
       currentTimeSec += lineDuration;

@@ -104,7 +104,7 @@ export function Layout({
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    if (sidebarMode === "collapsed") {
+    if (sidebarMode !== "expanded") {
       setSidebarMode("expanded");
     }
 
@@ -396,7 +396,7 @@ export function Layout({
               onPointerUp={handleLeftResizePointerUp}
               onPointerCancel={handleLeftResizePointerUp}
               onDoubleClick={() => {
-                if (sidebarMode === "collapsed") setSidebarMode("expanded");
+                if (sidebarMode !== "expanded") setSidebarMode("expanded");
                 onSidebarWidthChange(SIDEBAR_EXPANDED_WIDTH);
               }}
             >

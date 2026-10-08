@@ -45,7 +45,7 @@ import {
   subscribeToLocalPlaylists,
 } from "../../player/localPlaylists";
 import { getAppSetting, setAppSetting } from "../../internal/appSettings";
-import { resolveSidebarWidth, toggleSidebarMode, useSidebarMode } from "../settings/sidebarMode";
+import { resolveSidebarWidth, setSidebarMode, useSidebarMode } from "../settings/sidebarMode";
 import { ArtistLinks } from "./ArtistLinks";
 import { TrackArtwork } from "./TrackArtwork";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
@@ -1351,7 +1351,7 @@ export function Sidebar({
               <Tooltip side="bottom" content="Collapse sidebar">
                 <button
                   type="button"
-                  onClick={() => toggleSidebarMode()}
+                  onClick={() => setSidebarMode("collapsed")}
                   aria-label="Collapse sidebar"
                   className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
@@ -1368,7 +1368,7 @@ export function Sidebar({
               <Tooltip side="right" content="Expand sidebar">
                 <button
                   type="button"
-                  onClick={() => toggleSidebarMode()}
+                  onClick={() => setSidebarMode("expanded")}
                   aria-label="Expand sidebar"
                   className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
