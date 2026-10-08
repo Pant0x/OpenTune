@@ -467,7 +467,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       }
       setCurrentPlaybackTime(engineTime);
       const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-      const effectiveIntro = mediaMode === "video" ? 0 : autoIntro;
+      const effectiveIntro = autoIntro;
       const time = engineTime + effectiveIntro + offset;
       const currentLines = linesRef.current;
       const next = findActiveLineIndex(currentLines, time);
@@ -627,10 +627,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     if (start === undefined || !track?.id) return;
     const current = playerController.getCurrentTime();
     const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-    const effectiveIntro = mediaMode === "video" ? 0 : autoIntro;
+    const effectiveIntro = autoIntro;
     const newOffset = start - (current + effectiveIntro);
     setLyricsOffset(track.id, newOffset);
-  }, [lines, track?.id, lyrics?.autoIntroOffsetSec, mediaMode]);
+  }, [lines, track?.id, lyrics?.autoIntroOffsetSec]);
   const registerLine = useCallback((index: number, element: HTMLElement | null) => {
     lineRefs.current[index] = element;
   }, []);

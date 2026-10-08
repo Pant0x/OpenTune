@@ -208,7 +208,5 @@ export function stripSectionHeaderPrefix(text: string): string {
  */
 export function cleanAdlibBrackets(text: string): string {
   if (!text) return "";
-  return text
-    .replace(/^[\s(\[{<«"'\u201C\u2018]+|[\s)\]}>»"'\u201D\u2019]+$/gu, "")
-    .trim();
+  return text.replace(/^[(\[{<«"'\u201C\u2018]+|[)\]}>»"'\u201D\u2019]+$/gu, "");
 }

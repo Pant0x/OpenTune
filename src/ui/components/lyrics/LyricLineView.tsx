@@ -184,11 +184,12 @@ export const LyricLineView = memo(function LyricLineView({
     return parseLyricTokens(cleanedText);
   }, [cleanedText, enableAdlibs]);
 
+  const isShortAdlib = cleanedText.trim().split(/\s+/).length <= 2 && cleanedText.trim().length <= 15;
   const adlibLine = forceAdlibLine
-    || (tokens.length > 0 && tokens.every((token) => token.type === "adlib"));
+    || (isShortAdlib && tokens.length > 0 && tokens.every((token) => token.type === "adlib"));
 
   const isArabic = isRtlText(cleanedText);
-  const sweeps = sweepEnabled && isActive && !adlibLine && !reduceMotion;
+  const sweeps = sweepEnabled && isActive && !reduceMotion;
   const sweepStyle = sweeps && sweep01 !== undefined
     ? ({ "--sweep": `${(Math.min(1, Math.max(0, sweep01)) * 100).toFixed(2)}%` } as CSSProperties)
     : undefined;
@@ -300,7 +301,7 @@ export const LyricLineView = memo(function LyricLineView({
     wordTokens.map((group, gIdx) => {
       const content = group.items.map((item) => {
         if (!item.isWord) {
-          return <span key={item.id}>{item.text}</span>;
+          return <span key={item.id} className="whitespace-pre">{item.text}</span>;
         }
 
         let state: "sung" | "unsung" | "active" = "unsung";
@@ -335,19 +336,52 @@ export const LyricLineView = memo(function LyricLineView({
       });
 
       if (group.type === "adlib") {
+        const isWholeLineAdlib = !tokens.some((t) => t.type === "main" && /\S/.test(t.text));
+
         const adlibContent = group.items.map((item) => {
-          const rawText = item.text;
-          const cleanText = cleanAdlibBrackets(rawText);
-          if (!cleanText) return null;
-          return <span key={item.id}>{cleanText}</span>;
+          if (!item.isWord) {
+            return <span key={item.id} className="whitespace-pre">{item.text}</span>;
+          }
+          const cleanText = cleanAdlibBrackets(item.text) || item.text;
+
+          let state: "sung" | "unsung" | "active" = "unsung";
+          let wordSweepStyle: CSSProperties | undefined;
+
+          if (sweep01 !== undefined && sweeps) {
+            if (sweep01 >= item.end) {
+              state = "sung";
+              wordSweepStyle = { "--w-sweep": "100%" } as CSSProperties;
+            } else if (sweep01 <= item.start) {
+              state = "unsung";
+              wordSweepStyle = { "--w-sweep": "0%" } as CSSProperties;
+            } else {
+              state = "active";
+              const frac = (sweep01 - item.start) / Math.max(0.0001, item.end - item.start);
+              wordSweepStyle = { "--w-sweep": `${(frac * 100).toFixed(1)}%` } as CSSProperties;
+            }
+          }
+
+          return (
+            <span
+              key={item.id}
+              className="lyric-word inline-block"
+              data-start={item.start.toFixed(4)}
+              data-end={item.end.toFixed(4)}
+              data-state={state}
+              style={wordSweepStyle}
+            >
+              {cleanText}
+            </span>
+          );
         });
 
         return (
           <span
             key={gIdx}
             className={cn(
-              ADLIB_TOKEN_CLASS[size],
-              isActive && "text-white/95 opacity-90 font-semibold",
+              !isWholeLineAdlib && ADLIB_TOKEN_CLASS[size],
+              !isWholeLineAdlib && isActive && "text-white/95 opacity-90 font-semibold",
+              isWholeLineAdlib && "inline",
             )}
           >
             {adlibContent}
@@ -430,7 +464,7 @@ export const LyricLineView = memo(function LyricLineView({
           "transition-all duration-350 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[transform,opacity,filter]",
           isArabic && "font-arabic tracking-normal font-black leading-snug",
           isActive && !adlibLine && "lyric-sweep text-white scale-[1.05] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
-          isActive && adlibLine && "text-white italic scale-[1.03] opacity-100",
+          isActive && adlibLine && "lyric-sweep text-white italic scale-[1.03] opacity-100 [text-shadow:0_0_12px_rgba(255,255,255,0.4)]",
           !isActive && !adlibLine && "text-white/40 scale-100 opacity-60 hover:text-white/85 hover:opacity-90 hover:scale-[1.015]",
           !isActive && adlibLine && "text-white/30 italic font-medium scale-100 opacity-45 hover:text-white/60 hover:opacity-75",
         )}

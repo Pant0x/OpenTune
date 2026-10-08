@@ -9,9 +9,6 @@ const DISCORD_CLIENT_ID: &str = "1515682467154100344";
 /// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "opentune-logo"
 const OPENTUNE_LOGO_ASSET_KEY: &str = "opentune-logo";
 
-/// How often to refresh presence while playing (Discord runs its own clock but
-/// periodic updates keep the connection alive and handle edge cases).
-const PRESENCE_REFRESH_INTERVAL_MS: u64 = 30_000;
 
 /// How long to wait before retrying a failed connection (milliseconds).
 const RECONNECT_DELAY_MS: u64 = 5_000;
@@ -193,9 +190,26 @@ impl DiscordRpcManager {
         Ok(())
     }
 
-    /// Pause presence - clears activity so it disappears like Spotify
+    /// Pause presence - clears activity so it disappears like Spotify, but keeps last_presence for resume
     pub fn pause_presence(&self) -> Result<(), String> {
-        self.clear_presence()
+        if !*self.connected.lock().map_err(|e| e.to_string())? {
+            return Ok(());
+        }
+
+        let mut client_lock = self.client.lock().map_err(|e| e.to_string())?;
+        let client = client_lock
+            .as_mut()
+            .ok_or("Discord client not initialized")?;
+
+        if let Err(e) = client.clear_activity() {
+            eprintln!("[Discord RPC] Failed to clear activity: {}", e);
+            *client_lock = None;
+            if let Ok(mut connected) = self.connected.lock() {
+                *connected = false;
+            }
+        }
+
+        Ok(())
     }
 
     /// Resume presence - restores timestamps for progress bar
@@ -296,100 +310,10 @@ impl DiscordRpcManager {
         });
     }
 
-    /// Start periodic presence refresh while playing
+    /// Discord manages its own internal clock accurately between start and end timestamps.
+    /// Resending static current_time snapshots caused Discord playback progress to continuously reset.
     pub fn start_periodic_refresh(&self) {
-        let mut handle_lock = self.refresh_task_handle.lock().unwrap();
-        if handle_lock.is_some() {
-            return; // Already running
-        }
-
-        let client = self.client.clone();
-        let connected = self.connected.clone();
-        let last_presence = self.last_presence.clone();
-        let shutdown = self.shutdown.clone();
-
-        let handle = std::thread::spawn(move || {
-            while !*shutdown.lock().unwrap_or_else(|_| panic!("shutdown lock poisoned")) {
-                std::thread::sleep(std::time::Duration::from_millis(PRESENCE_REFRESH_INTERVAL_MS));
-
-                if *shutdown.lock().unwrap_or_else(|_| panic!("shutdown lock poisoned")) {
-                    break;
-                }
-
-                // Only refresh if connected and playing
-                let is_connected = *connected.lock().unwrap_or_else(|_| panic!("connected lock poisoned"));
-                if !is_connected {
-                    continue;
-                }
-
-                let presence = match last_presence.lock() {
-                    Ok(lock) => lock.clone(),
-                    Err(_) => continue,
-                };
-
-                if let Some(data) = presence {
-                    if data.is_playing && data.duration > 0 {
-                        let mut client_lock = match client.lock() {
-                            Ok(lock) => lock,
-                            Err(_) => continue,
-                        };
-
-                        if let Some(client) = client_lock.as_mut() {
-                            // Re-send the same activity to keep connection alive
-                            let elapsed = data.current_time;
-                            let duration = data.duration;
-                            let now_secs = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs() as i64;
-                            let start_ts = now_secs - elapsed as i64;
-                            let end_ts = start_ts + duration as i64;
-                            let state_str = data.artist.clone();
-                            let artwork_key = data.artwork_url.as_deref().unwrap_or(OPENTUNE_LOGO_ASSET_KEY);
-                            let mut assets_map = serde_json::Map::new();
-                            assets_map.insert("large_image".to_string(), json!(artwork_key));
-                            if !data.album.is_empty() {
-                                assets_map.insert("large_text".to_string(), json!(data.album));
-                            }
-                            assets_map.insert("small_image".to_string(), json!(OPENTUNE_LOGO_ASSET_KEY));
-                            assets_map.insert("small_text".to_string(), json!("OpenTune"));
-
-                            let activity = json!({
-                                "name": "OpenTune",
-                                "type": 2, // LISTENING
-                                "details": data.title,
-                                "state": state_str,
-                                "assets": assets_map,
-                                "timestamps": {
-                                    "start": start_ts,
-                                    "end": end_ts,
-                                },
-                            });
-
-                            let payload = json!({
-                                "cmd": "SET_ACTIVITY",
-                                "args": {
-                                    "pid": std::process::id(),
-                                    "activity": activity,
-                                },
-                                "nonce": format!("jamc-{}-{}", std::process::id(), start_ts),
-                            });
-
-                            if let Err(e) = client.send(payload, 1) {
-                                eprintln!("[Discord RPC] Periodic refresh failed: {}", e);
-                                *client_lock = None;
-                                if let Ok(mut conn) = connected.lock() {
-                                    *conn = false;
-                                }
-                                break; // Exit refresh loop, reconnection will be handled by update_presence
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        *handle_lock = Some(handle);
+        // No-op: activity timestamps are pushed on play, seek, and track change directly from frontend.
     }
 
     /// Stop periodic refresh

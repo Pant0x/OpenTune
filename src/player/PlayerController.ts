@@ -222,6 +222,7 @@ export class PlayerController {
   private autoplayEnabled = true;
   private handlingTrackEnd = false;
   private pendingSeekTime: number | null = null;
+  private lastSeekPosition: { time: number; timestamp: number } | null = null;
   private radioQueueRequestId = 0;
   /*
    * "End queue on this song": the queue entry after which playback stops.
@@ -2164,9 +2165,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
     // Update presence with current track info
     if (this.state.status === "playing" || this.state.status === "paused") {
-      const currentTime = this.loadedTrackId === currentTrack.id 
-        ? this.audioEngine.getCurrentTime() 
-        : (this.pendingSeekTime ?? 0);
+      const currentTime = this.getCurrentTime();
 
       const displayArtist = this.formatTrackArtistWithFeatures(currentTrack);
 
@@ -2224,8 +2223,11 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     const seekTime = Math.max(0, time);
     logInternalInfo("PlayerController.seekTo", { time: seekTime, loadedTrackId: this.loadedTrackId, currentTrackId: this.state.currentTrack?.id });
 
+    this.lastSeekPosition = { time: seekTime, timestamp: performance.now() };
+
     if (this.videoDelegate) {
       this.videoDelegate.seekTo(seekTime);
+      DiscordRpcService.resetLastSentKey();
       this.emit();
       return;
     }
@@ -2244,6 +2246,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       } catch (error) {
         this.setError(error);
       }
+      DiscordRpcService.resetLastSentKey();
       this.emit();
       return;
     }
@@ -2408,6 +2411,12 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
   }
 
   getCurrentTime(): number {
+    if (this.lastSeekPosition) {
+      if (performance.now() - this.lastSeekPosition.timestamp < 1000) {
+        return this.lastSeekPosition.time;
+      }
+      this.lastSeekPosition = null;
+    }
     if (this.videoDelegate?.getCurrentTime) {
       return this.videoDelegate.getCurrentTime();
     }
