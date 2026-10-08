@@ -20,8 +20,8 @@ import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArtistLinks, parseTrackArtistsWithFeatures, useArtistNavigation } from "../ArtistLinks";
 
-// Scaled for equal loudness matching the HTML5 audio engine (standard YouTube video volume benchmark: 1.0)
-const VIDEO_NORMALIZATION_FACTOR = 1.0;
+// Scaled for equal loudness matching the audio engine (Rust LUFS-14 standard: 0.531)
+const VIDEO_NORMALIZATION_FACTOR = 0.531;
 
 interface VideoPlayerViewProps {
   videoId: string;

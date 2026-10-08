@@ -5552,7 +5552,7 @@ export class YouTubeMusicDataSource extends DataSource {
      * The preferred source is part of the key because it changes which source wins. Sharing
      * one key would mean changing the setting appears to do nothing until the cache expires.
      */
-    const cacheKey = `lyrics:synced:v4:${getPreferredLyricsSourceId()}:${track.id}`;
+    const cacheKey = `lyrics:synced:v5:${getPreferredLyricsSourceId()}:${track.id}`;
     const cached = await getCachedJson<Lyrics>(cacheKey);
     if (cached?.timing === "synced" && cached.lines.length > 0) return cached;
 
@@ -5635,10 +5635,12 @@ export class YouTubeMusicDataSource extends DataSource {
       return { lines: [], timing: "none", attempts: orderedAttempts };
     }
 
+    const alignedLyrics = this.alignLyricsToTopicRelease(track, winner.lyrics);
+
     return {
-      ...winner.lyrics,
+      ...alignedLyrics,
       sourceId: winner.source.id,
-      sourceLabel: winner.lyrics.sourceLabel || winner.source.label,
+      sourceLabel: alignedLyrics.sourceLabel || winner.source.label,
       attempts: orderedAttempts,
     };
   }
@@ -6037,7 +6039,78 @@ export class YouTubeMusicDataSource extends DataSource {
     return null;
   }
 
+  private alignLyricsToTopicRelease(track: Track, lyrics: Lyrics): Lyrics {
+    if (lyrics.timing !== "synced" || !lyrics.lines || lyrics.lines.length === 0) {
+      return lyrics;
+    }
 
+    // Identify the first substantial vocal lyric line (ignoring empty lines, cues, [Music], etc.)
+    let firstVocalStartSec: number | undefined;
+    for (const line of lyrics.lines) {
+      const text = (line.text || "").trim();
+      if (!text) continue;
+      if (/^[♪♫\s]+$/.test(text)) continue;
+      if (/^\[.*?\]$/.test(text) && text.length < 25) continue;
+      if (/^\(.*?\)$/.test(text) && text.length < 25) continue;
+      firstVocalStartSec = line.startTimeSec;
+      break;
+    }
+
+    if (firstVocalStartSec === undefined) {
+      firstVocalStartSec = lyrics.lines[0]?.startTimeSec;
+    }
+
+    let shiftSec = 0;
+
+    // 1. YouTube official music video intro skit detection:
+    // Community-contributed synced lyrics (e.g. LRCLIB, NetEase, BetterLyrics) are very often
+    // timed against the official YouTube Music Video which has an extended intro skit / dialogue scene.
+    // However, OpenTune plays the clean Topic audio release (from YouTube Music / studio album).
+    // In rap / pop / studio releases, the artist drops vocals at ~12.0s - 16.0s (average 15.0s).
+    // If the first substantial vocal line starts abnormally late (>= 21.0s) on a normal-length song (<= 450s):
+    if (
+      typeof firstVocalStartSec === "number" &&
+      firstVocalStartSec >= 21.0 &&
+      (!track.durationSec || track.durationSec <= 450)
+    ) {
+      const calculatedOffset = Number((firstVocalStartSec - 15.0).toFixed(2));
+      if (calculatedOffset >= 6.0 && calculatedOffset <= 60.0) {
+        shiftSec = calculatedOffset;
+      }
+    }
+
+    // 2. If provider duration delta or autoIntroOffsetSec was already identified:
+    if (shiftSec === 0 && lyrics.autoIntroOffsetSec && Math.abs(lyrics.autoIntroOffsetSec) >= 5.0) {
+      shiftSec = lyrics.autoIntroOffsetSec;
+    }
+
+    if (shiftSec <= 0) {
+      return lyrics;
+    }
+
+    logInternalInfo("YouTubeMusicDataSource.alignLyricsToTopicRelease: shifted lines to match topic release", {
+      trackId: track.id,
+      trackTitle: track.title,
+      firstVocalStartSec,
+      shiftSec,
+    });
+
+    const shiftedLines = lyrics.lines.map((line) => ({
+      ...line,
+      startTimeSec: typeof line.startTimeSec === "number"
+        ? Math.max(0, Number((line.startTimeSec - shiftSec).toFixed(2)))
+        : undefined,
+      endTimeSec: typeof line.endTimeSec === "number"
+        ? Math.max(0, Number((line.endTimeSec - shiftSec).toFixed(2)))
+        : undefined,
+    }));
+
+    return {
+      ...lyrics,
+      lines: shiftedLines,
+      autoIntroOffsetSec: 0,
+    };
+  }
 
   private calculateAutoIntroOffsetSec(
     track: Track,

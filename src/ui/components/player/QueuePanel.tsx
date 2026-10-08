@@ -1058,10 +1058,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
   }, [activeTab]);
 
   const synced = isSyncedLyrics(lyrics);
-  const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-  const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
   const userOffset = getLyricsOffset(currentTrack?.id);
-  const effectiveCurrentTime = currentTime + effectiveIntro + userOffset;
+  const effectiveCurrentTime = currentTime + userOffset;
   const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, effectiveCurrentTime) : -1;
   /*
    * The whole song, not a 4-line window: the card is a Spotify-tall scrolling pane and the
@@ -1117,9 +1115,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
     let raf = 0;
     const tickSweep = () => {
       if (synced && lyrics?.lines?.length && activeLyricIndex >= 0) {
-        const lineAutoIntro = lyrics.autoIntroOffsetSec ?? 0;
         const lineUserOffset = getLyricsOffset(currentTrack?.id);
-        const effectiveTime = playerController.getCurrentTime() - lineAutoIntro + lineUserOffset;
+        const effectiveTime = playerController.getCurrentTime() + lineUserOffset;
         const progress = getLineProgress(
           lyrics.lines,
           activeLyricIndex,
@@ -1719,9 +1716,8 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                           }}
                           emptyStyle="note"
                           onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
-                            const autoIntroOffset = lyrics?.autoIntroOffsetSec ?? 0;
                             const offset = getLyricsOffset(currentTrack?.id);
-                            const targetTime = Math.max(0, (lyrics?.lines[index]?.startTimeSec ?? 0) + autoIntroOffset - offset);
+                            const targetTime = Math.max(0, (lyrics?.lines[index]?.startTimeSec ?? 0) - offset);
                             void playerController.seekTo(targetTime);
                           } : undefined}
                           register={(i, el) => {

@@ -91,7 +91,7 @@ const FADE_STEP_MS = 20;
  * A -5.5 dB gain reduction (~0.531 multiplier) normalizes playback to -14 LUFS,
  * matching standard streaming services.
  */
-export const LUFS_14_NORMALIZATION_FACTOR = 1.0;
+export const LUFS_14_NORMALIZATION_FACTOR = 0.531;
 
 let iframeApiPromise: Promise<void> | null = null;
 const audioEngines = new Set<AudioEngine>();

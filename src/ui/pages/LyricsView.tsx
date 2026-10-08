@@ -465,10 +465,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           pendingSeekRef.current = null;
         }
       }
-      setCurrentPlaybackTime(engineTime);
-      const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-      const effectiveIntro = autoIntro;
-      const time = engineTime + effectiveIntro + offset;
+      const time = engineTime + offset;
       const currentLines = linesRef.current;
       const next = findActiveLineIndex(currentLines, time);
 
@@ -602,14 +599,16 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const handleLineClick = (index: number) => {
     const start = lines[index]?.startTimeSec;
     if (start === undefined) return;
-    resumeFollow();
-    // Lines are matched against `currentTime - autoIntro + offset`, so the audio for this line sits that
-    // far back. Seeking to the raw start time would land a whole offset away from the words.
-    const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-    const target = Math.max(0, start + autoIntro - offset);
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+    setIsFollowPaused(false);
+    const target = Math.max(0, start - offset);
     pendingSeekRef.current = { target, at: performance.now() };
     setCurrentPlaybackTime(target);
     setActiveIndex(index);
+    scrollToLine(index, !reduce);
     void playerController.seekTo(target);
   };
 
@@ -626,11 +625,9 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     const start = lines[index]?.startTimeSec;
     if (start === undefined || !track?.id) return;
     const current = playerController.getCurrentTime();
-    const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
-    const effectiveIntro = autoIntro;
-    const newOffset = start - (current + effectiveIntro);
+    const newOffset = start - current;
     setLyricsOffset(track.id, newOffset);
-  }, [lines, track?.id, lyrics?.autoIntroOffsetSec]);
+  }, [lines, track?.id]);
   const registerLine = useCallback((index: number, element: HTMLElement | null) => {
     lineRefs.current[index] = element;
   }, []);
