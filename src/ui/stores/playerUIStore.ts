@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { getAppSetting, setAppSetting } from "../../internal/appSettings";
 
 export type RightPanelTab = "nowplaying" | "queue" | "related" | "recent";
 
@@ -21,14 +22,28 @@ export interface PlayerUIState {
 type Listener = () => void;
 
 const QUEUE_OPEN_KEY = "opentune:sidebar_panel_open";
+const SIDEBAR_TAB_KEY = "opentune:sidebar_panel_tab";
 
 function readStoredQueueOpen(): boolean {
   try {
     if (typeof localStorage !== "undefined") {
-      return localStorage.getItem(QUEUE_OPEN_KEY) === "true";
+      const stored = localStorage.getItem(QUEUE_OPEN_KEY);
+      if (stored !== null) return stored === "true";
     }
   } catch {}
   return false;
+}
+
+function readStoredRightPanelTab(): RightPanelTab {
+  try {
+    if (typeof localStorage !== "undefined") {
+      const stored = localStorage.getItem(SIDEBAR_TAB_KEY);
+      if (stored === "nowplaying" || stored === "queue" || stored === "related" || stored === "recent") {
+        return stored;
+      }
+    }
+  } catch {}
+  return "nowplaying";
 }
 
 class PlayerUIStore {
@@ -41,7 +56,7 @@ class PlayerUIStore {
     isNowPlayingFullscreen: false,
     isQueueOpen: readStoredQueueOpen(),
     isListeningActivityOpen: false,
-    rightPanelTab: "nowplaying",
+    rightPanelTab: readStoredRightPanelTab(),
     returnToLyricsOnFullscreenClose: false,
     isWaveMiniPlayerOpen: false,
     initialMediaMode: undefined,
@@ -155,6 +170,7 @@ class PlayerUIStore {
         localStorage.setItem(QUEUE_OPEN_KEY, String(isQueueOpen));
       }
     } catch {}
+    void setAppSetting(QUEUE_OPEN_KEY, isQueueOpen);
     if (isQueueOpen) {
       this.setState({ isQueueOpen, isListeningActivityOpen: false });
     } else {
@@ -175,11 +191,17 @@ class PlayerUIStore {
   }
 
   setRightPanelTab(rightPanelTab: RightPanelTab) {
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(SIDEBAR_TAB_KEY, rightPanelTab);
+      }
+    } catch {}
+    void setAppSetting(SIDEBAR_TAB_KEY, rightPanelTab);
     this.setState({ rightPanelTab, isQueueOpen: true });
   }
 
   openNowPlaying() {
-    this.setState({ rightPanelTab: "nowplaying", isQueueOpen: true });
+    this.setRightPanelTab("nowplaying");
   }
 
   setWaveMiniPlayerOpen(isWaveMiniPlayerOpen: boolean) {
@@ -192,6 +214,25 @@ class PlayerUIStore {
 }
 
 export const playerUIStore = new PlayerUIStore();
+
+export async function hydratePlayerUISettings(): Promise<void> {
+  try {
+    const storedQueueOpen = await getAppSetting<boolean>(QUEUE_OPEN_KEY);
+    if (typeof storedQueueOpen === "boolean") {
+      playerUIStore.setQueueOpen(storedQueueOpen);
+    }
+    const storedTab = await getAppSetting<RightPanelTab>(SIDEBAR_TAB_KEY);
+    if (
+      storedTab &&
+      (storedTab === "nowplaying" ||
+        storedTab === "queue" ||
+        storedTab === "related" ||
+        storedTab === "recent")
+    ) {
+      playerUIStore.setRightPanelTab(storedTab);
+    }
+  } catch {}
+}
 
 export function usePlayerUIState() {
   return useSyncExternalStore(

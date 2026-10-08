@@ -39,7 +39,7 @@ const synced = (count: number) => ({
   timing: "synced" as const,
 });
 
-equal(LYRICS_SOURCES.length, 7, "every source is in the table");
+equal(LYRICS_SOURCES.length, 6, "every source is in the table");
 check(
   rankOfSource("lrclib-exact") < rankOfSource("lrclib-search"),
   "a duration-exact match outranks a text search of the same corpus",

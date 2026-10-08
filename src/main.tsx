@@ -52,6 +52,7 @@ import { hydrateLyricsTranslation } from "./ui/settings/lyricsTranslation";
 import { hydrateLyricsOffset } from "./ui/settings/lyricsOffset";
 import { hydrateLocalMusicFolder } from "./player/localFilesManager";
 import { hydrateFriendsListeningSettings } from "./lib/friendsListeningService";
+import { hydratePlayerUISettings } from "./ui/stores/playerUIStore";
 
 function checkAndHandleWebOAuthCallback(): boolean {
   if (typeof window === "undefined") return false;
@@ -204,6 +205,7 @@ void Promise.all([
   hydrateZoom(),
   hydrateLocalMusicFolder(),
   hydrateFriendsListeningSettings(),
+  hydratePlayerUISettings(),
 ]).catch((error) => {
   logInternalError("settings hydration failed", error);
 });

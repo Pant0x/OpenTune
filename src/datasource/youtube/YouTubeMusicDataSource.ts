@@ -5590,7 +5590,6 @@ export class YouTubeMusicDataSource extends DataSource {
       betterlyrics: () => this.fetchBetterLyrics(track),
       netease: () => this.fetchNetEaseLyrics(track),
       "lrclib-search": () => this.fetchLrcLibSearchLyrics(track),
-      genius: () => this.fetchGeniusLyrics(track),
       "youtube-transcript": () => this.fetchYouTubeTranscriptLyrics(track),
       "youtube-music": () => this.fetchYouTubeMusicLyrics(track),
     };
@@ -6011,7 +6010,8 @@ export class YouTubeMusicDataSource extends DataSource {
         if (lines.length === 0) continue;
 
         const providerDuration = bestSong.dt ? Math.round(bestSong.dt / 1000) : undefined;
-        const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, providerDuration);
+        const firstLineStartSec = lines[0]?.startTimeSec;
+        const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, providerDuration, firstLineStartSec);
 
         logInternalInfo("YouTubeMusicDataSource.getLyrics NetEase success", {
           trackId: track.id,
@@ -6037,194 +6037,35 @@ export class YouTubeMusicDataSource extends DataSource {
     return null;
   }
 
-  private async fetchGeniusLyrics(track: Track): Promise<LyricsProviderResult | null> {
-    const expectedArtists = [
-      track.artist,
-      ...(track.artists?.map((a) => a.name) ?? []),
-    ].filter(Boolean);
 
-    // Extract potential artist from title if uploaded as "Artist - Title" (common for unreleased leaks)
-    const titleDashMatch = track.title.match(/^([^-–—]+)\s*[-–—]\s*(.+)$/);
-    if (titleDashMatch) {
-      const possibleArtist = titleDashMatch[1]!.trim();
-      if (possibleArtist && possibleArtist.length >= 2 && possibleArtist.length <= 40) {
-        expectedArtists.push(possibleArtist);
-      }
-    }
 
-    const queries = this.getLyricsQueries(track);
-    if (titleDashMatch) {
-      const artistPart = titleDashMatch[1]!.trim();
-      const titlePart = titleDashMatch[2]!.trim();
-      if (artistPart && titlePart) {
-        queries.push({
-          title: this.cleanLyricsLookupText(titlePart),
-          artist: this.cleanLyricsLookupText(artistPart),
-        });
-      }
-    }
-
-    for (const query of queries) {
-      try {
-        const searchQuery = `${query.title} ${query.artist}`.trim();
-        const searchUrl = `https://genius.com/api/search/multi?q=${encodeURIComponent(searchQuery)}`;
-        const searchResponse = await tauriFetch(searchUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "application/json",
-          },
-          timeoutMs: 4_500,
-        });
-        if (!searchResponse.ok) continue;
-
-        const searchData = (await searchResponse.json()) as {
-          response?: {
-            sections?: Array<{
-              type: string;
-              hits: Array<{
-                type: string;
-                result: {
-                  id: number;
-                  title: string;
-                  full_title: string;
-                  artist_names?: string;
-                  primary_artist?: { name: string };
-                };
-              }>;
-            }>;
-          };
-        };
-
-        const allSongHits: Array<{
-          id: number;
-          title: string;
-          full_title: string;
-          artist_names?: string;
-          primary_artist?: { name: string };
-        }> = [];
-
-        for (const section of searchData.response?.sections ?? []) {
-          for (const hit of section.hits ?? []) {
-            if (hit.type === "song" && hit.result?.id) {
-              allSongHits.push(hit.result);
-            }
-          }
+  private calculateAutoIntroOffsetSec(
+    track: Track,
+    providerDurationSec?: number,
+    firstLineStartSec?: number,
+  ): number | undefined {
+    // 1. Audio track playing (standard album / topic release)
+    // Community contributors often submit LRCs timed to the YouTube Music Video with an intro skit.
+    // e.g. "Tesla - Marwan Moussa" audio starts vocals at 15s, but video has 17.5s skit so LRCLIB line 1 is at 32.45s!
+    if (!track.isVideo && typeof firstLineStartSec === "number") {
+      // In rap, hip-hop, pop, etc., vocals typically begin around 12-16s (average 15.0s).
+      // If line 1 starts abnormally late (>= 24.0s) on a normal-length song (<= 420s):
+      if (firstLineStartSec >= 24.0 && (!track.durationSec || track.durationSec <= 420)) {
+        const introSkimSec = Number((firstLineStartSec - 15.0).toFixed(2));
+        if (introSkimSec >= 6.0 && introSkimSec <= 45.0) {
+          return introSkimSec;
         }
-
-        if (allSongHits.length === 0) continue;
-
-        // Match candidates by artist
-        const matched = allSongHits.filter((song) => {
-          const candArtist = song.primary_artist?.name || song.artist_names || "";
-          return isLyricsArtistMatch(expectedArtists, candArtist);
-        });
-
-        // STRICT: NEVER fall back to allSongHits[0] if artist does not match!
-        // Unreleased uploads by third-party channels must never show a random bogus song!
-        if (matched.length === 0) continue;
-
-        const chosenSong = matched[0];
-        if (!chosenSong?.id) continue;
-
-        // Fetch official embed.js
-        const embedUrl = `https://genius.com/songs/${chosenSong.id}/embed.js`;
-        const embedResponse = await tauriFetch(embedUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Referer: "https://genius.com",
-          },
-          timeoutMs: 4_500,
-        });
-        if (!embedResponse.ok) continue;
-
-        const embedJsText = await embedResponse.text();
-        const startIdx = embedJsText.indexOf("JSON.parse('");
-        const endIdx = embedJsText.lastIndexOf("')");
-        if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) continue;
-
-        let inside = embedJsText.slice(startIdx + "JSON.parse('".length, endIdx);
-        if (inside.startsWith('\\"')) inside = inside.slice(2);
-        if (inside.endsWith('\\"')) inside = inside.slice(0, -2);
-
-        const html = inside
-          .replace(/\\\\\\"/g, '"')
-          .replace(/\\"/g, '"')
-          .replace(/\\'/g, "'")
-          .replace(/\\\\n/g, "\n")
-          .replace(/\\n/g, "\n")
-          .replace(/\\\//g, "/")
-          .replace(/\\\\/g, "");
-
-        const bodyMatch = html.match(/class=["']rg_embed_body["'][^>]*>(.*?)<\/div>/s);
-        if (!bodyMatch || !bodyMatch[1]) continue;
-
-        const rawHtml = bodyMatch[1];
-
-        // Clean lyrics HTML into plain lines
-        const cleanedText = rawHtml
-          .replace(/<br\s*\/?>/gi, "\n")
-          .replace(/<[^>]+>/g, "")
-          .replace(/&#x27;/g, "'")
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&#8217;/g, "'")
-          .replace(/&#8220;/g, '"')
-          .replace(/&#8221;/g, '"')
-          .replace(/&nbsp;/g, " ")
-          .trim();
-
-        const rawLines = cleanedText
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0 && !isSectionHeaderLine(line))
-          .map((line) => unmaskProfanity(stripSectionHeaderPrefix(line)))
-          .map((line) => line.replace(/\\+/g, "").trim())
-          .filter((line) => line.length > 0)
-          .filter((line) => !/^\[.*?\]$/.test(line))
-          .filter((line) => !/powered by genius/i.test(line))
-          .filter((line) => !/genius/i.test(line));
-
-        if (rawLines.length < 3) continue;
-
-        const timedLines = this.synthesizeLyricTimings(rawLines, track.durationSec);
-        if (timedLines.length === 0) continue;
-
-        logInternalInfo("YouTubeMusicDataSource.getLyrics Genius success", {
-          trackId: track.id,
-          songId: chosenSong.id,
-          lineCount: timedLines.length,
-          title: chosenSong.title,
-        });
-
-        return {
-          lines: timedLines,
-          timing: "synced",
-          sourceLabel: "Genius",
-        };
-      } catch (error) {
-        logInternalWarn("YouTubeMusicDataSource.getLyrics Genius failed", {
-          trackId: track.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
       }
     }
 
-    return null;
-  }
+    // 2. Video playing, but lyrics were timed to audio/album release without the video intro
+    if (track.isVideo && track.durationSec && providerDurationSec && providerDurationSec > 0) {
+      const diff = track.durationSec - providerDurationSec;
+      if (diff >= 3.0 && diff <= 35.0) {
+        return Number((-diff).toFixed(2));
+      }
+    }
 
-  private calculateAutoIntroOffsetSec(track: Track, providerDurationSec?: number): number | undefined {
-    // Only real music videos with visual intro skits should ever be offset.
-    // Standard audio and topic releases must NEVER be shifted backwards,
-    // otherwise outro padding delays the lyrics by 15-20 seconds!
-    if (!track.isVideo || !track.durationSec || !providerDurationSec || providerDurationSec <= 0) {
-      return undefined;
-    }
-    const diff = track.durationSec - providerDurationSec;
-    if (diff >= 2.5 && diff <= 30.0) {
-      return Number(diff.toFixed(2));
-    }
     return undefined;
   }
 
@@ -6282,7 +6123,8 @@ export class YouTubeMusicDataSource extends DataSource {
     const lines = this.parseSyncedLyrics(match.syncedLyrics);
     if (lines.length === 0) return null;
 
-    const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, match.duration);
+    const firstLineStartSec = lines[0]?.startTimeSec;
+    const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, match.duration, firstLineStartSec);
 
     logInternalInfo("YouTubeMusicDataSource.getLyrics LRCLIB success", {
       trackId: track.id,
@@ -6324,7 +6166,8 @@ export class YouTubeMusicDataSource extends DataSource {
     if (textLines.length === 0) return null;
 
     const lines = this.synthesizeLyricTimings(textLines, track.durationSec);
-    const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, match.duration);
+    const firstLineStartSec = lines[0]?.startTimeSec;
+    const autoIntroOffsetSec = this.calculateAutoIntroOffsetSec(track, match.duration, firstLineStartSec);
 
     logInternalInfo("YouTubeMusicDataSource.getLyrics LRCLIB plain success", {
       trackId: track.id,

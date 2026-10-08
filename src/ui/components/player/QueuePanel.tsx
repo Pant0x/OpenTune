@@ -1059,8 +1059,9 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
 
   const synced = isSyncedLyrics(lyrics);
   const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
+  const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
   const userOffset = getLyricsOffset(currentTrack?.id);
-  const effectiveCurrentTime = currentTime - autoIntro + userOffset;
+  const effectiveCurrentTime = currentTime + effectiveIntro + userOffset;
   const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, effectiveCurrentTime) : -1;
   /*
    * The whole song, not a 4-line window: the card is a Spotify-tall scrolling pane and the

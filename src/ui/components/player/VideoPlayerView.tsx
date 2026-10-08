@@ -15,11 +15,13 @@ import {
   subscribeToFollowedArtists,
 } from "../../../player/followedArtists";
 import { libraryController, playerController, useLibraryState, usePlayerSelector } from "../../../player/playerStore";
-import { LUFS_14_NORMALIZATION_FACTOR } from "../../../player/AudioEngine";
 import { YouTubeShareModal } from "./YouTubeShareModal";
 import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArtistLinks, parseTrackArtistsWithFeatures, useArtistNavigation } from "../ArtistLinks";
+
+// Scaled for equal loudness matching the HTML5 audio engine
+const VIDEO_NORMALIZATION_FACTOR = 0.38;
 
 interface VideoPlayerViewProps {
   videoId: string;
@@ -165,7 +167,7 @@ export function VideoPlayerView({
                   event.target.seekTo(startAt, true);
                 } catch {}
               }
-              const targetVolume = muted ? 0 : Math.round(volume * LUFS_14_NORMALIZATION_FACTOR * 100);
+              const targetVolume = muted ? 0 : Math.round(volume * VIDEO_NORMALIZATION_FACTOR * 100);
               try {
                 if (muted || targetVolume === 0) {
                   event.target.mute();
@@ -291,7 +293,7 @@ export function VideoPlayerView({
   useEffect(() => {
     const targetVolume = muted
       ? 0
-      : Math.round(volume * LUFS_14_NORMALIZATION_FACTOR * 100);
+      : Math.round(volume * VIDEO_NORMALIZATION_FACTOR * 100);
 
     if (isPlayerReadyRef.current && ytPlayerRef.current) {
       try {

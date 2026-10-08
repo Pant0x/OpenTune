@@ -45,7 +45,7 @@ export function writeQueuePanelWidth(width: number): void {
 }
 
 function readQueuePanelCollapsed() {
-  return readLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, true);
+  return readLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, false);
 }
 
 function subscribe(callback: () => void) {
@@ -67,12 +67,12 @@ export function toggleQueuePanelCollapsed() {
 }
 
 export async function hydrateQueuePanelSettings() {
-  await hydrateLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, true, CHANGE_EVENT);
+  await hydrateLocalBooleanSetting(QUEUE_PANEL_COLLAPSED_STORAGE_KEY, false, CHANGE_EVENT);
   await hydrateLocalJsonSetting(QUEUE_PANEL_WIDTH_STORAGE_KEY, isQueuePanelWidth);
   window.dispatchEvent(new Event(QUEUE_PANEL_WIDTH_CHANGE_EVENT));
 }
 
 export function useQueuePanelCollapsed() {
-  return useSyncExternalStore(subscribe, readQueuePanelCollapsed, () => true);
+  return useSyncExternalStore(subscribe, readQueuePanelCollapsed, () => false);
 }
 

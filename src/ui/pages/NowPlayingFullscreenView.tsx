@@ -353,7 +353,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       }
 
       const autoIntro = currentLyrics.autoIntroOffsetSec ?? 0;
-      const effectiveTime = engineTime - autoIntro + lyricsOffsetRef.current;
+      const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
+      const effectiveTime = engineTime + effectiveIntro + lyricsOffsetRef.current;
       const lines = currentLyrics.lines;
       const next = findActiveLineIndex(lines, effectiveTime);
 
