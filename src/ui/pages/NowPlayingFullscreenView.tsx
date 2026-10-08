@@ -373,15 +373,19 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           }
         }
 
-        if (isLyricsSyncLockedRef.current && !isDetailsInViewRef.current && next >= 0) {
-          const container = lyricsScrollerRef.current;
-          const lineEl = lyricsLineRefs.current[next];
-          if (container && lineEl) {
-            const targetTop = Math.max(
-              0,
-              lineEl.offsetTop - container.clientHeight * 0.40,
-            );
-            smoothScrollToTarget(targetTop);
+        if (isLyricsSyncLockedRef.current && !isDetailsInViewRef.current) {
+          if (next >= 0) {
+            const container = lyricsScrollerRef.current;
+            const lineEl = lyricsLineRefs.current[next];
+            if (container && lineEl) {
+              const targetTop = Math.max(
+                0,
+                lineEl.offsetTop - container.clientHeight * 0.40,
+              );
+              smoothScrollToTarget(targetTop);
+            }
+          } else {
+            smoothScrollToTarget(0);
           }
         }
       }
@@ -649,6 +653,17 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                     </div>
                   ) : (
                     <div className="flex flex-col gap-7 py-36">
+                      {isSyncedLyrics(lyrics) && activeLyricIndex < 0 && (
+                        <div className="flex items-center justify-center gap-2.5 py-4 mb-2">
+                          {[0, 1, 2].map((dot) => (
+                            <span
+                              key={dot}
+                              className="size-3 rounded-full bg-white/70 animate-pulse"
+                              style={{ animationDelay: `${dot * 250}ms` }}
+                            />
+                          ))}
+                        </div>
+                      )}
                       {lyrics.lines.map((line, idx) => (
                         <LyricLineView
                           key={`${idx}:${line.text}`}

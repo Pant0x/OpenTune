@@ -64,6 +64,14 @@ export const LYRICS_SOURCES: LyricsSource[] = [
     note: "Same corpus, matched by text search with or without duration.",
   },
   {
+    id: "genius",
+    label: "Genius",
+    timeoutMs: 5_000,
+    wave: 2,
+    requiresDuration: false,
+    note: "Unreleased songs, leaks and global catalog from Genius.com with animated Spotify sync.",
+  },
+  {
     id: "youtube-transcript",
     label: "YouTube transcript",
     timeoutMs: 6_000,
