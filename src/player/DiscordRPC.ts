@@ -111,6 +111,8 @@ export class DiscordRpcService {
    * every unrelated change.
    */
   private static lastSentKey: string | null = null;
+  private static lastSentCurrentTime = 0;
+  private static lastSentWallClock = 0;
 
   /**
    * Initialize Discord RPC
@@ -166,6 +168,8 @@ export class DiscordRpcService {
       await invoke("discord_rpc_clear");
       await this.stopPeriodicUpdates();
       this.lastSentKey = null;
+      this.lastSentCurrentTime = 0;
+      this.lastSentWallClock = 0;
       this.currentTrackData = null;
       this.isInitialized = false;
       logInternalDebug("Discord.setEnabled cleared presence", {});
@@ -185,7 +189,21 @@ export class DiscordRpcService {
 
     const safeData = sanitizePresenceData(data);
     const nextKey = presenceDedupeKey(safeData);
-    if (nextKey === this.lastSentKey) return;
+
+    const isSameTrackAndState = nextKey === this.lastSentKey;
+    if (isSameTrackAndState) {
+      if (safeData.isPlaying) {
+        const elapsedSinceLast = (Date.now() - this.lastSentWallClock) / 1000;
+        const expectedCurrentTime = this.lastSentCurrentTime + elapsedSinceLast;
+        const drift = Math.abs(safeData.currentTime - expectedCurrentTime);
+        // If drift is within 2 seconds, Discord's internal clock is in sync; skip IPC round trip
+        if (drift <= 2) {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
 
     // Store current track data for pause/resume operations
     this.currentTrackData = safeData;
@@ -195,6 +213,7 @@ export class DiscordRpcService {
         title: safeData.title,
         artist: safeData.artist,
         isPlaying: safeData.isPlaying,
+        currentTime: safeData.currentTime,
       });
 
       // Call Tauri command to update presence in Rust backend
@@ -212,6 +231,8 @@ export class DiscordRpcService {
       });
 
       this.lastSentKey = nextKey;
+      this.lastSentCurrentTime = safeData.currentTime;
+      this.lastSentWallClock = Date.now();
       this.lastUpdateTime = Date.now();
       logInternalDebug("Discord.updatePresence.success", {});
     } catch (error) {
@@ -276,6 +297,8 @@ export class DiscordRpcService {
 
   static resetLastSentKey(): void {
     this.lastSentKey = null;
+    this.lastSentCurrentTime = 0;
+    this.lastSentWallClock = 0;
   }
 
   /**

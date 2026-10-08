@@ -52,6 +52,7 @@ import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 import { Button } from "@/components/motion/button";
 import { AddCircleIcon } from "@solar-icons/react/bold-duotone";
 import { useSpotifyArtistAvatar } from "../../services/SpotifyService";
+import { getCustomPlaylistArtwork } from "../../player/playlistArtwork";
  
 const PLAYLIST_ORDER_KEY = "ytc-sidebar-playlist-order";
 const ALBUM_ORDER_KEY = "ytc-sidebar-album-order";
@@ -581,11 +582,13 @@ function SidebarPlaylistArtwork({ playlist, large }: { playlist: Playlist; large
     return <img className={tileClass} src={likedSongsCover} alt="" />;
   }
 
+  const customArt = getCustomPlaylistArtwork(playlist.id);
+
   return (
     <TrackArtwork
       className={tileClass}
       size={large ? ARTWORK_TILE_LG_PX : ARTWORK_TILE_SM_PX}
-      artworkUrl={playlist.artworkUrl}
+      artworkUrl={customArt ?? playlist.artworkUrl}
       iconSize={24}
       retryOnError
       variant="playlist"

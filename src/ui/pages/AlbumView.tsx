@@ -546,10 +546,16 @@ export function AlbumView({
   const toggleSaveAlbum = async () => {
     if (!album || isSaving) return;
     setIsSaving(true);
+    const nextSaved = !isSaved;
     try {
-      await libraryController.setAlbumSaved(album, !isSaved);
+      await libraryController.setAlbumSaved(album, nextSaved);
+      setToast(nextSaved ? "Saved to your library" : "Removed from your library");
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
     } catch {
-      // ignore
+      setToast("Failed to update library");
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 3000);
     } finally {
       setIsSaving(false);
     }

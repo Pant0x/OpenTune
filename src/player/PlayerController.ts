@@ -2250,6 +2250,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
     logInternalInfo("PlayerController.seekTo track already loaded, seeking...");
     this.audioEngine.seekTo(seekTime);
+    DiscordRpcService.resetLastSentKey();
     this.emit();
   }
 

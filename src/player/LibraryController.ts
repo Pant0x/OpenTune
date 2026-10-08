@@ -23,7 +23,7 @@ import type {
   Track,
   TrackRating,
 } from "../datasource/types";
-import { logInternalError, logInternalInfo } from "../internal/logging";
+import { logInternalError, logInternalInfo, logInternalWarn } from "../internal/logging";
 import { getAppSetting, setAppSetting } from "../internal/appSettings";
 import { forgetTrackInPlaylist, rememberTrackInPlaylist } from "./playlistMembership";
 import {
@@ -726,13 +726,6 @@ export class LibraryController {
   }
 
   async setAlbumSaved(album: Album, saved: boolean): Promise<void> {
-    if (!this.dataSource.setAlbumSaved) {
-      throw new Error("Saving albums is unavailable.");
-    }
-    if (this.state.status === "signed-out" || !this.state.library) {
-      throw new Error("Sign in to YouTube Music to update your library.");
-    }
-
     const previousLibrary = this.state.library;
     const normalize = (str?: string) => str?.trim().toLowerCase().replace(/\s+/g, " ") || "";
     const targetTitle = normalize(album.title);
@@ -744,15 +737,33 @@ export class LibraryController {
       || Boolean(item.playlistId && item.playlistId === album.id)
       || (Boolean(targetTitle && normalize(item.title) === targetTitle) && (!targetArtist || !item.artist || normalize(item.artist) === targetArtist));
     const albums = saved
-      ? [album, ...previousLibrary.albums.filter((item) => !sameAlbum(item))]
-      : previousLibrary.albums.filter((item) => !sameAlbum(item));
-    this.setState({ library: { ...previousLibrary, albums } });
+      ? [album, ...(previousLibrary?.albums ?? []).filter((item) => !sameAlbum(item))]
+      : (previousLibrary?.albums ?? []).filter((item) => !sameAlbum(item));
 
-    try {
-      await this.dataSource.setAlbumSaved(album, saved);
-    } catch (error) {
-      this.setState({ library: previousLibrary });
-      throw error;
+    if (previousLibrary) {
+      this.setState({ library: { ...previousLibrary, albums } });
+    } else {
+      const fallbackLibrary: LibrarySnapshot = {
+        account: { name: "User" },
+        playlists: [],
+        albums,
+        artists: [],
+        likedSongsPlaylist: { id: "LM", title: "Liked Songs", owner: "You" },
+        likedSongs: [],
+        recentlyPlayed: [],
+      };
+      this.setState({ library: fallbackLibrary });
+    }
+
+    if (this.dataSource.setAlbumSaved && this.state.status !== "signed-out") {
+      try {
+        await this.dataSource.setAlbumSaved(album, saved);
+      } catch (error) {
+        logInternalWarn("LibraryController.setAlbumSaved remote sync failed, keeping local state", {
+          albumId: album.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
@@ -1129,32 +1140,43 @@ export class LibraryController {
   }
 
   async setPlaylistSaved(playlist: Playlist, saved: boolean): Promise<void> {
-    if (!this.dataSource.setPlaylistSaved) {
-      throw new Error("Saving playlists is unavailable.");
-    }
-    if (this.state.status === "signed-out" || !this.state.library) {
-      throw new Error("Sign in to YouTube Music to update your library.");
-    }
-
     const previousLibrary = this.state.library;
     const normalizedId = playlist.id.replace(/^VL/, "");
     const playlists = saved
       ? [
           { ...playlist, isSaved: true, isEditable: playlist.isEditable ?? false },
-          ...previousLibrary.playlists.filter(
+          ...(previousLibrary?.playlists ?? []).filter(
             (item) => item.id.replace(/^VL/, "") !== normalizedId,
           ),
         ]
-      : previousLibrary.playlists.filter(
+      : (previousLibrary?.playlists ?? []).filter(
           (item) => item.id.replace(/^VL/, "") !== normalizedId,
         );
-    this.setState({ library: { ...previousLibrary, playlists } });
 
-    try {
-      await this.dataSource.setPlaylistSaved(playlist, saved);
-    } catch (error) {
-      this.setState({ library: previousLibrary });
-      throw error;
+    if (previousLibrary) {
+      this.setState({ library: { ...previousLibrary, playlists } });
+    } else {
+      const fallbackLibrary: LibrarySnapshot = {
+        account: { name: "User" },
+        playlists,
+        albums: [],
+        artists: [],
+        likedSongsPlaylist: { id: "LM", title: "Liked Songs", owner: "You" },
+        likedSongs: [],
+        recentlyPlayed: [],
+      };
+      this.setState({ library: fallbackLibrary });
+    }
+
+    if (this.dataSource.setPlaylistSaved && this.state.status !== "signed-out") {
+      try {
+        await this.dataSource.setPlaylistSaved(playlist, saved);
+      } catch (error) {
+        logInternalWarn("LibraryController.setPlaylistSaved remote sync failed, keeping local state", {
+          playlistId: playlist.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
@@ -1218,6 +1240,12 @@ export class LibraryController {
       library: { ...previousLibrary, likedSongs },
       pendingLikeTrackIds,
     });
+
+    if (typeof window !== "undefined" && (rating === "none" || rating === "dislike")) {
+      window.dispatchEvent(
+        new CustomEvent("opentune:track-unliked", { detail: { trackId: track.id } })
+      );
+    }
 
     try {
       await applyRating(rating);

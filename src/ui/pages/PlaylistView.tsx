@@ -8,7 +8,7 @@ import type { PlayerControllerActions } from "../../player/playerStore";
 import { markPlaylistPlayed } from "../../player/recentPlaylists";
 import { shuffleTracks } from "../../player/shuffleTracks";
 import { useTrackContextMenu } from "../components/TrackContextMenu";
-import { addLocalPlaylistPath, isLocalPlaylist, LOCAL_IMAGE_PREFIX, notifyLocalPlaylistsChanged, setLocalPlaylistArtwork, setLocalPlaylistPrivacy } from "../../player/localPlaylists";
+import { addLocalPlaylistPath, isLocalPlaylist, notifyLocalPlaylistsChanged, setLocalPlaylistPrivacy } from "../../player/localPlaylists";
 import { generatePlaylistShareLink, saveSharedPlaylistToLibrary } from "../../player/playlistShare";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -29,6 +29,13 @@ import { useKeyboardShortcuts } from "../settings/keyboardShortcuts";
 import { shouldStartPageSearch } from "./pageSearchKeyboard";
 import { collectTrackPages } from "./collectTrackPages";
 import { useArtistNavigation } from "../components/ArtistLinks";
+import { PlaylistArtworkModal } from "../components/PlaylistArtworkModal";
+import {
+  getCustomPlaylistArtwork,
+  getCustomPlaylistTracksArtwork,
+  PLAYLIST_ARTWORK_CHANGED_EVENT,
+  type PlaylistArtworkChangeDetail,
+} from "../../player/playlistArtwork";
 
 /*
  * Collapsed search affordance that widens on hover/focus or while it holds a query —
@@ -260,11 +267,19 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   const isSharedPlaylistView = Boolean(playlist?.id?.startsWith("shared-playlist:"));
 
   const [privacy, setPrivacy] = useState<"private" | "public">(() => getInitialPlaylistPrivacy(playlist));
-  const [customArtworkOverride, setCustomArtworkOverride] = useState<string | null>(null);
+  const [customArtworkOverride, setCustomArtworkOverride] = useState<string | null>(() =>
+    playlist?.id ? getCustomPlaylistArtwork(playlist.id) : null
+  );
+  const [customTracksArtworkOverride, setCustomTracksArtworkOverride] = useState<string | null>(() =>
+    playlist?.id ? getCustomPlaylistTracksArtwork(playlist.id) : null
+  );
+  const [isArtworkModalOpen, setIsArtworkModalOpen] = useState(false);
+  const [pendingArtworkPath, setPendingArtworkPath] = useState<string | null>(null);
 
   useEffect(() => {
     setPrivacy(getInitialPlaylistPrivacy(playlist));
-    setCustomArtworkOverride(null);
+    setCustomArtworkOverride(playlist?.id ? getCustomPlaylistArtwork(playlist.id) : null);
+    setCustomTracksArtworkOverride(playlist?.id ? getCustomPlaylistTracksArtwork(playlist.id) : null);
     if (playlist?.id) {
       void getAppSetting<string>(`opentune:playlist-privacy:${playlist.id}`).then((stored) => {
         if (stored === "public" || stored === "private") {
@@ -273,6 +288,21 @@ export function PlaylistView({ playlist, playerController, libraryController, on
       });
     }
   }, [playlist?.id, playlist?.privacy]);
+
+  useEffect(() => {
+    if (!playlist?.id) return;
+    const handleArtworkChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<PlaylistArtworkChangeDetail>;
+      if (customEvent.detail?.playlistId === playlist.id) {
+        setCustomArtworkOverride(customEvent.detail.artworkUrl);
+        setCustomTracksArtworkOverride(
+          customEvent.detail.applyToTracks ? customEvent.detail.artworkUrl : null
+        );
+      }
+    };
+    window.addEventListener(PLAYLIST_ARTWORK_CHANGED_EVENT, handleArtworkChanged);
+    return () => window.removeEventListener(PLAYLIST_ARTWORK_CHANGED_EVENT, handleArtworkChanged);
+  }, [playlist?.id]);
 
   const handleTogglePrivacy = () => {
     if (!playlist) return;
@@ -296,9 +326,8 @@ export function PlaylistView({ playlist, playerController, libraryController, on
         filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "bmp", "webp"] }],
       });
       if (typeof selected !== "string") return;
-      setLocalPlaylistArtwork(playlist.id, selected);
-      setCustomArtworkOverride(`${LOCAL_IMAGE_PREFIX}${selected}`);
-      notifyLocalPlaylistsChanged();
+      setPendingArtworkPath(selected);
+      setIsArtworkModalOpen(true);
     } catch (error) {
       logInternalWarn("PlaylistView.handleChooseCustomArtwork failed", { error });
     }
@@ -441,7 +470,11 @@ export function PlaylistView({ playlist, playerController, libraryController, on
     [tracks, offlineState.entries, hasMoreTracks],
   );
 
+  const isLikedSongs = Boolean(playlist && isLikedSongsId(playlist.id, playlist.kind));
   const isLocalPlaylistView = playlist ? isLocalPlaylist(playlist) : false;
+  const canChangeArtwork = Boolean(
+    !isLikedSongs && (isLocalPlaylistView || playlist?.isEditable !== false),
+  );
   /*
    * Reordering now reaches YouTube too, not just local playlists. Liked Songs is excluded
    * because it has no user-defined order to persist.
@@ -449,8 +482,20 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   const canReorderTracks = Boolean(
     playlist
       && (isLocalPlaylistView
-        || (playlist.isEditable !== false && !isLikedSongsId(playlist.id, playlist.kind))),
+        || (playlist.isEditable !== false && !isLikedSongs)),
   );
+
+  useEffect(() => {
+    if (!isLikedSongs) return;
+    const handleTrackUnliked = (event: Event) => {
+      const customEvent = event as CustomEvent<{ trackId: string }>;
+      const unlikedId = customEvent.detail?.trackId;
+      if (!unlikedId) return;
+      setTracks((current) => current.filter((track) => track.id !== unlikedId));
+    };
+    window.addEventListener("opentune:track-unliked", handleTrackUnliked);
+    return () => window.removeEventListener("opentune:track-unliked", handleTrackUnliked);
+  }, [isLikedSongs]);
 
   useEffect(() => {
     if (!playlist) return;
@@ -632,17 +677,22 @@ export function PlaylistView({ playlist, playerController, libraryController, on
   }, [error, isLoading, keyboardShortcuts, playlist, tracks.length]);
 
   const enrichedTracks = useMemo(() => {
+    let sourceTracks = tracks;
+    if (customTracksArtworkOverride) {
+      sourceTracks = sourceTracks.map((t) => ({ ...t, artworkUrl: customTracksArtworkOverride }));
+    }
+
     const albumArtworkMap = new Map<string, string>();
-    for (const t of tracks) {
+    for (const t of sourceTracks) {
       if (t.artworkUrl && !isVideoThumbnailUrl(t.artworkUrl)) {
         if (t.albumId) albumArtworkMap.set(t.albumId, t.artworkUrl);
         if (t.album) albumArtworkMap.set(t.album.toLowerCase().trim(), t.artworkUrl);
       }
     }
 
-    if (albumArtworkMap.size === 0) return tracks;
+    if (albumArtworkMap.size === 0) return sourceTracks;
 
-    return tracks.map((t) => {
+    return sourceTracks.map((t) => {
       if (isVideoThumbnailUrl(t.artworkUrl) || !t.artworkUrl) {
         const square = (t.albumId && albumArtworkMap.get(t.albumId))
           || (t.album && albumArtworkMap.get(t.album.toLowerCase().trim()));
@@ -652,7 +702,7 @@ export function PlaylistView({ playlist, playerController, libraryController, on
       }
       return t;
     });
-  }, [tracks]);
+  }, [tracks, customTracksArtworkOverride]);
 
   const dynamicPlaylistArtworks = useMemo(() => {
     const seen = new Set<string>();
@@ -836,8 +886,6 @@ export function PlaylistView({ playlist, playerController, libraryController, on
     if (started && playlist) markPlaylistPlayed(playlist.id);
   };
 
-  const isLikedSongs = Boolean(playlist && isLikedSongsId(playlist.id, playlist.kind));
-
   /*
    * O(1) membership test instead of scanning the track array on every render — these lists
    * run to several hundred rows.
@@ -997,7 +1045,7 @@ export function PlaylistView({ playlist, playerController, libraryController, on
                 preferProxy
                 className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
               />
-              {isLocalPlaylistView && (
+              {canChangeArtwork && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1027,7 +1075,7 @@ export function PlaylistView({ playlist, playerController, libraryController, on
                   />
                 ))}
               </div>
-              {isLocalPlaylistView && (
+              {canChangeArtwork && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1051,7 +1099,7 @@ export function PlaylistView({ playlist, playerController, libraryController, on
                 preferProxy
                 className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
               />
-              {isLocalPlaylistView && (
+              {canChangeArtwork && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1461,6 +1509,23 @@ export function PlaylistView({ playlist, playerController, libraryController, on
             </div>
           </div>
         </div>
+      )}
+
+      {isArtworkModalOpen && playlist && (
+        <PlaylistArtworkModal
+          isOpen={isArtworkModalOpen}
+          onClose={() => {
+            setIsArtworkModalOpen(false);
+            setPendingArtworkPath(null);
+          }}
+          playlist={playlist}
+          initialImagePath={pendingArtworkPath}
+          tracks={tracks}
+          onArtworkApplied={(newUrl) => {
+            setCustomArtworkOverride(newUrl);
+            setPendingArtworkPath(null);
+          }}
+        />
       )}
 
     </div>

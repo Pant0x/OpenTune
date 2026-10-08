@@ -10,13 +10,11 @@ import {
 import { cn } from "@/lib/utils";
 import { Loader } from "@/components/motion/loader";
 import { BookmarkActiveIcon, BookmarkIcon, CheckIcon, DownloadIcon, EyeClosedIcon, EyeIcon, ImageIcon, ListIcon, PencilIcon, RefreshIcon, ShareIcon, ShuffleIcon, SkipNextIcon, TrashIcon } from "@/ui/icons";
-import type { Album, Playlist } from "../../datasource/types";
+import type { Album, Playlist, Track } from "../../datasource/types";
 import type { LibraryController } from "../../player/LibraryController";
 import { playerController } from "../../player/playerStore";
 import { shuffleTracks } from "../../player/shuffleTracks";
-import { isLocalPlaylist, LOCAL_IMAGE_PREFIX, setLocalPlaylistArtwork, refreshLocalPlaylists } from "../../player/localPlaylists";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { forgetArtworkSource } from "../../internal/artworkCache";
+import { isLocalPlaylist, LOCAL_IMAGE_PREFIX, refreshLocalPlaylists } from "../../player/localPlaylists";
 import { exportPlaylist } from "../../player/playlistTransfer";
 import { hidePlaylist, unhidePlaylist, useHiddenPlaylistIds } from "../settings/hiddenPlaylists";
 import {
@@ -25,6 +23,8 @@ import {
 } from "./playlistContextMenuContext";
 import { generatePlaylistShareLink } from "../../player/playlistShare";
 import { SpotifyService } from "../../services/SpotifyService";
+import { getCustomPlaylistArtwork, setCustomPlaylistArtwork } from "../../player/playlistArtwork";
+import { PlaylistArtworkModal } from "./PlaylistArtworkModal";
 
 /* Re-exported so existing `from "./PlaylistContextMenu"` imports keep working; the context
    itself has to live outside this file. See playlistContextMenuContext.ts. */
@@ -44,6 +44,9 @@ export function PlaylistContextMenuProvider({
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isArtworkModalOpen, setIsArtworkModalOpen] = useState(false);
+  const [artworkModalPlaylist, setArtworkModalPlaylist] = useState<Playlist | null>(null);
+  const [artworkModalTracks, setArtworkModalTracks] = useState<Track[] | undefined>(undefined);
   /*
    * Renaming happens inside the menu rather than in a separate dialog. The menu is already
    * anchored to the playlist you right-clicked, so swapping its body for a field keeps the
@@ -333,37 +336,6 @@ export function PlaylistContextMenuProvider({
     }
   };
 
-  /*
-   * The cache is keyed by the `local-image:` URL, which does not change when the file behind
-   * it does — so a cover picked twice would keep painting the first one without this.
-   */
-  const refreshPlaylistArtwork = (artworkPath: string | null) => {
-    if (!playlist) return;
-    if (playlist.artworkUrl?.startsWith(LOCAL_IMAGE_PREFIX)) {
-      forgetArtworkSource(playlist.artworkUrl);
-    }
-    if (artworkPath) forgetArtworkSource(`${LOCAL_IMAGE_PREFIX}${artworkPath}`);
-    setLocalPlaylistArtwork(playlist.id, artworkPath);
-    setPosition(null);
-  };
-
-  const choosePlaylistImage = async () => {
-    if (!playlist) return;
-    try {
-      const selected = await openDialog({
-        multiple: false,
-        title: "Choose playlist image",
-        filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "bmp", "webp"] }],
-      });
-      if (typeof selected !== "string") return;
-      refreshPlaylistArtwork(selected);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Unable to set that image.");
-    }
-  };
-
-  const clearPlaylistImage = async () => refreshPlaylistArtwork(null);
-
   const submitRename = async () => {
     if (!playlist || renameDraft === null) return;
     const trimmed = renameDraft.trim();
@@ -535,26 +507,42 @@ export function PlaylistContextMenuProvider({
               <span>Rename</span>
             </button>
           )}
-          {isLocalPlaylistMenu && (
+          {(canEditPlaylist || isLocalPlaylistMenu) && (
             <button
               type="button"
               role="menuitem"
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => void choosePlaylistImage()}
+              onClick={async () => {
+                const target = playlist;
+                setPosition(null);
+                if (target) {
+                  setArtworkModalPlaylist(target);
+                  const loadedTracks = await libraryController.getPlaylistTracks(target).catch(() => []);
+                  setArtworkModalTracks(loadedTracks);
+                  setIsArtworkModalOpen(true);
+                }
+              }}
             >
               <ImageIcon size={18} />
-              <span>Change image</span>
+              <span>Change cover image</span>
             </button>
           )}
-          {isLocalPlaylistMenu && playlist?.artworkUrl?.startsWith(LOCAL_IMAGE_PREFIX) && (
+          {playlist && Boolean(getCustomPlaylistArtwork(playlist.id) || playlist.artworkUrl?.startsWith(LOCAL_IMAGE_PREFIX)) && (
             <button
               type="button"
               role="menuitem"
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              onClick={() => void clearPlaylistImage()}
+              onClick={async () => {
+                const target = playlist;
+                setPosition(null);
+                if (target) {
+                  await setCustomPlaylistArtwork(target.id, null);
+                  showToast("Restored dynamic collage");
+                }
+              }}
             >
               <ImageIcon size={18} />
-              <span>Use default image</span>
+              <span>Restore dynamic collage</span>
             </button>
           )}
           {isLocalPlaylistMenu && (
@@ -625,6 +613,20 @@ export function PlaylistContextMenuProvider({
           )}
           <span>{toast}</span>
         </div>
+      )}
+      {isArtworkModalOpen && artworkModalPlaylist && (
+        <PlaylistArtworkModal
+          isOpen={isArtworkModalOpen}
+          onClose={() => {
+            setIsArtworkModalOpen(false);
+            setArtworkModalPlaylist(null);
+          }}
+          playlist={artworkModalPlaylist}
+          tracks={artworkModalTracks}
+          onArtworkApplied={(url) => {
+            showToast(url ? "Playlist cover updated" : "Restored dynamic collage");
+          }}
+        />
       )}
     </PlaylistContext.Provider>
   );

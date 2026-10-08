@@ -20,6 +20,17 @@ export interface PlayerUIState {
 
 type Listener = () => void;
 
+const QUEUE_OPEN_KEY = "opentune:sidebar_panel_open";
+
+function readStoredQueueOpen(): boolean {
+  try {
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem(QUEUE_OPEN_KEY) === "true";
+    }
+  } catch {}
+  return false;
+}
+
 class PlayerUIStore {
   private state: PlayerUIState = {
     isSeeking: false,
@@ -28,7 +39,7 @@ class PlayerUIStore {
     isLyricsOpen: false,
     isLyricsFullscreen: false,
     isNowPlayingFullscreen: false,
-    isQueueOpen: false,
+    isQueueOpen: readStoredQueueOpen(),
     isListeningActivityOpen: false,
     rightPanelTab: "nowplaying",
     returnToLyricsOnFullscreenClose: false,
@@ -84,7 +95,7 @@ class PlayerUIStore {
     if (isLyricsFullscreen) {
       this.setState({ isLyricsFullscreen, isQueueOpen: false });
     } else {
-      this.setState({ isLyricsFullscreen });
+      this.setState({ isLyricsFullscreen, isQueueOpen: readStoredQueueOpen() });
     }
   }
 
@@ -100,7 +111,7 @@ class PlayerUIStore {
     if (isNowPlayingFullscreen) {
       this.setState({ isNowPlayingFullscreen, isQueueOpen: false });
     } else {
-      this.setState({ isNowPlayingFullscreen });
+      this.setState({ isNowPlayingFullscreen, isQueueOpen: readStoredQueueOpen() });
     }
   }
 
@@ -139,6 +150,11 @@ class PlayerUIStore {
   }
 
   setQueueOpen(isQueueOpen: boolean) {
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(QUEUE_OPEN_KEY, String(isQueueOpen));
+      }
+    } catch {}
     if (isQueueOpen) {
       this.setState({ isQueueOpen, isListeningActivityOpen: false });
     } else {
