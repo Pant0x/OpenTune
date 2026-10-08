@@ -71,6 +71,7 @@ export interface CachedLyricWord {
   el: HTMLElement;
   start: number;
   end: number;
+  isAdlib?: boolean;
   state?: "sung" | "unsung" | "active";
 }
 
@@ -91,13 +92,32 @@ export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): 
       const wEl = wordNodes[i]!;
       const start = parseFloat(wEl.dataset.start || "0");
       const end = parseFloat(wEl.dataset.end || "1");
-      words.push({ el: wEl, start, end, state: (wEl.dataset.state as any) || undefined });
+      const isAdlib = wEl.dataset.adlib === "true";
+      words.push({ el: wEl, start, end, isAdlib, state: (wEl.dataset.state as any) || undefined });
     }
     el.__lyricWords = words;
   }
 
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
+    if (w.isAdlib) {
+      // Ad-libs pop on / light up 100% all at once at their onset, with NO horizontal sliding gradient
+      if (progress >= w.start) {
+        if (w.state !== "sung") {
+          w.state = "sung";
+          w.el.dataset.state = "sung";
+          w.el.style.setProperty("--w-sweep", "100%");
+        }
+      } else {
+        if (w.state !== "unsung") {
+          w.state = "unsung";
+          w.el.dataset.state = "unsung";
+          w.el.style.setProperty("--w-sweep", "0%");
+        }
+      }
+      continue;
+    }
+
     if (progress >= w.end) {
       if (w.state !== "sung") {
         w.state = "sung";
@@ -133,7 +153,8 @@ export function setLineSweepState(lineEl: HTMLElement, state: "sung" | "unsung")
       const wEl = wordNodes[i]!;
       const start = parseFloat(wEl.dataset.start || "0");
       const end = parseFloat(wEl.dataset.end || "1");
-      words.push({ el: wEl, start, end });
+      const isAdlib = wEl.dataset.adlib === "true";
+      words.push({ el: wEl, start, end, isAdlib });
     }
     el.__lyricWords = words;
   }
@@ -235,12 +256,13 @@ export const LyricLineView = memo(function LyricLineView({
           };
         }
         if (hasMainTokens && token.type === "adlib") {
-          // Ad-libs float independently alongside main lyrics; they don't consume the main sweep allocation
+          // Ad-libs pop on all at once at their relative onset position in the line
+          const adlibOnset = Math.min(0.92, Math.max(0.15, accumulatedChars / totalChars));
           return {
             id: `${tIdx}-${pIdx}`,
             text: part,
             isWord: true,
-            start: 0,
+            start: adlibOnset,
             end: 1,
           };
         }
@@ -344,21 +366,12 @@ export const LyricLineView = memo(function LyricLineView({
           }
           const cleanText = cleanAdlibBrackets(item.text) || item.text;
 
-          let state: "sung" | "unsung" | "active" = "unsung";
+          let state: "sung" | "unsung" = "unsung";
           let wordSweepStyle: CSSProperties | undefined;
 
           if (sweep01 !== undefined && sweeps) {
-            if (sweep01 >= item.end) {
-              state = "sung";
-              wordSweepStyle = { "--w-sweep": "100%" } as CSSProperties;
-            } else if (sweep01 <= item.start) {
-              state = "unsung";
-              wordSweepStyle = { "--w-sweep": "0%" } as CSSProperties;
-            } else {
-              state = "active";
-              const frac = (sweep01 - item.start) / Math.max(0.0001, item.end - item.start);
-              wordSweepStyle = { "--w-sweep": `${(frac * 100).toFixed(1)}%` } as CSSProperties;
-            }
+            state = sweep01 >= item.start ? "sung" : "unsung";
+            wordSweepStyle = { "--w-sweep": state === "sung" ? "100%" : "0%" } as CSSProperties;
           }
 
           return (
@@ -368,6 +381,7 @@ export const LyricLineView = memo(function LyricLineView({
               data-start={item.start.toFixed(4)}
               data-end={item.end.toFixed(4)}
               data-state={state}
+              data-adlib="true"
               style={wordSweepStyle}
             >
               {cleanText}

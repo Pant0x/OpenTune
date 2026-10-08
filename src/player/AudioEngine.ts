@@ -86,12 +86,9 @@ const STANDBY_IDLE_TEARDOWN_MS = 60_000;
 const FADE_STEP_MS = 20;
 
 /**
- * Standard loudness normalization target: -14 LUFS (Spotify / YouTube Music / Apple Music standard).
- * Modern commercial music is typically mastered hot to -8.5 LUFS (0 dBFS peak).
- * A -5.5 dB gain reduction (~0.531 multiplier) normalizes playback to -14 LUFS,
- * matching standard streaming services.
+ * Standard output volume factor: 1.0 for full standard volume.
  */
-export const LUFS_14_NORMALIZATION_FACTOR = 0.531;
+export const LUFS_14_NORMALIZATION_FACTOR = 1.0;
 
 let iframeApiPromise: Promise<void> | null = null;
 const audioEngines = new Set<AudioEngine>();

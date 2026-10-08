@@ -330,10 +330,28 @@ export function processDuetLyrics(
  * Balances naturally around ~1.15x - 1.20x.
  */
 export function getDynamicVocalMultiplier(
-  _line?: LyricLine,
-  _nextLine?: LyricLine,
+  line?: LyricLine,
+  nextLine?: LyricLine,
   _trackDurationSec?: number,
 ): number {
-  return 1.18;
+  if (!line?.startTimeSec) return 1.20;
+  const start = line.startTimeSec;
+  const nextStart = nextLine?.startTimeSec;
+  if (!nextStart || nextStart <= start) return 1.20;
+
+  const gap = nextStart - start;
+  const text = (line.text || "").trim();
+  const len = text.length;
+  if (len === 0) return 1.20;
+
+  // Estimate vocal delivery duration based on text length:
+  // Rap / fast vocals deliver ~11-15 characters per second.
+  const estVocalSec = Math.max(1.4, len / 11.5 + 0.4);
+  if (gap > estVocalSec) {
+    const ratio = gap / estVocalSec;
+    return Math.min(1.40, Math.max(1.18, Number(ratio.toFixed(2))));
+  }
+
+  return 1.20;
 }
 

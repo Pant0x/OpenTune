@@ -609,6 +609,18 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     setCurrentPlaybackTime(target);
     setActiveIndex(index);
     scrollToLine(index, !reduce);
+
+    // Immediately update line sweep states across the column
+    for (let i = 0; i < index; i++) {
+      if (lineRefs.current[i]) setLineSweepState(lineRefs.current[i]!, "sung");
+    }
+    if (lineRefs.current[index]) {
+      setLineSweepState(lineRefs.current[index]!, "unsung");
+    }
+    for (let i = index + 1; i < lines.length; i++) {
+      if (lineRefs.current[i]) setLineSweepState(lineRefs.current[i]!, "unsung");
+    }
+
     void playerController.seekTo(target);
   };
 

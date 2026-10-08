@@ -5552,7 +5552,7 @@ export class YouTubeMusicDataSource extends DataSource {
      * The preferred source is part of the key because it changes which source wins. Sharing
      * one key would mean changing the setting appears to do nothing until the cache expires.
      */
-    const cacheKey = `lyrics:synced:v5:${getPreferredLyricsSourceId()}:${track.id}`;
+    const cacheKey = `lyrics:synced:v6:${getPreferredLyricsSourceId()}:${track.id}`;
     const cached = await getCachedJson<Lyrics>(cacheKey);
     if (cached?.timing === "synced" && cached.lines.length > 0) return cached;
 
@@ -5808,6 +5808,38 @@ export class YouTubeMusicDataSource extends DataSource {
     return null;
   }
 
+  private hasVideoSkitIntroTiming(syncedLyrics?: string | null): boolean {
+    if (!syncedLyrics) return false;
+    const lines = syncedLyrics.split("\n");
+    const parsed: { time: number; text: string }[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const match = trimmed.match(/^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/);
+      if (!match) continue;
+      const min = parseInt(match[1]!, 10);
+      const sec = parseFloat(match[2]!);
+      const time = min * 60 + sec;
+      const text = match[3]!.trim();
+      if (!text || /^[♪♫\s]+$/.test(text) || /^\[.*?\]$/.test(text)) continue;
+      parsed.push({ time, text });
+      if (parsed.length >= 3) break;
+    }
+    if (parsed.length === 0) return false;
+    // Pattern A: Vocals start unusually late (>= 21.0s) due to music video clip dialogue/intro
+    if (parsed[0].time >= 21.0) return true;
+    // Pattern B: Short intro exclamation / adlib at <= 9.5s followed by large video skit gap to >= 18.0s
+    if (parsed.length >= 2) {
+      const t0 = parsed[0].time;
+      const t1 = parsed[1].time;
+      const t0Words = parsed[0].text.split(/\s+/).length;
+      if (t0 <= 9.5 && (t0Words <= 3 || parsed[0].text.length <= 16) && t1 >= 18.0 && (t1 - t0) >= 7.5) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async fetchLrcLibSearchLyrics(track: Track): Promise<LyricsProviderResult | null> {
     const durationSec = track.durationSec;
 
@@ -5843,13 +5875,18 @@ export class YouTubeMusicDataSource extends DataSource {
           .filter(({ durationDelta }) => !durationSec || durationDelta <= 20)
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
-        // Prefer synced lyrics; prioritize uncensored / explicit candidates over censored asterisks
+        // Prefer synced lyrics; prioritize uncensored candidates and topic-release timing over video-clip skits
         const syncedCandidates = withDelta.filter(({ match }) => Boolean(match.syncedLyrics));
         syncedCandidates.sort((a, b) => {
           const aCensored = hasProfanityCensorship(a.match.syncedLyrics ?? "");
           const bCensored = hasProfanityCensorship(b.match.syncedLyrics ?? "");
           if (aCensored !== bCensored) {
             return aCensored ? 1 : -1;
+          }
+          const aVideoSkit = this.hasVideoSkitIntroTiming(a.match.syncedLyrics);
+          const bVideoSkit = this.hasVideoSkitIntroTiming(b.match.syncedLyrics);
+          if (aVideoSkit !== bVideoSkit) {
+            return aVideoSkit ? 1 : -1;
           }
           return a.durationDelta - b.durationDelta;
         });
@@ -6044,44 +6081,71 @@ export class YouTubeMusicDataSource extends DataSource {
       return lyrics;
     }
 
-    // Identify the first substantial vocal lyric line (ignoring empty lines, cues, [Music], etc.)
-    let firstVocalStartSec: number | undefined;
-    for (const line of lyrics.lines) {
+    // Identify vocal lines and check for music video intro delays
+    const vocalLines: { index: number; startTimeSec: number; text: string }[] = [];
+    for (let i = 0; i < lyrics.lines.length; i++) {
+      const line = lyrics.lines[i]!;
       const text = (line.text || "").trim();
       if (!text) continue;
       if (/^[♪♫\s]+$/.test(text)) continue;
-      if (/^\[.*?\]$/.test(text) && text.length < 25) continue;
-      if (/^\(.*?\)$/.test(text) && text.length < 25) continue;
-      firstVocalStartSec = line.startTimeSec;
-      break;
-    }
-
-    if (firstVocalStartSec === undefined) {
-      firstVocalStartSec = lyrics.lines[0]?.startTimeSec;
-    }
-
-    let shiftSec = 0;
-
-    // 1. YouTube official music video intro skit detection:
-    // Community-contributed synced lyrics (e.g. LRCLIB, NetEase, BetterLyrics) are very often
-    // timed against the official YouTube Music Video which has an extended intro skit / dialogue scene.
-    // However, OpenTune plays the clean Topic audio release (from YouTube Music / studio album).
-    // In rap / pop / studio releases, the artist drops vocals at ~12.0s - 16.0s (average 15.0s).
-    // If the first substantial vocal line starts abnormally late (>= 21.0s) on a normal-length song (<= 450s):
-    if (
-      typeof firstVocalStartSec === "number" &&
-      firstVocalStartSec >= 21.0 &&
-      (!track.durationSec || track.durationSec <= 450)
-    ) {
-      const calculatedOffset = Number((firstVocalStartSec - 15.0).toFixed(2));
-      if (calculatedOffset >= 6.0 && calculatedOffset <= 60.0) {
-        shiftSec = calculatedOffset;
+      if (/^\[.*?\]$/.test(text) && text.length < 30) continue;
+      if (typeof line.startTimeSec === "number") {
+        vocalLines.push({ index: i, startTimeSec: line.startTimeSec, text });
       }
     }
 
-    // 2. If provider duration delta or autoIntroOffsetSec was already identified:
+    if (vocalLines.length === 0) {
+      return lyrics;
+    }
+
+    const isNormalLength = !track.durationSec || track.durationSec <= 450;
+    let shiftSec = 0;
+    let shiftFromIndex = 0;
+
+    // Pattern A: Whole intro video skit delay (dialogue/scenes before any vocals drop, e.g. Tesla)
+    const firstVocal = vocalLines[0]!;
+    if (isNormalLength && firstVocal.startTimeSec >= 21.0) {
+      const calculatedOffset = Number((firstVocal.startTimeSec - 15.0).toFixed(2));
+      if (calculatedOffset >= 6.0 && calculatedOffset <= 60.0) {
+        shiftSec = calculatedOffset;
+        shiftFromIndex = 0;
+      }
+    }
+
+    // Pattern B: Short intro exclamation / adlib / producer tag followed by video skit pause (e.g. Arafa)
+    if (shiftSec === 0 && isNormalLength && vocalLines.length >= 2) {
+      // Find the first substantial verse line (>= 3 words or >= 16 chars)
+      let substantialIdx = -1;
+      for (let i = 0; i < vocalLines.length; i++) {
+        const v = vocalLines[i]!;
+        const words = v.text.split(/\s+/).length;
+        if (words >= 3 || v.text.length >= 16) {
+          substantialIdx = i;
+          break;
+        }
+      }
+
+      if (substantialIdx > 0) {
+        const vTag = vocalLines[0]!;
+        const vSub = vocalLines[substantialIdx]!;
+        const tagTime = vTag.startTimeSec;
+        const subTime = vSub.startTimeSec;
+        const gap = subTime - tagTime;
+
+        if (tagTime <= 9.5 && subTime >= 18.0 && gap >= 7.5) {
+          const excessPause = Number((gap - 5.0).toFixed(2));
+          if (excessPause >= 4.0 && excessPause <= 45.0) {
+            shiftSec = excessPause;
+            shiftFromIndex = vSub.index;
+          }
+        }
+      }
+    }
+
+    // Fallback: if provider duration delta or autoIntroOffsetSec was already calculated:
     if (shiftSec === 0 && lyrics.autoIntroOffsetSec && Math.abs(lyrics.autoIntroOffsetSec) >= 5.0) {
       shiftSec = lyrics.autoIntroOffsetSec;
+      shiftFromIndex = 0;
     }
 
     if (shiftSec <= 0) {
@@ -6091,19 +6155,36 @@ export class YouTubeMusicDataSource extends DataSource {
     logInternalInfo("YouTubeMusicDataSource.alignLyricsToTopicRelease: shifted lines to match topic release", {
       trackId: track.id,
       trackTitle: track.title,
-      firstVocalStartSec,
       shiftSec,
+      shiftFromIndex,
     });
 
-    const shiftedLines = lyrics.lines.map((line) => ({
-      ...line,
-      startTimeSec: typeof line.startTimeSec === "number"
-        ? Math.max(0, Number((line.startTimeSec - shiftSec).toFixed(2)))
-        : undefined,
-      endTimeSec: typeof line.endTimeSec === "number"
-        ? Math.max(0, Number((line.endTimeSec - shiftSec).toFixed(2)))
-        : undefined,
-    }));
+    const shiftedLines = lyrics.lines.map((line, idx) => {
+      if (idx < shiftFromIndex) {
+        // For early intro tags before the skit, adjust slightly if > 5.5s so tag drops around 5.0s
+        const origStart = line.startTimeSec;
+        if (typeof origStart === "number" && origStart > 5.5) {
+          const tagAdjustment = Math.min(1.0, Number((origStart - 5.0).toFixed(2)));
+          return {
+            ...line,
+            startTimeSec: Math.max(0, Number((origStart - tagAdjustment).toFixed(2))),
+            endTimeSec: typeof line.endTimeSec === "number"
+              ? Math.max(0, Number((line.endTimeSec - tagAdjustment).toFixed(2)))
+              : undefined,
+          };
+        }
+        return line;
+      }
+      return {
+        ...line,
+        startTimeSec: typeof line.startTimeSec === "number"
+          ? Math.max(0, Number((line.startTimeSec - shiftSec).toFixed(2)))
+          : undefined,
+        endTimeSec: typeof line.endTimeSec === "number"
+          ? Math.max(0, Number((line.endTimeSec - shiftSec).toFixed(2)))
+          : undefined,
+      };
+    });
 
     return {
       ...lyrics,
