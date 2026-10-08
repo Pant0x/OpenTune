@@ -47,6 +47,25 @@ function saveRecentSearch(query: string): void {
   } catch {}
 }
 
+function removeRecentSearch(query: string): string[] {
+  const trimmed = query.trim();
+  try {
+    const existing = loadRecentSearches().filter(
+      (item) => item.toLocaleLowerCase() !== trimmed.toLocaleLowerCase(),
+    );
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(existing));
+    return existing;
+  } catch {
+    return [];
+  }
+}
+
+function clearAllRecentSearches(): void {
+  try {
+    localStorage.removeItem(RECENT_SEARCHES_KEY);
+  } catch {}
+}
+
 interface SearchBarProps {
   onSearch?: (query: string, openInNewTab?: boolean) => void;
   onOpen?: () => void;
@@ -256,19 +275,35 @@ export function SearchBar({
     void playerController.playTrackById(track.id);
   };
 
+  const handleRemoveRecentSearch = (e: React.MouseEvent, item: string) => {
+    e.stopPropagation();
+    const updated = removeRecentSearch(item);
+    setRecentSearches(updated);
+  };
+
+  const handleClearAllRecentSearches = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    clearAllRecentSearches();
+    setRecentSearches([]);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const items = query.trim() ? suggestions : recentSearches;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (!isOpen) {
+      if (!isOpen && (query.trim() || recentSearches.length > 0)) {
         setIsOpen(true);
         return;
       }
-      setSelectedIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
+      if (items.length > 0) {
+        setSelectedIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
+      }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
+      if (items.length > 0) {
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
+      }
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (selectedIndex >= 0 && items[selectedIndex]) {
@@ -294,6 +329,7 @@ export function SearchBar({
   };
 
   const hasQuery = Boolean(query.trim());
+  const shouldShowDropdown = isOpen && (hasQuery || recentSearches.length > 0);
   const matchingArtist = useMemo(() => {
     const artists = previewResults?.artists;
     if (!artists?.length) return undefined;
@@ -443,6 +479,9 @@ export function SearchBar({
               setIsOpen(true);
               if (query.trim()) fetchSuggestionsAndPreview(query);
             }}
+            onClick={() => {
+              if (!isOpen) setIsOpen(true);
+            }}
             onKeyDown={handleKeyDown}
             placeholder="What do you want to play?"
             aria-label="Search music"
@@ -468,7 +507,7 @@ export function SearchBar({
 
         {/* Spotify-style Dropdown with query suggestions, closest artist card, albums and playlists */}
         <AnimatePresence>
-          {isOpen && (
+          {shouldShowDropdown && (
             <motion.div
               initial={{ opacity: 0, y: 6, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -628,43 +667,57 @@ export function SearchBar({
                     <span>See all results for &quot;{query}&quot;</span>
                   </button>
                 </>
-              ) : (
+              ) : recentSearches.length > 0 ? (
                 /* Recent Searches */
                 <div>
-                  <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                    Recent Searches
+                  <div className="flex items-center justify-between px-3 py-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                      Recent Searches
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearAllRecentSearches}
+                      className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      Clear all
+                    </button>
                   </div>
-                  {recentSearches.length === 0 ? (
-                    <p className="px-3 py-4 text-center text-xs text-muted-foreground">No recent searches</p>
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      {recentSearches.map((item, index) => {
-                        const isSelected = index === selectedIndex;
-                        return (
+                  <div className="flex flex-col gap-0.5">
+                    {recentSearches.map((item, index) => {
+                      const isSelected = index === selectedIndex;
+                      return (
+                        <div
+                          key={`rec-${item}-${index}`}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                          className={cn(
+                            "group flex items-center justify-between w-full rounded-xl px-3 py-2 text-sm transition-colors cursor-pointer",
+                            isSelected
+                              ? "bg-primary/15 text-primary font-medium"
+                              : "text-foreground hover:bg-muted/60",
+                          )}
+                          onClick={() => {
+                            setQuery(item);
+                            handleExecuteSearch(item);
+                          }}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <ClockIcon size={15} className={cn("shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
+                            <span className="truncate">{item}</span>
+                          </div>
                           <button
-                            key={`rec-${item}-${index}`}
                             type="button"
-                            onClick={() => {
-                              setQuery(item);
-                              handleExecuteSearch(item);
-                            }}
-                            onMouseEnter={() => setSelectedIndex(index)}
-                            className={cn(
-                              "flex items-center gap-3 w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                              isSelected
-                                ? "bg-primary/15 text-primary font-medium"
-                                : "text-foreground hover:bg-white/5",
-                            )}
+                            onClick={(e) => handleRemoveRecentSearch(e, item)}
+                            className="shrink-0 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Remove ${item} from recent searches`}
                           >
-                            <ClockIcon size={15} className="shrink-0 text-muted-foreground" />
-                            <span className="truncate flex-1">{item}</span>
+                            <CloseIcon size={12} />
                           </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
