@@ -14,7 +14,8 @@ import {
   setArtistFollowedLocally,
   subscribeToFollowedArtists,
 } from "../../../player/followedArtists";
-import { libraryController, playerController, useLibraryState } from "../../../player/playerStore";
+import { libraryController, playerController, useLibraryState, usePlayerSelector } from "../../../player/playerStore";
+import { LUFS_14_NORMALIZATION_FACTOR } from "../../../player/AudioEngine";
 import { YouTubeShareModal } from "./YouTubeShareModal";
 import { BellIcon, BellRingIcon, ChevronDownIcon } from "@/ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -73,6 +74,8 @@ export function VideoPlayerView({
   initialTime = 0,
   initialPlaying = false,
 }: VideoPlayerViewProps) {
+  const volume = usePlayerSelector((s) => s.volume);
+  const muted = usePlayerSelector((s) => s.muted);
   const libraryState = useLibraryState();
   const account = libraryState.library?.account;
   const userAvatarUrl = account?.artworkUrl;
@@ -162,6 +165,15 @@ export function VideoPlayerView({
                   event.target.seekTo(startAt, true);
                 } catch {}
               }
+              const targetVolume = muted ? 0 : Math.round(volume * LUFS_14_NORMALIZATION_FACTOR * 100);
+              try {
+                if (muted || targetVolume === 0) {
+                  event.target.mute();
+                } else {
+                  event.target.unMute();
+                  event.target.setVolume(targetVolume);
+                }
+              } catch {}
               if (pendingActionRef.current === "play") {
                 try {
                   event.target.playVideo();
@@ -274,6 +286,32 @@ export function VideoPlayerView({
       }
     };
   }, [postToIframe]);
+
+  // Synchronize player volume and mute state with YouTube video, matching AudioEngine LUFS normalization
+  useEffect(() => {
+    const targetVolume = muted
+      ? 0
+      : Math.round(volume * LUFS_14_NORMALIZATION_FACTOR * 100);
+
+    if (isPlayerReadyRef.current && ytPlayerRef.current) {
+      try {
+        if (muted || targetVolume === 0) {
+          ytPlayerRef.current.mute?.();
+        } else {
+          ytPlayerRef.current.unMute?.();
+          ytPlayerRef.current.setVolume?.(targetVolume);
+        }
+      } catch {
+        postToIframe("setVolume", [targetVolume]);
+        if (muted) postToIframe("mute");
+        else postToIframe("unMute");
+      }
+    } else {
+      postToIframe("setVolume", [targetVolume]);
+      if (muted) postToIframe("mute");
+      else postToIframe("unMute");
+    }
+  }, [volume, muted, postToIframe]);
 
   // Fallback listener for YouTube iframe postMessage events
   useEffect(() => {

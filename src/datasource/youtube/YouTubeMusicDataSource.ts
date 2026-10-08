@@ -1426,6 +1426,7 @@ export class YouTubeMusicDataSource extends DataSource {
       isExplicit: this.isExplicitItem(item),
       duration,
       durationSec,
+      isVideo: item.item_type === "video" || (item as any).type === "video",
     };
   }
 
@@ -4349,6 +4350,7 @@ export class YouTubeMusicDataSource extends DataSource {
             artist: channelTitle,
             artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
             durationSec: v.duration?.seconds,
+            isVideo: true,
           }));
           return {
             artist,
@@ -4648,6 +4650,7 @@ export class YouTubeMusicDataSource extends DataSource {
             artworkUrl: selectArtworkUrl(collectArtworkCandidates(v.thumbnails)),
             durationSec: v.duration?.seconds,
             releaseType: "single" as const,
+            isVideo: true,
           }));
           popularSongs.push(...channelTracks);
           allSongs = this.uniqueById([...allSongs, ...channelTracks]);

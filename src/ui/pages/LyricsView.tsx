@@ -621,6 +621,14 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const lineClickRef = useRef(handleLineClick);
   lineClickRef.current = handleLineClick;
   const seekLine = useCallback((index: number) => lineClickRef.current(index), []);
+  const handleSyncLine = useCallback((index: number) => {
+    const start = lines[index]?.startTimeSec;
+    if (start === undefined || !track?.id) return;
+    const current = playerController.getCurrentTime();
+    const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
+    const newOffset = start - current + autoIntro;
+    setLyricsOffset(track.id, newOffset);
+  }, [lines, track?.id, lyrics?.autoIntroOffsetSec]);
   const registerLine = useCallback((index: number, element: HTMLElement | null) => {
     lineRefs.current[index] = element;
   }, []);
@@ -815,15 +823,20 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
       {/* Floating Exit Fullscreen Button in Fullscreen Mode */}
       {isFullscreen && (
-        <button
-          type="button"
-          onClick={() => playerUIStore.setLyricsFullscreen(false)}
-          className="absolute top-6 right-6 z-50 flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 group select-none"
-          aria-label="Exit fullscreen"
-          title="Exit fullscreen (Esc)"
-        >
-          <CloseIcon size={18} className="transition-transform group-hover:scale-110" />
-        </button>
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+          {track && isSynced && (
+            <LyricsOffsetControl trackId={track.id} offset={offset} />
+          )}
+          <button
+            type="button"
+            onClick={() => playerUIStore.setLyricsFullscreen(false)}
+            className="flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 group select-none"
+            aria-label="Exit fullscreen"
+            title="Exit fullscreen (Esc)"
+          >
+            <CloseIcon size={18} className="transition-transform group-hover:scale-110" />
+          </button>
+        </div>
       )}
 
       {/*
@@ -836,7 +849,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
       {/* Top Header: Transparent Black Bar hosting Song / Video Switcher - Hidden in Fullscreen Mode */}
       {!isFullscreen && (
-        <header className="shrink-0 z-30 flex items-center justify-center py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full rounded-t-2xl">
+        <header className="shrink-0 z-30 flex items-center justify-between px-6 py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full rounded-t-2xl">
+          <div className="flex-1" />
           <div className="flex items-center rounded-full bg-black/60 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
             <button
               type="button"
@@ -862,6 +876,11 @@ export function LyricsView({ onClose }: LyricsViewProps) {
             >
               <span>Video</span>
             </button>
+          </div>
+          <div className="flex-1 flex justify-end">
+            {track && isSynced && mediaMode === "song" && (
+              <LyricsOffsetControl trackId={track.id} offset={offset} />
+            )}
           </div>
         </header>
       )}
@@ -977,6 +996,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                             translation={translations?.[index] || undefined}
                             tabbable={index === tabbableIndex}
                             onSeek={seekLine}
+                            onSyncLine={handleSyncLine}
                             onFocusLine={setFocusIndex}
                             register={registerLine}
                           />
@@ -1117,6 +1137,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
                         translation={translations?.[index] || undefined}
                         tabbable={index === tabbableIndex}
                         onSeek={seekLine}
+                        onSyncLine={handleSyncLine}
                         onFocusLine={setFocusIndex}
                         register={registerLine}
                       />
@@ -1272,27 +1293,27 @@ function LyricsOffsetControl({ trackId, offset }: { trackId: string; offset: num
       className="flex shrink-0 items-center gap-1 rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg select-none"
       role="group"
       aria-label="Lyric timing"
-      title="Adjust lyric synchronization (or press [ and ] keys)"
+      title="Adjust lyric synchronization (or press [ and ] keys, or Shift+click any lyric line to sync)"
     >
       <OffsetButton
         label="−"
-        ariaLabel={`Delay lyrics by ${OFFSET_STEP_SEC} seconds`}
-        onClick={() => step(-OFFSET_STEP_SEC)}
+        ariaLabel="Delay lyrics by 0.5s (Shift+click for 2s)"
+        onClick={(e) => step(e.shiftKey ? -2.0 : -0.5)}
       />
       <button
         type="button"
-        className="min-w-[3.8rem] rounded-full px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-white/90 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-75 cursor-pointer"
+        className="min-w-[4rem] rounded-full px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-white/90 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-75 cursor-pointer"
         onClick={() => setLyricsOffset(trackId, 0)}
         disabled={offset === 0}
         aria-label={offset === 0 ? "Lyrics are in sync" : "Reset lyric timing"}
-        title={offset === 0 ? "Lyrics in sync (use -/+ to nudge)" : "Click to reset timing to 0s"}
+        title={offset === 0 ? "Lyrics in sync (use -/+ to nudge, or Shift+click any line to sync)" : `Current offset: ${formatOffset(offset)} (click to reset to 0s)`}
       >
         {formatOffset(offset)}
       </button>
       <OffsetButton
         label="+"
-        ariaLabel={`Advance lyrics by ${OFFSET_STEP_SEC} seconds`}
-        onClick={() => step(OFFSET_STEP_SEC)}
+        ariaLabel="Advance lyrics by 0.5s (Shift+click for 2s)"
+        onClick={(e) => step(e.shiftKey ? 2.0 : 0.5)}
       />
     </div>
   );
@@ -1305,7 +1326,7 @@ function OffsetButton({
 }: {
   label: string;
   ariaLabel: string;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
@@ -1313,6 +1334,7 @@ function OffsetButton({
       className="flex size-6 items-center justify-center rounded-full text-xs font-bold transition-all text-white/80 hover:text-white hover:bg-white/20 active:scale-95 cursor-pointer focus-visible:outline-none"
       onClick={onClick}
       aria-label={ariaLabel}
+      title={ariaLabel}
     >
       {label}
     </button>
@@ -1445,7 +1467,3 @@ function LyricsMessage({ text, onRetry }: { text: string; onRetry?: () => void }
     </div>
   );
 }
-
-void LyricsOffsetControl;
-void formatOffset;
-void OffsetButton;

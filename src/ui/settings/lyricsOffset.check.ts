@@ -32,8 +32,8 @@ const { DEFAULT_OFFSET_SEC, OFFSET_STEP_SEC, clampOffset, getLyricsOffset, prune
 
 equal(clampOffset(0), 0, "zero stays zero");
 equal(clampOffset(0.25), 0.25, "a single step survives untouched");
-equal(clampOffset(9), 5, "a huge positive offset clamps to the ceiling");
-equal(clampOffset(-9), -5, "and a huge negative one to the floor");
+equal(clampOffset(90), 60, "a huge positive offset clamps to the ceiling");
+equal(clampOffset(-90), -60, "and a huge negative one to the floor");
 equal(clampOffset(0.3), 0.25, "an off-grid value snaps to the nearest step");
 equal(clampOffset(Number.NaN), 0, "NaN cannot poison the stored table");
 equal(clampOffset(Number.POSITIVE_INFINITY), 0, "nor can Infinity");

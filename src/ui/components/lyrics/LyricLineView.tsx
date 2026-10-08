@@ -50,6 +50,7 @@ export interface LyricLineViewProps {
   translation?: string;
   tabbable?: boolean;
   onSeek?: (index: number) => void;
+  onSyncLine?: (index: number) => void;
   onFocusLine?: (index: number) => void;
   register?: (index: number, element: HTMLElement | null) => void;
   /** Direct node access (Queue's rAF sweep writer). Composes with `register`. */
@@ -161,6 +162,7 @@ export const LyricLineView = memo(function LyricLineView({
   translation,
   tabbable = false,
   onSeek,
+  onSyncLine,
   onFocusLine,
   register,
   elementRef,
@@ -393,8 +395,13 @@ export const LyricLineView = memo(function LyricLineView({
         }}
         onClick={(e) => {
           e.stopPropagation();
-          onSeek?.(index);
+          if (e.shiftKey && onSyncLine) {
+            onSyncLine(index);
+          } else {
+            onSeek?.(index);
+          }
         }}
+        title="Click to jump to line (Shift+Click to sync to current playback time)"
       >
         {tokenNodes}
         {translationNode}
@@ -410,8 +417,13 @@ export const LyricLineView = memo(function LyricLineView({
         dir={isArabic ? "rtl" : "ltr"}
         onClick={(e) => {
           e.stopPropagation();
-          onSeek?.(index);
+          if (e.shiftKey && onSyncLine) {
+            onSyncLine(index);
+          } else {
+            onSeek?.(index);
+          }
         }}
+        title="Click to jump to line (Shift+Click to sync to current playback time)"
         style={sweepStyle}
         className={cn(
           "cursor-pointer font-bold leading-snug tracking-tight select-text text-2xl sm:text-3xl lg:text-[34px] origin-center max-w-[92%] mx-auto block",

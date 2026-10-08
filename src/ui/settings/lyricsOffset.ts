@@ -16,7 +16,7 @@ const STORAGE_KEY = "lyrics-offset";
 
 /** Nudge granularity. Sub-second, because that is the size of the error being corrected. */
 export const OFFSET_STEP_SEC = 0.25;
-const MAX_OFFSET_SEC = 5;
+export const MAX_OFFSET_SEC = 60;
 /** Beyond this the wrong lyrics are being forced onto a song; a fresh match would serve better. */
 const MAX_ENTRIES = 200;
 
