@@ -62,6 +62,9 @@ class PlayerUIStore {
     initialMediaMode: undefined,
     lyricsMediaMode: "song",
   };
+  private wasLyricsOpenBeforeFullscreen = false;
+  private wasQueueOpenBeforeFullscreen: boolean | null = null;
+  private wasQueueOpenBeforeNowPlayingFullscreen: boolean | null = null;
   private listeners = new Set<Listener>();
 
   getState(): PlayerUIState {
@@ -97,9 +100,21 @@ class PlayerUIStore {
   }
 
   setLyricsOpen(isLyricsOpen: boolean) {
-    // Leaving the lyrics view leaves fullscreen with it — there is nothing left to be
-    // fullscreen about, and the window would otherwise get stuck edge-to-edge.
-    this.setState(isLyricsOpen ? { isLyricsOpen } : { isLyricsOpen, isLyricsFullscreen: false });
+    if (isLyricsOpen) {
+      this.setState({ isLyricsOpen });
+    } else {
+      const restoreQueue =
+        this.state.isLyricsFullscreen && this.wasQueueOpenBeforeFullscreen !== null
+          ? this.wasQueueOpenBeforeFullscreen
+          : this.state.isQueueOpen;
+      this.wasLyricsOpenBeforeFullscreen = false;
+      this.wasQueueOpenBeforeFullscreen = null;
+      this.setState({
+        isLyricsOpen: false,
+        isLyricsFullscreen: false,
+        isQueueOpen: restoreQueue,
+      });
+    }
   }
 
   toggleLyrics() {
@@ -108,26 +123,57 @@ class PlayerUIStore {
 
   setLyricsFullscreen(isLyricsFullscreen: boolean) {
     if (isLyricsFullscreen) {
-      this.setState({ isLyricsFullscreen, isQueueOpen: false });
+      if (!this.state.isLyricsFullscreen) {
+        this.wasLyricsOpenBeforeFullscreen = this.state.isLyricsOpen;
+        this.wasQueueOpenBeforeFullscreen = this.state.isQueueOpen;
+      }
+      this.setState({
+        isLyricsFullscreen: true,
+        isLyricsOpen: true,
+        isQueueOpen: false,
+      });
     } else {
-      this.setState({ isLyricsFullscreen, isQueueOpen: readStoredQueueOpen() });
+      const restoreLyrics = this.wasLyricsOpenBeforeFullscreen;
+      const restoreQueue =
+        this.wasQueueOpenBeforeFullscreen !== null
+          ? this.wasQueueOpenBeforeFullscreen
+          : readStoredQueueOpen();
+      this.wasLyricsOpenBeforeFullscreen = false;
+      this.wasQueueOpenBeforeFullscreen = null;
+      this.setState({
+        isLyricsFullscreen: false,
+        isLyricsOpen: restoreLyrics,
+        isQueueOpen: restoreQueue,
+      });
     }
   }
 
   setNowPlayingFullscreen(isNowPlayingFullscreen: boolean) {
-    if (!isNowPlayingFullscreen && this.state.returnToLyricsOnFullscreenClose) {
+    if (isNowPlayingFullscreen) {
+      if (!this.state.isNowPlayingFullscreen) {
+        this.wasQueueOpenBeforeNowPlayingFullscreen = this.state.isQueueOpen;
+      }
+      this.setState({ isNowPlayingFullscreen: true, isQueueOpen: false });
+      return;
+    }
+
+    const restoreQueue =
+      this.wasQueueOpenBeforeNowPlayingFullscreen !== null
+        ? this.wasQueueOpenBeforeNowPlayingFullscreen
+        : readStoredQueueOpen();
+    this.wasQueueOpenBeforeNowPlayingFullscreen = null;
+
+    if (this.state.returnToLyricsOnFullscreenClose) {
       this.setState({
         isNowPlayingFullscreen: false,
         returnToLyricsOnFullscreenClose: false,
         isLyricsOpen: true,
+        isQueueOpen: restoreQueue,
       });
       return;
     }
-    if (isNowPlayingFullscreen) {
-      this.setState({ isNowPlayingFullscreen, isQueueOpen: false });
-    } else {
-      this.setState({ isNowPlayingFullscreen, isQueueOpen: readStoredQueueOpen() });
-    }
+
+    this.setState({ isNowPlayingFullscreen: false, isQueueOpen: restoreQueue });
   }
 
   openNowPlayingFromLyrics() {

@@ -243,9 +243,10 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.code === "Escape") {
+        if (e.defaultPrevented) return;
         e.preventDefault();
         e.stopPropagation();
-        if (isFullscreen) {
+        if (playerUIStore.getState().isLyricsFullscreen) {
           playerUIStore.setLyricsFullscreen(false);
         } else {
           handleClose();

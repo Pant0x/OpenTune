@@ -1342,18 +1342,22 @@ export default function App() {
 
       // Fullscreen exit via Escape or F11 must ALWAYS work regardless of what element currently has focus
       if (event.key === "Escape" || event.code === "Escape") {
-        if (playerUIState.isNowPlayingFullscreen) {
+        const currentUI = playerUIStore.getState();
+        if (currentUI.isNowPlayingFullscreen) {
           event.preventDefault();
+          event.stopPropagation();
           playerUIStore.setNowPlayingFullscreen(false);
           return;
         }
-        if (playerUIState.isLyricsFullscreen) {
+        if (currentUI.isLyricsFullscreen) {
           event.preventDefault();
+          event.stopPropagation();
           playerUIStore.setLyricsFullscreen(false);
           return;
         }
-        if (playerUIState.isLyricsOpen) {
+        if (currentUI.isLyricsOpen) {
           event.preventDefault();
+          event.stopPropagation();
           playerUIStore.setLyricsOpen(false);
           return;
         }
@@ -1361,11 +1365,12 @@ export default function App() {
 
       if (event.key === "F11") {
         event.preventDefault();
-        if (isFullscreenActive) {
+        event.stopPropagation();
+        const currentUI = playerUIStore.getState();
+        if (currentUI.isLyricsFullscreen || currentUI.isNowPlayingFullscreen) {
           playerUIStore.setLyricsFullscreen(false);
           playerUIStore.setNowPlayingFullscreen(false);
         } else {
-          playerUIStore.setLyricsOpen(true);
           playerUIStore.setLyricsFullscreen(true);
         }
         return;
