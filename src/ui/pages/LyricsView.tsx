@@ -1283,74 +1283,7 @@ function _LyricsSourcePanel({
 }
 void _LyricsSourcePanel;
 
-function formatOffset(offset: number): string {
-  if (offset === 0) return "In sync";
-  const magnitude = Math.abs(offset).toFixed(2).replace(/\.?0+$/, "");
-  return `${offset > 0 ? "+" : "−"}${magnitude}s`;
-}
 
-/**
- * Nudges the whole lyric sheet against the audio.
- *
- * "+" advances the lyrics, matching the sign convention of an LRC `[offset:]` tag, and the
- * value doubles as the reset button so correcting a mistake costs one click rather than
- * hunting for a separate control.
- */
-function LyricsOffsetControl({ trackId, offset }: { trackId: string; offset: number }) {
-  const step = (delta: number) => setLyricsOffset(trackId, offset + delta);
-
-  return (
-    <div
-      className="flex shrink-0 items-center gap-1 rounded-full bg-black/60 backdrop-blur-md p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-lg select-none"
-      role="group"
-      aria-label="Lyric timing"
-      title="Adjust lyric synchronization (or press [ and ] keys, or Shift+click any lyric line to sync)"
-    >
-      <OffsetButton
-        label="−"
-        ariaLabel="Delay lyrics by 0.5s (Shift+click for 2s)"
-        onClick={(e) => step(e.shiftKey ? -2.0 : -0.5)}
-      />
-      <button
-        type="button"
-        className="min-w-[4rem] rounded-full px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-white/90 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white disabled:opacity-75 cursor-pointer"
-        onClick={() => setLyricsOffset(trackId, 0)}
-        disabled={offset === 0}
-        aria-label={offset === 0 ? "Lyrics are in sync" : "Reset lyric timing"}
-        title={offset === 0 ? "Lyrics in sync (use -/+ to nudge, or Shift+click any line to sync)" : `Current offset: ${formatOffset(offset)} (click to reset to 0s)`}
-      >
-        {formatOffset(offset)}
-      </button>
-      <OffsetButton
-        label="+"
-        ariaLabel="Advance lyrics by 0.5s (Shift+click for 2s)"
-        onClick={(e) => step(e.shiftKey ? 2.0 : 0.5)}
-      />
-    </div>
-  );
-}
-
-function OffsetButton({
-  label,
-  ariaLabel,
-  onClick,
-}: {
-  label: string;
-  ariaLabel: string;
-  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="flex size-6 items-center justify-center rounded-full text-xs font-bold transition-all text-white/80 hover:text-white hover:bg-white/20 active:scale-95 cursor-pointer focus-visible:outline-none"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      title={ariaLabel}
-    >
-      {label}
-    </button>
-  );
-}
 
 /* Staggered bars rather than a spinner: it previews the shape of what is arriving, so the
    swap to real lines reads as content landing instead of a screen change. */
