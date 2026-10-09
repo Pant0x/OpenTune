@@ -113,7 +113,7 @@ export function FloatingPanel({
           return;
         }
         const maxTop = window.innerHeight - panelHeight - VIEWPORT_MARGIN;
-        setPosition({ left, top: Math.min(anchor.bottom + GAP, Math.max(VIEWPORT_MARGIN, maxTop)) });
+        setPosition({ left, top: Math.max(VIEWPORT_MARGIN, Math.min(anchor.bottom + GAP, maxTop)) });
         return;
       }
 

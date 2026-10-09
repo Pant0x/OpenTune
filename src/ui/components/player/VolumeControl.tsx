@@ -17,7 +17,17 @@ const WHEEL_STEP_PERCENT = 5;
  * The panel is portalled (see FloatingPanel): the player bar sits inside the window's
  * `overflow-hidden` root, so a panel positioned within the bar would be clipped by it.
  */
-export function VolumeControl() {
+export interface VolumeControlProps {
+  side?: "top" | "bottom" | "right";
+  buttonClassName?: string;
+  glyphSize?: number;
+}
+
+export function VolumeControl({
+  side = "top",
+  buttonClassName,
+  glyphSize = 18,
+}: VolumeControlProps = {}) {
   /* This component writes volume on every pointer move of the slider, so it is the last one
      that should be subscribed to fields it does not read. */
   const playerState = usePlayerSelector(
@@ -60,7 +70,7 @@ export function VolumeControl() {
     <FloatingPanel
       open={isOpen}
       onOpenChange={setIsOpen}
-      side="top"
+      side={side}
       openOnHover
       hoverOpenDelayMs={120}
       hoverCloseDelayMs={250}
@@ -78,9 +88,12 @@ export function VolumeControl() {
             }}
             aria-label={isMuted ? `Unmute (volume ${percent}%)` : `Mute (volume ${percent}%)`}
             title={isMuted ? `Unmute (${percent}%)` : `Mute (${percent}%)`}
-            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+            className={
+              buttonClassName ||
+              "flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+            }
           >
-            <VolumeGlyph size={18} aria-hidden="true" />
+            <VolumeGlyph size={glyphSize} aria-hidden="true" />
           </button>
         </div>
       }

@@ -1561,7 +1561,7 @@ export default function App() {
             && (currentView.view === "playlist" || currentView.view === "album")
           }
           rightPanel={
-            !playerUIState.isLyricsFullscreen && !playerUIState.isNowPlayingFullscreen ? (
+            !playerUIState.isNowPlayingFullscreen ? (
               playerUIState.isListeningActivityOpen ? (
                 <ListeningActivityPanel
                   onClose={() => playerUIStore.setListeningActivityOpen(false)}

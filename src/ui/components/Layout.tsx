@@ -613,7 +613,10 @@ export function Layout({
                       opacity: { duration: 0.16, ease: "easeOut" },
                     }
               }
-              className="relative min-h-0 shrink-0 overflow-hidden rounded-2xl bg-background"
+              className={cn(
+                "relative min-h-0 shrink-0 overflow-hidden bg-background",
+                fullBleedContent ? "rounded-none border-l border-white/10" : "rounded-2xl",
+              )}
             >
               <div className="h-full" style={{ width: rightPanelWidth }}>
                 {rightPanel}

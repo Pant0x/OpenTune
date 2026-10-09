@@ -14,6 +14,7 @@ import {
   HeartBrokenIcon,
   HeartIcon,
   LyricsIcon,
+  NowPlayingViewIcon,
   PauseActiveIcon,
   PlayActiveIcon,
   RefreshIcon,
@@ -34,6 +35,7 @@ import { playerController, shallowEqual, usePlayerSelector, useLibraryState } fr
 import { playerUIStore, usePlayerUIState } from "../stores/playerUIStore";
 import { useTrackContextMenu } from "../components/trackContextMenuContext";
 import { DownloadButton } from "../components/player/DownloadButton";
+import { VolumeControl } from "../components/player/VolumeControl";
 import { ArtistLinks } from "../components/ArtistLinks";
 import { TrackArtwork } from "../components/TrackArtwork";
 import { ArtworkLightboxModal } from "../components/ArtworkLightboxModal";
@@ -839,9 +841,33 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       {/* Dynamic moving ambient background ("Cover Ambience") */}
       <CoverAmbienceCanvas artworkUrl={activeBackgroundUrl} className="!inset-0 !h-full !w-full" />
 
-      {/* Floating Exit Fullscreen Button in Fullscreen Mode */}
+      {/* Floating Controls in Fullscreen Mode */}
       {isFullscreen && (
-        <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-2.5">
+          {/* Volume Control */}
+          <VolumeControl
+            side="bottom"
+            glyphSize={18}
+            buttonClassName="flex items-center justify-center size-9 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-md border border-white/15 text-white/80 hover:text-white shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 select-none"
+          />
+
+          {/* Sidebar Toggle Button */}
+          <button
+            type="button"
+            onClick={() => playerUIStore.setQueueOpen(!playerUIState.isQueueOpen)}
+            className={cn(
+              "flex items-center justify-center size-9 rounded-full backdrop-blur-md border shadow-xl transition-all cursor-pointer hover:scale-105 active:scale-95 select-none",
+              playerUIState.isQueueOpen
+                ? "bg-white/20 border-primary/50 text-primary shadow-primary/20"
+                : "bg-black/50 hover:bg-black/80 border-white/15 text-white/80 hover:text-white",
+            )}
+            aria-label={playerUIState.isQueueOpen ? "Close sidebar panel" : "Open sidebar panel"}
+            title={playerUIState.isQueueOpen ? "Close sidebar panel" : "Open sidebar panel"}
+          >
+            <NowPlayingViewIcon size={18} />
+          </button>
+
+          {/* Exit Fullscreen Button */}
           <button
             type="button"
             onClick={() => playerUIStore.setLyricsFullscreen(false)}
