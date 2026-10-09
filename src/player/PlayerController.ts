@@ -2412,8 +2412,9 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
   getCurrentTime(): number {
     if (this.lastSeekPosition) {
-      if (performance.now() - this.lastSeekPosition.timestamp < 1000) {
-        return this.lastSeekPosition.time;
+      const elapsed = (performance.now() - this.lastSeekPosition.timestamp) / 1000;
+      if (elapsed < 0.25) {
+        return this.lastSeekPosition.time + elapsed;
       }
       this.lastSeekPosition = null;
     }

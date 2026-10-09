@@ -103,13 +103,13 @@ export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): 
     if (w.isAdlib) {
       // Ad-libs pop on / light up 100% all at once at their onset, with NO horizontal sliding gradient
       if (progress >= w.start) {
-        if (w.state !== "sung") {
+        if (w.state !== "sung" || w.el.dataset.state !== "sung") {
           w.state = "sung";
           w.el.dataset.state = "sung";
           w.el.style.setProperty("--w-sweep", "100%");
         }
       } else {
-        if (w.state !== "unsung") {
+        if (w.state !== "unsung" || w.el.dataset.state !== "unsung") {
           w.state = "unsung";
           w.el.dataset.state = "unsung";
           w.el.style.setProperty("--w-sweep", "0%");
@@ -119,13 +119,13 @@ export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): 
     }
 
     if (progress >= w.end) {
-      if (w.state !== "sung") {
+      if (w.state !== "sung" || w.el.dataset.state !== "sung") {
         w.state = "sung";
         w.el.dataset.state = "sung";
         w.el.style.setProperty("--w-sweep", "100%");
       }
     } else if (progress <= w.start) {
-      if (w.state !== "unsung") {
+      if (w.state !== "unsung" || w.el.dataset.state !== "unsung") {
         w.state = "unsung";
         w.el.dataset.state = "unsung";
         w.el.style.setProperty("--w-sweep", "0%");
@@ -133,7 +133,9 @@ export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): 
     } else {
       const frac = (progress - w.start) / Math.max(0.0001, w.end - w.start);
       w.state = "active";
-      w.el.dataset.state = "active";
+      if (w.el.dataset.state !== "active") {
+        w.el.dataset.state = "active";
+      }
       w.el.style.setProperty("--w-sweep", `${(frac * 100).toFixed(1)}%`);
     }
   }
@@ -166,6 +168,28 @@ export function setLineSweepState(lineEl: HTMLElement, state: "sung" | "unsung")
     w.el.dataset.state = state;
     w.el.style.setProperty("--w-sweep", sweepVal);
   }
+}
+
+function areLyricLinePropsEqual(prev: LyricLineViewProps, next: LyricLineViewProps): boolean {
+  return (
+    prev.index === next.index &&
+    prev.text === next.text &&
+    prev.isActive === next.isActive &&
+    prev.sweep01 === next.sweep01 &&
+    prev.sweepEnabled === next.sweepEnabled &&
+    prev.enableAdlibs === next.enableAdlibs &&
+    prev.forceAdlibLine === next.forceAdlibLine &&
+    prev.size === next.size &&
+    prev.alignment === next.alignment &&
+    prev.reduceMotion === next.reduceMotion &&
+    prev.translation === next.translation &&
+    prev.tabbable === next.tabbable &&
+    prev.emptyStyle === next.emptyStyle &&
+    prev.className === next.className &&
+    prev.depthStyle?.opacity === next.depthStyle?.opacity &&
+    prev.depthStyle?.filter === next.depthStyle?.filter &&
+    prev.depthStyle?.transform === next.depthStyle?.transform
+  );
 }
 
 export const LyricLineView = memo(function LyricLineView({
@@ -554,4 +578,4 @@ export const LyricLineView = memo(function LyricLineView({
       {tokenNodes}
     </p>
   );
-});
+}, areLyricLinePropsEqual);

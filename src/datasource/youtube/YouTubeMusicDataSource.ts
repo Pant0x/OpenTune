@@ -1451,19 +1451,29 @@ export class YouTubeMusicDataSource extends DataSource {
     const songKeys = new Set<string>();
     for (const item of items) {
       if (item.item_type === "song") {
-        const title = this.getTitle(item)?.toLowerCase().trim();
-        const artist = this.getArtistName(item)?.toLowerCase().trim();
-        if (title && artist) songKeys.add(`${title}::${artist}`);
+        const rawTitle = this.getTitle(item) || "";
+        const rawArtist = this.getArtistName(item) || "";
+        const cleanTitle = cleanSongTitle(rawTitle).toLowerCase().trim();
+        const cleanArtist = cleanArtistName(rawArtist).toLowerCase().trim();
+        if (cleanTitle) {
+          if (cleanArtist) songKeys.add(`${cleanTitle}::${cleanArtist}`);
+          songKeys.add(cleanTitle);
+        }
       }
     }
 
     return items.filter((item) => {
       if (item.item_type === "song") return true;
       if (item.item_type === "video") {
-        const title = this.getTitle(item)?.toLowerCase().trim() || "";
-        const artist = this.getArtistName(item)?.toLowerCase().trim() || "";
-        if (this.isSpecialAudioVersion(title)) return true;
-        if (title && artist && songKeys.has(`${title}::${artist}`)) {
+        const rawTitle = this.getTitle(item) || "";
+        const rawArtist = this.getArtistName(item) || "";
+        if (this.isSpecialAudioVersion(rawTitle)) return true;
+        const cleanTitle = cleanSongTitle(rawTitle).toLowerCase().trim();
+        const cleanArtist = cleanArtistName(rawArtist).toLowerCase().trim();
+        if (cleanTitle && cleanArtist && songKeys.has(`${cleanTitle}::${cleanArtist}`)) {
+          return false;
+        }
+        if (cleanTitle && songKeys.has(cleanTitle)) {
           return false;
         }
         return true;
@@ -5546,19 +5556,23 @@ export class YouTubeMusicDataSource extends DataSource {
 
   async getLyrics(track: Track): Promise<Lyrics> {
     /*
-     * v3: the cached shape now carries the per-source attempt log, and a v2 entry would
-     * leave the lyrics screen unable to say where its words came from.
-     *
-     * The preferred source is part of the key because it changes which source wins. Sharing
-     * one key would mean changing the setting appears to do nothing until the cache expires.
+     * v8: lyrics synced to official topic studio releases instead of music video dialogue/skit cuts.
      */
-    const cacheKey = `lyrics:synced:v6:${getPreferredLyricsSourceId()}:${track.id}`;
+    const cacheKey = `lyrics:synced:v8:${getPreferredLyricsSourceId()}:${track.id}`;
     const cached = await getCachedJson<Lyrics>(cacheKey);
     if (cached?.timing === "synced" && cached.lines.length > 0) return cached;
 
+    let targetTrack = track;
+    if (track.isVideo) {
+      const topicId = this.peekCachedTopicId(track);
+      if (topicId && topicId !== track.id) {
+        targetTrack = { ...track, id: topicId, isVideo: false };
+      }
+    }
+
     let refresh = this.lyricsRefreshPromises.get(track.id);
     if (!refresh) {
-      refresh = this.fetchSyncedLyrics(track).finally(() => {
+      refresh = this.fetchSyncedLyrics(targetTrack).finally(() => {
         this.lyricsRefreshPromises.delete(track.id);
       });
       this.lyricsRefreshPromises.set(track.id, refresh);
@@ -5810,34 +5824,13 @@ export class YouTubeMusicDataSource extends DataSource {
 
   private hasVideoSkitIntroTiming(syncedLyrics?: string | null): boolean {
     if (!syncedLyrics) return false;
-    const lines = syncedLyrics.split("\n");
-    const parsed: { time: number; text: string }[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const match = trimmed.match(/^\[(\d{2}):(\d{2}(?:\.\d+)?)\]\s*(.*)$/);
-      if (!match) continue;
-      const min = parseInt(match[1]!, 10);
-      const sec = parseFloat(match[2]!);
-      const time = min * 60 + sec;
-      const text = match[3]!.trim();
-      if (!text || /^[♪♫\s]+$/.test(text) || /^\[.*?\]$/.test(text)) continue;
-      parsed.push({ time, text });
-      if (parsed.length >= 3) break;
-    }
-    if (parsed.length === 0) return false;
-    // Pattern A: Vocals start unusually late (>= 21.0s) due to music video clip dialogue/intro
-    if (parsed[0].time >= 21.0) return true;
-    // Pattern B: Short intro exclamation / adlib at <= 9.5s followed by large video skit gap to >= 18.0s
-    if (parsed.length >= 2) {
-      const t0 = parsed[0].time;
-      const t1 = parsed[1].time;
-      const t0Words = parsed[0].text.split(/\s+/).length;
-      if (t0 <= 9.5 && (t0Words <= 3 || parsed[0].text.length <= 16) && t1 >= 18.0 && (t1 - t0) >= 7.5) {
-        return true;
-      }
-    }
-    return false;
+    const lower = syncedLyrics.toLowerCase();
+    return (
+      lower.includes("video clip") ||
+      lower.includes("music video") ||
+      lower.includes("intro dialogue") ||
+      lower.includes("skit")
+    );
   }
 
   private async fetchLrcLibSearchLyrics(track: Track): Promise<LyricsProviderResult | null> {
@@ -5872,7 +5865,7 @@ export class YouTubeMusicDataSource extends DataSource {
             match,
             durationDelta: this.getLyricsDurationDelta(track, match.duration),
           }))
-          .filter(({ durationDelta }) => !durationSec || durationDelta <= 20)
+          .filter(({ match, durationDelta }) => !durationSec || durationDelta <= 20 || (track.isVideo && Boolean(match.syncedLyrics)) || (durationDelta <= 90 && Boolean(match.syncedLyrics)))
           .sort((left, right) => left.durationDelta - right.durationDelta);
 
         // Prefer synced lyrics; prioritize uncensored candidates and topic-release timing over video-clip skits
@@ -6081,116 +6074,35 @@ export class YouTubeMusicDataSource extends DataSource {
       return lyrics;
     }
 
-    // Identify vocal lines and check for music video intro delays
-    const vocalLines: { index: number; startTimeSec: number; text: string }[] = [];
-    for (let i = 0; i < lyrics.lines.length; i++) {
-      const line = lyrics.lines[i]!;
-      const text = (line.text || "").trim();
-      if (!text) continue;
-      if (/^[♪♫\s]+$/.test(text)) continue;
-      if (/^\[.*?\]$/.test(text) && text.length < 30) continue;
-      if (typeof line.startTimeSec === "number") {
-        vocalLines.push({ index: i, startTimeSec: line.startTimeSec, text });
-      }
-    }
+    const shiftSec = lyrics.autoIntroOffsetSec;
+    if (typeof shiftSec === "number" && Math.abs(shiftSec) >= 3.0) {
+      logInternalInfo("YouTubeMusicDataSource.alignLyricsToTopicRelease: applying calculated autoIntroOffsetSec", {
+        trackId: track.id,
+        trackTitle: track.title,
+        shiftSec,
+      });
 
-    if (vocalLines.length === 0) {
-      return lyrics;
-    }
-
-    const isNormalLength = !track.durationSec || track.durationSec <= 450;
-    let shiftSec = 0;
-    let shiftFromIndex = 0;
-
-    // Pattern A: Whole intro video skit delay (dialogue/scenes before any vocals drop, e.g. Tesla)
-    const firstVocal = vocalLines[0]!;
-    if (isNormalLength && firstVocal.startTimeSec >= 21.0) {
-      const calculatedOffset = Number((firstVocal.startTimeSec - 15.0).toFixed(2));
-      if (calculatedOffset >= 6.0 && calculatedOffset <= 60.0) {
-        shiftSec = calculatedOffset;
-        shiftFromIndex = 0;
-      }
-    }
-
-    // Pattern B: Short intro exclamation / adlib / producer tag followed by video skit pause (e.g. Arafa)
-    if (shiftSec === 0 && isNormalLength && vocalLines.length >= 2) {
-      // Find the first substantial verse line (>= 3 words or >= 16 chars)
-      let substantialIdx = -1;
-      for (let i = 0; i < vocalLines.length; i++) {
-        const v = vocalLines[i]!;
-        const words = v.text.split(/\s+/).length;
-        if (words >= 3 || v.text.length >= 16) {
-          substantialIdx = i;
-          break;
-        }
-      }
-
-      if (substantialIdx > 0) {
-        const vTag = vocalLines[0]!;
-        const vSub = vocalLines[substantialIdx]!;
-        const tagTime = vTag.startTimeSec;
-        const subTime = vSub.startTimeSec;
-        const gap = subTime - tagTime;
-
-        if (tagTime <= 9.5 && subTime >= 18.0 && gap >= 7.5) {
-          const excessPause = Number((gap - 5.0).toFixed(2));
-          if (excessPause >= 4.0 && excessPause <= 45.0) {
-            shiftSec = excessPause;
-            shiftFromIndex = vSub.index;
-          }
-        }
-      }
-    }
-
-    // Fallback: if provider duration delta or autoIntroOffsetSec was already calculated:
-    if (shiftSec === 0 && lyrics.autoIntroOffsetSec && Math.abs(lyrics.autoIntroOffsetSec) >= 5.0) {
-      shiftSec = lyrics.autoIntroOffsetSec;
-      shiftFromIndex = 0;
-    }
-
-    if (shiftSec <= 0) {
-      return lyrics;
-    }
-
-    logInternalInfo("YouTubeMusicDataSource.alignLyricsToTopicRelease: shifted lines to match topic release", {
-      trackId: track.id,
-      trackTitle: track.title,
-      shiftSec,
-      shiftFromIndex,
-    });
-
-    const shiftedLines = lyrics.lines.map((line, idx) => {
-      if (idx < shiftFromIndex) {
-        // For early intro tags before the skit, adjust slightly if > 5.5s so tag drops around 5.0s
+      const shiftedLines = lyrics.lines.map((line) => {
         const origStart = line.startTimeSec;
-        if (typeof origStart === "number" && origStart > 5.5) {
-          const tagAdjustment = Math.min(1.0, Number((origStart - 5.0).toFixed(2)));
-          return {
-            ...line,
-            startTimeSec: Math.max(0, Number((origStart - tagAdjustment).toFixed(2))),
-            endTimeSec: typeof line.endTimeSec === "number"
-              ? Math.max(0, Number((line.endTimeSec - tagAdjustment).toFixed(2)))
-              : undefined,
-          };
-        }
-        return line;
-      }
-      return {
-        ...line,
-        startTimeSec: typeof line.startTimeSec === "number"
-          ? Math.max(0, Number((line.startTimeSec - shiftSec).toFixed(2)))
-          : undefined,
-        endTimeSec: typeof line.endTimeSec === "number"
-          ? Math.max(0, Number((line.endTimeSec - shiftSec).toFixed(2)))
-          : undefined,
-      };
-    });
+        return {
+          ...line,
+          startTimeSec: typeof origStart === "number"
+            ? Math.max(0, Number((origStart - shiftSec).toFixed(2)))
+            : undefined,
+          endTimeSec: typeof line.endTimeSec === "number"
+            ? Math.max(0, Number((line.endTimeSec - shiftSec).toFixed(2)))
+            : undefined,
+        };
+      });
 
-    return {
-      ...lyrics,
-      lines: shiftedLines,
-      autoIntroOffsetSec: 0,
-    };
+      return {
+        ...lyrics,
+        lines: shiftedLines,
+        autoIntroOffsetSec: 0,
+      };
+    }
+
+    return lyrics;
   }
 
   private calculateAutoIntroOffsetSec(
@@ -6199,24 +6111,20 @@ export class YouTubeMusicDataSource extends DataSource {
     firstLineStartSec?: number,
   ): number | undefined {
     // 1. Audio track playing (standard album / topic release)
-    // Community contributors often submit LRCs timed to the YouTube Music Video with an intro skit.
-    // e.g. "Tesla - Marwan Moussa" audio starts vocals at 15s, but video has 17.5s skit so LRCLIB line 1 is at 32.45s!
-    if (!track.isVideo && typeof firstLineStartSec === "number") {
-      // In rap, hip-hop, pop, etc., vocals typically begin around 12-16s (average 15.0s).
-      // If line 1 starts abnormally late (>= 24.0s) on a normal-length song (<= 420s):
-      if (firstLineStartSec >= 24.0 && (!track.durationSec || track.durationSec <= 420)) {
-        const introSkimSec = Number((firstLineStartSec - 15.0).toFixed(2));
-        if (introSkimSec >= 6.0 && introSkimSec <= 45.0) {
-          return introSkimSec;
-        }
+    // If a community contributor submitted an LRC timed to the music video clip instead of the album release,
+    // the provider duration will be significantly longer than the topic track's duration.
+    if (!track.isVideo && track.durationSec && providerDurationSec && providerDurationSec > track.durationSec + 10) {
+      const diff = Number((providerDurationSec - track.durationSec).toFixed(2));
+      if (diff >= 5.0 && diff <= 60.0 && typeof firstLineStartSec === "number" && firstLineStartSec >= diff) {
+        return diff;
       }
     }
 
     // 2. Video playing, but lyrics were timed to audio/album release without the video intro
-    if (track.isVideo && track.durationSec && providerDurationSec && providerDurationSec > 0) {
-      const diff = track.durationSec - providerDurationSec;
-      if (diff >= 3.0 && diff <= 35.0) {
-        return Number((-diff).toFixed(2));
+    if (track.isVideo && track.durationSec && providerDurationSec && track.durationSec > providerDurationSec + 5) {
+      const diff = Number((track.durationSec - providerDurationSec).toFixed(2));
+      if (diff >= 3.0 && diff <= 45.0) {
+        return -diff;
       }
     }
 
@@ -6652,7 +6560,7 @@ export class YouTubeMusicDataSource extends DataSource {
       return { artists: [], tracks: [], albums: [], playlists: [] };
     }
     const cacheId = normalizedQuery.toLocaleLowerCase();
-    const cacheKey = `youtube-music:mixed-search:v7:${cacheId}`;
+    const cacheKey = `youtube-music:mixed-search:v8:${cacheId}`;
     const cached = await getCachedJson<SearchResults>(cacheKey);
     if (cached && this.hasSearchResults(cached)) {
       if (cached.artists) {
@@ -6804,15 +6712,41 @@ export class YouTubeMusicDataSource extends DataSource {
       ? this.collectMusicItems(songResponse.page, BROWSE_ITEM_TYPES)
       : [];
 
+    const songDirectTracks = this.songOrVideoItems(songDirectItems)
+      .map((item) => this.toTrack(item))
+      .filter((item): item is Track => Boolean(item));
+
+    const fallbackItemTracks = this.songOrVideoItems(fallbackItems)
+      .map((item) => this.toTrack(item))
+      .filter((item): item is Track => Boolean(item));
+
+    // Gather official song keys to drop duplicate music videos
+    const knownSongKeys = new Set<string>();
+    for (const t of [...shelfTracks, ...songDirectTracks, ...fallbackItemTracks]) {
+      if (!t.isVideo) {
+        const cleanT = cleanSongTitle(t.title || "").toLowerCase().trim();
+        const cleanA = cleanArtistName(t.artist || "").toLowerCase().trim();
+        if (cleanT) {
+          if (cleanA) knownSongKeys.add(`${cleanT}::${cleanA}`);
+          knownSongKeys.add(cleanT);
+        }
+      }
+    }
+
+    const filteredShelfVideos = shelfVideos.filter((vTrack) => {
+      if (this.isSpecialAudioVersion(vTrack.title || "")) return true;
+      const cleanT = cleanSongTitle(vTrack.title || "").toLowerCase().trim();
+      const cleanA = cleanArtistName(vTrack.artist || "").toLowerCase().trim();
+      if (cleanT && cleanA && knownSongKeys.has(`${cleanT}::${cleanA}`)) return false;
+      if (cleanT && knownSongKeys.has(cleanT)) return false;
+      return true;
+    });
+
     let tracks = this.uniqueById([
       ...shelfTracks,
-      ...shelfVideos,
-      ...this.songOrVideoItems(songDirectItems)
-        .map((item) => this.toTrack(item))
-        .filter((item): item is Track => Boolean(item)),
-      ...this.songOrVideoItems(fallbackItems)
-        .map((item) => this.toTrack(item))
-        .filter((item): item is Track => Boolean(item)),
+      ...songDirectTracks,
+      ...fallbackItemTracks,
+      ...filteredShelfVideos,
     ]);
     const albums = this.uniqueById([
       ...shelfAlbums,

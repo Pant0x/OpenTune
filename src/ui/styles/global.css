@@ -773,7 +773,6 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   display: inline-block;
   color: inherit;
   filter: inherit;
-  transition: color 120ms ease;
   will-change: background-size, color;
 }
 
@@ -782,6 +781,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   color: #ffffff;
   -webkit-text-fill-color: #ffffff;
   text-shadow: 0 0 16px rgba(255, 255, 255, 0.65);
+  transition: none !important;
 }
 
 .lyric-sweep .lyric-word[data-state="unsung"],
@@ -805,6 +805,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   color: #ffffff;
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
+  transition: none !important;
 }
 
 [dir="rtl"] .lyric-word[data-state="active"],
@@ -824,6 +825,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   color: #ffffff;
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 16px rgba(255, 255, 255, 0.55);
+  transition: none !important;
 }
 
 /* Ad-libs: Instant illumination (pop on 100% solid white with glow, no horizontal slide gradient) */
@@ -835,7 +837,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
   text-shadow: 0 0 16px rgba(255, 255, 255, 0.85), 0 0 28px rgba(255, 255, 255, 0.40) !important;
-  transition: color 60ms ease-out, text-shadow 60ms ease-out !important;
+  transition: none !important;
 }
 
 .lyric-word[data-adlib="true"][data-state="unsung"] {
@@ -845,7 +847,7 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   color: rgba(255, 255, 255, 0.38) !important;
   -webkit-text-fill-color: rgba(255, 255, 255, 0.38) !important;
   text-shadow: none !important;
-  transition: color 100ms ease-out !important;
+  transition: none !important;
 }
 
 /* Sidebar preview lyrics: clean, crisp typography without rectangular light halo */

@@ -473,7 +473,13 @@ export function LyricsView({ onClose }: LyricsViewProps) {
          value that flips a few times a minute. Only the flip is worth a render. */
       if (next !== current) {
         if (current >= 0 && lineRefs.current[current]) {
-          setLineSweepState(lineRefs.current[current]!, "sung");
+          const prevEl = lineRefs.current[current]!;
+          setLineSweepState(prevEl, "sung");
+          prevEl.classList.remove("is-active", "lyrics-lyricsContent-active");
+        }
+        if (next >= 0 && lineRefs.current[next]) {
+          const nextEl = lineRefs.current[next]!;
+          nextEl.classList.add("is-active", "lyrics-lyricsContent-active", "lyric-sweep");
         }
         current = next;
         setActiveIndex(next);
