@@ -101,19 +101,11 @@ export function updateLineWordsSweep(lineEl: HTMLElement, rawProgress: number): 
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
     if (w.isAdlib) {
-      // Ad-libs pop on / light up 100% all at once at their onset, with NO horizontal sliding gradient
-      if (progress >= w.start) {
-        if (w.state !== "sung" || w.el.dataset.state !== "sung") {
-          w.state = "sung";
-          w.el.dataset.state = "sung";
-          w.el.style.setProperty("--w-sweep", "100%");
-        }
-      } else {
-        if (w.state !== "unsung" || w.el.dataset.state !== "unsung") {
-          w.state = "unsung";
-          w.el.dataset.state = "unsung";
-          w.el.style.setProperty("--w-sweep", "0%");
-        }
+      // Ad-libs illuminate 100% all at once across all characters without any letter-by-letter wipe
+      if (w.state !== "sung" || w.el.dataset.state !== "sung") {
+        w.state = "sung";
+        w.el.dataset.state = "sung";
+        w.el.style.setProperty("--w-sweep", "100%");
       }
       continue;
     }
@@ -390,13 +382,11 @@ export const LyricLineView = memo(function LyricLineView({
           }
           const cleanText = cleanAdlibBrackets(item.text) || item.text;
 
-          let state: "sung" | "unsung" = "unsung";
-          let wordSweepStyle: CSSProperties | undefined;
-
-          if (sweep01 !== undefined && sweeps) {
-            state = sweep01 >= item.start ? "sung" : "unsung";
-            wordSweepStyle = { "--w-sweep": state === "sung" ? "100%" : "0%" } as CSSProperties;
-          }
+          // When the line is active, ad-libs are 100% lit up all at once across all characters
+          const state: "sung" | "unsung" = isActive ? "sung" : "unsung";
+          const wordSweepStyle: CSSProperties = {
+            "--w-sweep": isActive ? "100%" : "0%",
+          } as CSSProperties;
 
           return (
             <span

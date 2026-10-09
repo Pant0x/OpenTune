@@ -828,19 +828,31 @@ html[data-fx-off~="marquee"] .animate-marquee-vertical {
   transition: none !important;
 }
 
-/* Ad-libs: Instant illumination (pop on 100% solid white with glow, no horizontal slide gradient) */
+/* Ad-libs: Instant illumination (100% solid white with glow, never letter-by-letter or horizontal slide gradient) */
+.lyric-word[data-adlib="true"],
+.is-active .lyric-word[data-adlib="true"],
+.lyric-sweep .lyric-word[data-adlib="true"] {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+}
+
 .lyric-word[data-adlib="true"][data-state="sung"],
-.lyric-word[data-adlib="true"][data-state="active"] {
+.lyric-word[data-adlib="true"][data-state="active"],
+.is-active .lyric-word[data-adlib="true"],
+.is-active .lyric-word[data-adlib="true"][data-state="sung"],
+.lyric-sweep .lyric-word[data-adlib="true"][data-state="sung"] {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
-  text-shadow: 0 0 16px rgba(255, 255, 255, 0.85), 0 0 28px rgba(255, 255, 255, 0.40) !important;
-  transition: none !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.95), 0 0 28px rgba(255, 255, 255, 0.50) !important;
+  transition: opacity 0.15s ease, text-shadow 0.15s ease !important;
 }
 
-.lyric-word[data-adlib="true"][data-state="unsung"] {
+.lyric-word[data-adlib="true"][data-state="unsung"]:not(.is-active *) {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;

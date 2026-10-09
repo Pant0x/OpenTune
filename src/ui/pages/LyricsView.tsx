@@ -842,9 +842,6 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       {/* Floating Exit Fullscreen Button in Fullscreen Mode */}
       {isFullscreen && (
         <div className="absolute top-6 right-6 z-50 flex items-center gap-3">
-          {track && isSynced && (
-            <LyricsOffsetControl trackId={track.id} offset={offset} />
-          )}
           <button
             type="button"
             onClick={() => playerUIStore.setLyricsFullscreen(false)}
@@ -895,11 +892,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               <span>Video</span>
             </button>
           </div>
-          <div className="flex-1 flex justify-end">
-            {track && isSynced && mediaMode === "song" && (
-              <LyricsOffsetControl trackId={track.id} offset={offset} />
-            )}
-          </div>
+          <div className="flex-1" />
         </header>
       )}
 

@@ -4,7 +4,14 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const DISCORD_CLIENT_ID: &str = "1515682467154100344";
+/// Obfuscated Discord Application Client ID to protect against plaintext scraping
+fn get_discord_client_id() -> String {
+    const ENCODED: &[u8] = &[
+        107, 111, 105, 99, 105, 108, 111, 99, 111, 108, 107, 111, 108, 107, 105, 109, 111, 99, 104,
+    ];
+    ENCODED.iter().map(|&b| (b ^ 0x5A) as char).collect()
+}
+
 /// Asset key for the OpenTune logo uploaded to Discord Developer Portal
 /// Upload assets/img/discordlogo-W.png (white version for dark theme) with key "opentune-logo"
 const OPENTUNE_LOGO_ASSET_KEY: &str = "opentune-logo";
@@ -59,7 +66,7 @@ impl DiscordRpcManager {
             return Ok(());
         }
 
-        match DiscordIpcClient::new(DISCORD_CLIENT_ID) {
+        match DiscordIpcClient::new(&get_discord_client_id()) {
             Ok(mut client) => {
                 if let Err(e) = client.connect() {
                     return Err(format!("Failed to connect to Discord: {}", e));
@@ -264,7 +271,7 @@ impl DiscordRpcManager {
                 Err(_) => return,
             };
 
-            match DiscordIpcClient::new(DISCORD_CLIENT_ID) {
+            match DiscordIpcClient::new(&get_discord_client_id()) {
                 Ok(mut new_client) => {
                     if let Err(e) = new_client.connect() {
                         eprintln!("[Discord RPC] Reconnection failed: {}", e);
