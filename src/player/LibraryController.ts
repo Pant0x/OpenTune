@@ -409,6 +409,10 @@ export class LibraryController {
     return this.dataSource.getBrowsePage(target);
   }
 
+  onBrowsePageUpdated(listener: (surface: BrowseTarget, page: BrowsePage) => void): () => void {
+    return this.dataSource.onBrowsePageUpdated?.(listener) ?? (() => {});
+  }
+
   listAccounts(): Promise<AccountOption[]> {
     return this.dataSource.listAccounts?.() ?? Promise.resolve([]);
   }

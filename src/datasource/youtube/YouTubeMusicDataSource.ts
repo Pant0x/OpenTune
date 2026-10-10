@@ -7955,6 +7955,13 @@ export class YouTubeMusicDataSource extends DataSource {
    * notice. Rather than model each surface separately, every shelf is walked with the same
    * collector the library uses and sorted into buckets by what came back.
    */
+  private readonly browseUpdateListeners = new Set<(surface: BrowseTarget, page: BrowsePage) => void>();
+
+  onBrowsePageUpdated(listener: (surface: BrowseTarget, page: BrowsePage) => void): () => void {
+    this.browseUpdateListeners.add(listener);
+    return () => this.browseUpdateListeners.delete(listener);
+  }
+
   async getBrowsePage(target: BrowseTarget): Promise<BrowsePage> {
     const surface = target;
     /* `params` is part of the key: mood categories all share one browseId, so keying on the
@@ -8145,7 +8152,16 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     const page: BrowsePage = { title: target.title, shelves };
-    if (shelves.length > 0) await setCachedJson(cacheKey, page);
+    if (shelves.length > 0) {
+      await setCachedJson(cacheKey, page);
+      for (const listener of this.browseUpdateListeners) {
+        try {
+          listener(surface, page);
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     logInternalInfo("YouTubeMusicDataSource.getBrowsePage", {
       surface,
