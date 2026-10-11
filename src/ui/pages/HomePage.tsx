@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Album, Artist, BrowseShelf, Playlist } from "../../datasource/types";
 import type { LibraryController, LibraryState } from "../../player/LibraryController";
@@ -78,7 +78,7 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "albums-for-you",
     title: "Albums for you",
-    matchPatterns: [/albums for you/i, /recommended albums/i, /popular albums/i],
+    matchPatterns: [/albums for you/i, /recommended albums/i, /popular albums/i, /albums & singles/i, /singles & eps/i, /^albums$/i],
     fallbackQuery: "popular recommended albums",
     fallbackType: "album",
   },
@@ -93,14 +93,14 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "fresh-finds-old-favorites",
     title: "Fresh finds, old favorites",
-    matchPatterns: [/fresh finds/i, /old favorites/i, /listen again/i, /forgotten favorites/i],
+    matchPatterns: [/fresh finds/i, /old favorites/i, /listen again/i, /forgotten favorites/i, /replay/i],
     fallbackQuery: "forgotten favorites nostalgic hits",
     fallbackType: "song",
   },
   {
     id: "new-releases",
     title: "New releases",
-    matchPatterns: [/new releases/i, /new albums/i, /new singles/i],
+    matchPatterns: [/new releases/i, /new albums/i, /new singles/i, /latest releases/i],
     browseTarget: { browseId: "FEmusic_new_releases_albums", title: "New releases" },
     fallbackQuery: "new releases albums songs",
     fallbackType: "album",
@@ -131,7 +131,7 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "pump-it-up",
     title: "Pump it up",
-    matchPatterns: [/pump it up/i, /workout/i, /energize/i, /gym motivation/i],
+    matchPatterns: [/pump it up/i, /workout/i, /energize/i, /energy/i, /gym motivation/i],
     fallbackQuery: "pump it up workout gym motivation",
     fallbackType: "song",
   },
@@ -160,7 +160,7 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "trending-songs-for-you",
     title: "Trending songs for you",
-    matchPatterns: [/trending songs/i, /trending/i, /charts/i],
+    matchPatterns: [/trending songs/i, /trending/i, /charts/i, /top songs/i, /today's hits/i],
     fallbackQuery: "trending songs top global hits",
     fallbackType: "song",
   },
@@ -321,6 +321,35 @@ function buildPinnedShelves(
       continue;
     }
 
+    // 2b. Secondary match: if section is "albums-for-you" and no name matched, check for any unused shelf that contains primarily albums
+    if (section.id === "albums-for-you") {
+      for (let i = 0; i < ytShelves.length; i++) {
+        if (usedYtIndices.has(i)) continue;
+        const candidate = ytShelves[i];
+        if (candidate.albums.length > 0 && candidate.tracks.length === 0) {
+          result.push({ ...candidate, title: section.title });
+          usedYtIndices.add(i);
+          matchedIds.add(section.id);
+          matchedFromYt = candidate;
+          break;
+        }
+      }
+      if (matchedFromYt) continue;
+
+      if (libraryState.library?.albums && libraryState.library.albums.length > 0) {
+        result.push({
+          title: section.title,
+          tracks: [],
+          albums: libraryState.library.albums.slice(0, 16),
+          playlists: [],
+          artists: [],
+          links: [],
+        });
+        matchedIds.add(section.id);
+        continue;
+      }
+    }
+
     // 3. Recaps fallback if not in ytShelves
     if (section.id === "recaps") {
       result.push({
@@ -369,6 +398,15 @@ export function HomePage({
     () => !cachedRealHomeShelves || cachedRealHomeShelves.length === 0,
   );
 
+  const lastAccountRef = useRef<string | undefined>(libraryState.library?.account?.name);
+
+  // Invalidate cached home shelves on account change or sign out
+  if (lastAccountRef.current !== libraryState.library?.account?.name) {
+    cachedRealHomeShelves = null;
+    cachedFallbackShelves.clear();
+    lastAccountRef.current = libraryState.library?.account?.name;
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -403,12 +441,16 @@ export function HomePage({
           setHomeShelves(initialPinned);
         }
 
-        // Asynchronously fetch any missing pinned sections so all 16 appear in order
+        // Asynchronously fetch any missing pinned sections so all appear in order
         const missingSections = PINNED_SECTIONS.filter(
           (sec) => !matchedIds.has(sec.id) && !cachedFallbackShelves.has(sec.id),
         );
 
         if (missingSections.length > 0) {
+          const topArtist =
+            libraryState.library?.likedSongs?.[0]?.artist ||
+            libraryState.library?.recentlyPlayed?.[0]?.artist;
+
           void Promise.all(
             missingSections.map(async (sec) => {
               try {
@@ -428,8 +470,15 @@ export function HomePage({
                   }
                 }
 
+                let query = sec.fallbackQuery;
+                if (topArtist) {
+                  if (sec.id === "albums-for-you") query = `${topArtist} album`;
+                  else if (sec.id === "quick-picks") query = `${topArtist} songs`;
+                  else if (sec.id === "fresh-finds-old-favorites") query = `${topArtist} songs favorites`;
+                }
+
                 const searchRes = await searchController
-                  .searchCategory(sec.fallbackQuery, sec.fallbackType)
+                  .searchCategory(query, sec.fallbackType)
                   .catch(() => null);
 
                 if (!searchRes) return null;
@@ -486,8 +535,37 @@ export function HomePage({
 
     void loadHomeFeed();
 
+    // Listen for live background updates from YouTubeMusicDataSource.refreshBrowsePage
+    const unsubscribe = libraryController.onBrowsePageUpdated((surface, page) => {
+      const isHome =
+        surface === "home" ||
+        (typeof surface === "object" && surface.browseId === "FEmusic_home" && !surface.params);
+      if (!isHome || !active || !page?.shelves?.length) return;
+
+      const updatedYtShelves = splitMixedShelves(page.shelves).filter((s) => {
+        const lower = s.title.toLowerCase();
+        return (
+          !lower.includes("music video") &&
+          !lower.includes("recommended music video") &&
+          lower !== "videos"
+        );
+      });
+
+      const { shelves: completePinned } = buildPinnedShelves(
+        updatedYtShelves,
+        libraryState,
+        cachedFallbackShelves,
+      );
+
+      if (completePinned.length > 0) {
+        cachedRealHomeShelves = completePinned;
+        setHomeShelves(completePinned);
+      }
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [
     libraryController,
@@ -496,6 +574,8 @@ export function HomePage({
     libraryState.library?.account?.name,
     libraryState.library?.recentlyPlayed,
     libraryState.library?.playlists,
+    libraryState.library?.likedSongs,
+    libraryState.library?.albums,
   ]);
 
   const handleSelectMood = async (chip: HomeMoodChip) => {

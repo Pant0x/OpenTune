@@ -487,6 +487,12 @@ export class YouTubeMusicDataSource extends DataSource {
   private readonly recommendationRefreshPromises = new Map<string, Promise<Track[]>>();
   private readonly lyricsRefreshPromises = new Map<string, Promise<Lyrics>>();
   private readonly artistSubscriptionOverrides = new Map<string, { subscribed: boolean; expiresAt: number }>();
+  private readonly browsePageUpdateListeners = new Set<(surface: BrowseTarget, page: BrowsePage) => void>();
+
+  onBrowsePageUpdated(listener: (surface: BrowseTarget, page: BrowsePage) => void): () => void {
+    this.browsePageUpdateListeners.add(listener);
+    return () => this.browsePageUpdateListeners.delete(listener);
+  }
 
   constructor() {
     super();
@@ -7959,9 +7965,12 @@ export class YouTubeMusicDataSource extends DataSource {
     const surface = target;
     /* `params` is part of the key: mood categories all share one browseId, so keying on the
        id alone would serve the first mood opened for every mood thereafter. */
+    const accountContext = this.musicCookie
+      ? `user:${this.musicOnBehalfOfUser || this.musicAccountIndex || "auth"}`
+      : "guest";
     const cacheKey = typeof surface === "string"
-      ? `youtube-music:browse:v2:${surface}`
-      : `youtube-music:browse:v2:id:${surface.browseId}:${surface.params ?? ""}`;
+      ? `youtube-music:browse:v2:${accountContext}:${surface}`
+      : `youtube-music:browse:v2:${accountContext}:id:${surface.browseId}:${surface.params ?? ""}`;
     const cached = await getCachedJson<BrowsePage>(cacheKey);
     if (cached?.shelves.length) {
       void this.refreshBrowsePage(surface, cacheKey).catch(() => {});
@@ -8146,6 +8155,14 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const page: BrowsePage = { title: target.title, shelves };
     if (shelves.length > 0) await setCachedJson(cacheKey, page);
+
+    for (const listener of this.browsePageUpdateListeners) {
+      try {
+        listener(surface, page);
+      } catch (err) {
+        logInternalWarn("YouTubeMusicDataSource.browsePageUpdateListener error", { err });
+      }
+    }
 
     logInternalInfo("YouTubeMusicDataSource.getBrowsePage", {
       surface,

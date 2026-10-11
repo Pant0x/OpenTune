@@ -179,5 +179,6 @@ export abstract class DataSource {
   /** Discovery shelves for a track: similar artists, related playlists, more from the album. */
   getRelated?(track: Track): Promise<BrowseShelf[]>;
   getBrowsePage?(target: BrowseTarget): Promise<BrowsePage>;
+  onBrowsePageUpdated?(listener: (surface: BrowseTarget, page: BrowsePage) => void): () => void;
   getLyrics?(track: Track): Promise<Lyrics | null>;
 }

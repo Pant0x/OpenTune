@@ -402,11 +402,21 @@ export class LibraryController {
     }
   }
 
-  getBrowsePage(target: BrowseTarget): Promise<BrowsePage> {
+  async getBrowsePage(target: BrowseTarget): Promise<BrowsePage> {
+    if (!this.initializationPromise) {
+      void this.initialize();
+    }
+    if (this.initializationPromise) {
+      await this.initializationPromise.catch(() => {});
+    }
     if (!this.dataSource.getBrowsePage) {
-      return Promise.resolve({ title: "", shelves: [] });
+      return { title: "", shelves: [] };
     }
     return this.dataSource.getBrowsePage(target);
+  }
+
+  onBrowsePageUpdated(listener: (surface: BrowseTarget, page: BrowsePage) => void): () => void {
+    return this.dataSource.onBrowsePageUpdated?.(listener) ?? (() => {});
   }
 
   listAccounts(): Promise<AccountOption[]> {
