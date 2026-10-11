@@ -9,6 +9,7 @@ import {
 import { useReduceMotion } from "../settings/renderEffects";
 import { cn, formatMinutesSeconds } from "@/lib/utils";
 import {
+  ArrowLeftIcon,
   CloseIcon,
   HeartActiveIcon,
   HeartBrokenIcon,
@@ -230,6 +231,20 @@ export function LyricsView({ onClose }: LyricsViewProps) {
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
 
   const handleClose = () => {
+    if (mediaMode === "video") {
+      playerUIStore.setLyricsMediaMode("song");
+      if (track) {
+        const videoTime = playerController.getCurrentTime();
+        if (track.isVideo && songCounterpart) {
+          void playerController.playTrackById(songCounterpart.id, [songCounterpart], true);
+        } else if (isPlaying) {
+          void playerController.play();
+        }
+        if (videoTime > 0) {
+          void playerController.seekTo(videoTime);
+        }
+      }
+    }
     playerUIStore.setLyricsFullscreen(false);
     playerUIStore.setLyricsOpen(false);
     onClose();
@@ -891,7 +906,18 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       {/* Top Header: Transparent Black Bar hosting Song / Video Switcher - Hidden in Fullscreen Mode */}
       {!isFullscreen && (
         <header className="shrink-0 z-30 flex items-center justify-between px-6 py-2.5 bg-black/60 backdrop-blur-md border-b border-white/10 shadow-sm pointer-events-auto w-full rounded-t-2xl">
-          <div className="flex-1" />
+          <div className="flex-1 flex items-center justify-start">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white px-3.5 py-1.5 text-xs font-semibold border border-white/15 transition-all shadow-sm cursor-pointer hover:scale-105 active:scale-95 group select-none"
+              aria-label="Back"
+              title="Close (Esc)"
+            >
+              <ArrowLeftIcon size={16} className="transition-transform group-hover:-translate-x-0.5" />
+              <span>Back</span>
+            </button>
+          </div>
           <div className="flex items-center rounded-full bg-black/60 backdrop-blur-sm p-1 border border-white/15 text-xs font-semibold text-white/80 shadow-md select-none">
             <button
               type="button"
@@ -918,7 +944,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
               <span>Video</span>
             </button>
           </div>
-          <div className="flex-1" />
+          <div className="flex-1 flex items-center justify-end" />
         </header>
       )}
 
