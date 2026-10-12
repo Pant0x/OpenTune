@@ -221,11 +221,17 @@ export function VideoPlayerView({
     };
   }, [iframeId, videoId]);
 
+  useEffect(() => {
+    playerController.silenceAudioEngine();
+  }, []);
+
   // Register video delegate with playerController so bottom dock controls video directly
   useEffect(() => {
     const delegate = {
       play: () => {
         pendingActionRef.current = "play";
+        isPlayingRef.current = true;
+        playerController.silenceAudioEngine();
         if (isPlayerReadyRef.current && ytPlayerRef.current?.playVideo) {
           try {
             ytPlayerRef.current.playVideo();
@@ -235,9 +241,12 @@ export function VideoPlayerView({
         } else {
           postToIframe("playVideo");
         }
+        playerController.notifyVideoState("playing", currentTimeRef.current);
       },
       pause: () => {
         pendingActionRef.current = "pause";
+        isPlayingRef.current = false;
+        playerController.silenceAudioEngine();
         if (isPlayerReadyRef.current && ytPlayerRef.current?.pauseVideo) {
           try {
             ytPlayerRef.current.pauseVideo();
@@ -247,6 +256,7 @@ export function VideoPlayerView({
         } else {
           postToIframe("pauseVideo");
         }
+        playerController.notifyVideoState("paused", currentTimeRef.current);
       },
       seekTo: (time: number) => {
         currentTimeRef.current = time;
@@ -508,11 +518,14 @@ export function VideoPlayerView({
    * every position tick — and a changed `src` attribute reloads the whole iframe, which
    * restarted the video while it was running.
    */
-  const embedUrl = useMemo(
-    () =>
-      `https://www.youtube.com/embed/${videoId}?enablejsapi=1&playsinline=1&rel=0&modestbranding=1`,
-    [videoId],
-  );
+  const embedUrl = useMemo(() => {
+    const origin =
+      typeof window !== "undefined" && window.location.origin
+        ? encodeURIComponent(window.location.origin)
+        : "";
+    const originParam = origin ? `&origin=${origin}` : "";
+    return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&playsinline=1&rel=0&modestbranding=1${originParam}`;
+  }, [videoId]);
 
   const displayedLikes = details?.likeCount || "Like";
 

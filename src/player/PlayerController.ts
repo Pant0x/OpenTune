@@ -875,6 +875,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       currentStatus: this.state.status,
       currentTrackId: this.state.currentTrack?.id ?? null,
     });
+    this.audioEngine.pause();
     if (this.videoDelegate) {
       this.videoDelegate.pause();
       this.setState({ status: "paused", error: null });
@@ -882,7 +883,6 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       return;
     }
     try {
-      this.audioEngine.pause();
       this.setState({ status: "paused", error: null });
       logInternalInfo("PlayerController.pause success");
       // Update Discord presence to pause state (removes progress bar)
@@ -1838,6 +1838,10 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
   }
 
   private async playLoadedTrack(): Promise<boolean> {
+    if (this.videoDelegate) {
+      this.videoDelegate.play();
+      return true;
+    }
     return this.audioEngine.play();
   }
 

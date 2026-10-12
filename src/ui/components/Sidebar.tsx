@@ -24,6 +24,7 @@ import {
   CheckIcon,
   ClockIcon,
   CloseIcon,
+  CompassIcon,
   MusicNoteIcon,
   PlaylistIcon,
   RefreshIcon,
@@ -646,7 +647,7 @@ export function Sidebar({
   onNavigateHistory,
   onNavigateLibrary,
   onNavigateSettings,
-  onNavigateBrowse: _onNavigateBrowse,
+  onNavigateBrowse,
   onNavigateDownloads: _onNavigateDownloads,
   onNavigateReleases: _onNavigateReleases,
   onNavigateLocalFiles: _onNavigateLocalFiles,
@@ -1800,12 +1801,27 @@ export function Sidebar({
 
         {/* Navigation Pages Bottom Separator & Buttons */}
         <div className="mt-auto shrink-0 border-t border-border/40 pt-2 pb-1 flex flex-col gap-1 px-1">
+          {onNavigateBrowse && (
+            <SidebarItemTooltip enabled={shouldHideText} title="Browse" subtitle="Explore music, charts & genres">
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
+                  shouldHideText && "justify-center px-0",
+                )}
+                onClick={onNavigateBrowse}
+              >
+                <CompassIcon size={18} aria-hidden="true" className="shrink-0 text-primary" />
+                {!shouldHideText && <span className="truncate">Browse</span>}
+              </button>
+            </SidebarItemTooltip>
+          )}
           {onNavigateLibrary && (
             <SidebarItemTooltip enabled={shouldHideText} title="Library" subtitle="Your music collection">
               <button
                 type="button"
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex items-center gap-3 w-full rounded-xl px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-card hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer",
                   shouldHideText && "justify-center px-0",
                 )}
                 onClick={onNavigateLibrary}

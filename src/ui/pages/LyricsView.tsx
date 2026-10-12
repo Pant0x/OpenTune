@@ -174,6 +174,12 @@ export function LyricsView({ onClose }: LyricsViewProps) {
     };
   }, [track?.id]);
 
+  useEffect(() => {
+    if (mediaMode === "video") {
+      playerController.silenceAudioEngine();
+    }
+  }, [mediaMode, track?.id]);
+
   const handleSwitchMediaMode = useCallback(async (mode: "song" | "video") => {
     if (!track || mode === mediaMode) return;
     if (mode === "video") {

@@ -175,7 +175,8 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     id: "trending-songs-for-you",
     title: "Trending songs for you",
     matchPatterns: [/trending songs/i, /trending/i, /charts/i, /top songs/i, /today's hits/i],
-    fallbackQuery: "trending songs top global hits",
+    browseTarget: { browseId: "FEmusic_charts", title: "Charts" },
+    fallbackQuery: "YouTube Music Top 100 Trending hits",
     fallbackType: "song",
   },
   {
@@ -330,6 +331,9 @@ function buildPinnedShelves(
       if (usedYtIndices.has(i)) continue;
       const candidate = ytShelves[i];
       if (section.matchPatterns.some((p) => p.test(candidate.title))) {
+        if (section.id === "trending-songs-for-you" && (!candidate.tracks || candidate.tracks.length === 0)) {
+          continue;
+        }
         matchedFromYt = { ...candidate, title: section.title };
         usedYtIndices.add(i);
         break;
@@ -681,6 +685,79 @@ export function HomePage({
                       },
                     };
                   }
+                }
+
+                if (sec.id === "trending-songs-for-you") {
+                  try {
+                    const chartsBrowse = await libraryController
+                      .getBrowsePage("charts")
+                      .catch(() => null);
+
+                    if (chartsBrowse && chartsBrowse.shelves.length > 0) {
+                      const trackShelf = chartsBrowse.shelves.find((s) => s.tracks && s.tracks.length > 0);
+                      if (trackShelf && trackShelf.tracks.length > 0) {
+                        return {
+                          sec,
+                          shelf: {
+                            title: sec.title,
+                            tracks: trackShelf.tracks.slice(0, 24),
+                            albums: [],
+                            playlists: [],
+                            artists: [],
+                            links: [],
+                          },
+                        };
+                      }
+
+                      const allPlaylists = chartsBrowse.shelves.flatMap((s) => s.playlists || []);
+                      if (allPlaylists.length > 0) {
+                        const chartPl =
+                          allPlaylists.find((p) => /trending|top\s*100|top\s*50|hits|charts/i.test(p.title)) ||
+                          allPlaylists[0];
+                        if (chartPl) {
+                          try {
+                            const plTracks = await libraryController.getPlaylistTracks(chartPl);
+                            if (plTracks && plTracks.length > 0) {
+                              return {
+                                sec,
+                                shelf: {
+                                  title: sec.title,
+                                  tracks: plTracks.slice(0, 24),
+                                  albums: [],
+                                  playlists: [],
+                                  artists: [],
+                                  links: [],
+                                },
+                              };
+                            }
+                          } catch {}
+                        }
+                      }
+                    }
+
+                    const exploreBrowse = await libraryController
+                      .getBrowsePage("explore")
+                      .catch(() => null);
+                    if (exploreBrowse && exploreBrowse.shelves.length > 0) {
+                      const exploreTrackShelf =
+                        exploreBrowse.shelves.find(
+                          (s) => s.tracks && s.tracks.length > 0 && /trending|charts|hits|top/i.test(s.title),
+                        ) || exploreBrowse.shelves.find((s) => s.tracks && s.tracks.length > 0);
+                      if (exploreTrackShelf && exploreTrackShelf.tracks.length > 0) {
+                        return {
+                          sec,
+                          shelf: {
+                            title: sec.title,
+                            tracks: exploreTrackShelf.tracks.slice(0, 24),
+                            albums: [],
+                            playlists: [],
+                            artists: [],
+                            links: [],
+                          },
+                        };
+                      }
+                    }
+                  } catch {}
                 }
 
                 if (sec.browseTarget) {
