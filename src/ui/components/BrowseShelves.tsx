@@ -9,6 +9,7 @@ import { TrackRow } from "./TrackRow";
 import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 import { useTrackContextMenu } from "./TrackContextMenu";
+import { playerUIStore } from "../stores/playerUIStore";
 
 function ArtistTile({ artist, onOpen }: { artist: Artist; onOpen: () => void }) {
   return (
@@ -123,8 +124,17 @@ function BrowseShelfSection({
     artistsScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
   };
 
+  const isVideoShelf =
+    shelf.title.toLowerCase().includes("music video") ||
+    shelf.title.toLowerCase().includes("live performance") ||
+    shelf.title.toLowerCase().includes("live concert");
+
   const playShelfTrack = (shelfTracks: Track[], track: Track) => {
     void playerController.playTrackById(track.id, shelfTracks, true);
+    if (isVideoShelf || track.isVideo) {
+      playerUIStore.setLyricsMediaMode("video");
+      playerUIStore.setNowPlayingFullscreen(true);
+    }
   };
 
   const hasTracks = shelf.tracks.length > 0;

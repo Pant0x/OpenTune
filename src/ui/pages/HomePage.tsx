@@ -32,6 +32,7 @@ interface HomeMoodChip {
 
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
+  { id: "trending", label: "Trending" },
   { id: "spiritual", label: "Quran", query: "تلاوة قرآن كريم quran recitation" },
   { id: "podcasts", label: "Podcasts", query: "popular podcast episodes talk show" },
   { id: "videos", label: "Music Videos", query: "top official music videos trending" },
@@ -179,6 +180,20 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     fallbackType: "song",
   },
   {
+    id: "music-videos-for-you",
+    title: "Music videos for you",
+    matchPatterns: [/music videos for you/i, /music videos/i, /videos for you/i, /recommended music video/i],
+    fallbackQuery: "top official music videos trending",
+    fallbackType: "song",
+  },
+  {
+    id: "live-performances",
+    title: "Live performances",
+    matchPatterns: [/live performances/i, /live performance/i, /live concert/i, /concerts/i],
+    fallbackQuery: "live performance concert live session official",
+    fallbackType: "song",
+  },
+  {
     id: "heard-in-shorts",
     title: "Heard in shorts",
     matchPatterns: [/heard in shorts/i, /shorts/i, /youtube shorts/i],
@@ -190,13 +205,6 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     title: "Long listens",
     matchPatterns: [/long listens/i, /extended/i, /deep focus/i],
     fallbackQuery: "extended mix lofi live dj set long listen",
-    fallbackType: "song",
-  },
-  {
-    id: "music-videos",
-    title: "Music videos",
-    matchPatterns: [/music videos/i, /videos/i, /top music videos/i],
-    fallbackQuery: "top official music videos trending",
     fallbackType: "song",
   },
   {
@@ -330,6 +338,24 @@ function buildPinnedShelves(
     }
 
     if (matchedFromYt) {
+      if (section.id === "music-videos-for-you" || section.id === "live-performances") {
+        matchedFromYt = {
+          ...matchedFromYt,
+          tracks: matchedFromYt.tracks.map((t) => ({ ...t, isVideo: true })),
+        };
+      } else if (section.id === "new-releases") {
+        const subscribedArtistNames = new Set(
+          (libraryState.library?.artists ?? []).map((a) => a.name.trim().toLowerCase())
+        );
+        if (subscribedArtistNames.size > 0 && matchedFromYt.albums.length > 0) {
+          const sortedAlbums = [...matchedFromYt.albums].sort((a, b) => {
+            const aSub = subscribedArtistNames.has((a.artist || "").trim().toLowerCase()) ? 1 : 0;
+            const bSub = subscribedArtistNames.has((b.artist || "").trim().toLowerCase()) ? 1 : 0;
+            return bSub - aSub;
+          });
+          matchedFromYt = { ...matchedFromYt, albums: sortedAlbums };
+        }
+      }
       result.push(matchedFromYt);
       matchedIds.add(section.id);
       continue;
@@ -381,7 +407,14 @@ function buildPinnedShelves(
     // 4. Cached or dynamically fetched fallback shelf
     const fallbackShelf = fallbackMap.get(section.id);
     if (fallbackShelf) {
-      result.push({ ...fallbackShelf, title: section.title });
+      let finalShelf = fallbackShelf;
+      if (section.id === "music-videos-for-you" || section.id === "live-performances") {
+        finalShelf = {
+          ...finalShelf,
+          tracks: finalShelf.tracks.map((t) => ({ ...t, isVideo: true })),
+        };
+      }
+      result.push({ ...finalShelf, title: section.title });
       matchedIds.add(section.id);
     }
   }
@@ -506,7 +539,7 @@ export function HomePage({
   libraryState,
   searchController,
   onSignIn: _onSignIn,
-  destinations: _destinations,
+  destinations,
   onOpenAlbum,
   onOpenArtist,
   onOpenPlaylist,
@@ -553,14 +586,7 @@ export function HomePage({
 
         if (!active) return;
 
-        const ytShelves = (homePage ? splitMixedShelves(homePage.shelves) : []).filter((s) => {
-          const lower = s.title.toLowerCase();
-          return (
-            !lower.includes("music video") &&
-            !lower.includes("recommended music video") &&
-            lower !== "videos"
-          );
-        });
+        const ytShelves = homePage ? splitMixedShelves(homePage.shelves) : [];
 
         // Assemble primary pinned shelves
         const { shelves: initialPinned, matchedIds } = buildPinnedShelves(
@@ -587,6 +613,76 @@ export function HomePage({
           void Promise.all(
             missingSections.map(async (sec) => {
               try {
+                if (sec.id === "new-releases") {
+                  const [exploreReleases, browseRes] = await Promise.all([
+                    libraryController.getReleases().catch(() => []),
+                    sec.browseTarget ? libraryController.getBrowsePage(sec.browseTarget).catch(() => null) : null,
+                  ]);
+                  const candidateAlbums: Album[] = [];
+                  if (Array.isArray(exploreReleases)) {
+                    candidateAlbums.push(...exploreReleases);
+                  }
+                  if (browseRes && browseRes.shelves) {
+                    for (const s of browseRes.shelves) {
+                      if (s.albums?.length) candidateAlbums.push(...s.albums);
+                    }
+                  }
+
+                  const subscribedArtists = libraryState.library?.artists ?? [];
+                  const subscribedArtistNames = new Set(
+                    subscribedArtists.map((a) => a.name.trim().toLowerCase()),
+                  );
+                  const recArtistNames = new Set(
+                    [
+                      ...(libraryState.library?.likedSongs ?? []).slice(0, 30).map((t) => t.artist.trim().toLowerCase()),
+                      ...(libraryState.library?.recentlyPlayed ?? []).slice(0, 30).map((t) => t.artist.trim().toLowerCase()),
+                    ].filter(Boolean),
+                  );
+
+                  if (subscribedArtists.length > 0) {
+                    const topSubs = subscribedArtists.slice(0, 5);
+                    const subQueries = topSubs.map((a) => `${a.name} new album`);
+                    const subSearchResults = await Promise.all(
+                      subQueries.map((q) => searchController.searchCategory(q, "album").catch(() => null)),
+                    );
+                    for (const res of subSearchResults) {
+                      if (res?.albums) candidateAlbums.push(...res.albums);
+                    }
+                  }
+
+                  const seenIds = new Set<string>();
+                  const rankedAlbums: { album: Album; score: number }[] = [];
+                  for (const alb of candidateAlbums) {
+                    if (!alb?.id || seenIds.has(alb.id)) continue;
+                    seenIds.add(alb.id);
+                    const artistLower = (alb.artist || "").trim().toLowerCase();
+                    let score = 0;
+                    if (subscribedArtistNames.has(artistLower)) {
+                      score = 2;
+                    } else if (recArtistNames.has(artistLower)) {
+                      score = 1;
+                    }
+                    rankedAlbums.push({ album: alb, score });
+                  }
+
+                  rankedAlbums.sort((a, b) => b.score - a.score);
+                  const finalAlbums = rankedAlbums.map((r) => r.album).slice(0, 16);
+
+                  if (finalAlbums.length > 0) {
+                    return {
+                      sec,
+                      shelf: {
+                        title: sec.title,
+                        tracks: [],
+                        albums: finalAlbums,
+                        playlists: [],
+                        artists: [],
+                        links: [],
+                      },
+                    };
+                  }
+                }
+
                 if (sec.browseTarget) {
                   const browseRes = await libraryController
                     .getBrowsePage(sec.browseTarget)
@@ -618,7 +714,11 @@ export function HomePage({
 
                 const fallbackShelf: BrowseShelf = {
                   title: sec.title,
-                  tracks: sec.fallbackType === "song" ? searchRes.tracks.slice(0, 24) : [],
+                  tracks: (sec.fallbackType === "song" ? searchRes.tracks.slice(0, 24) : []).map((t) =>
+                    sec.id === "music-videos-for-you" || sec.id === "live-performances"
+                      ? { ...t, isVideo: true }
+                      : t,
+                  ),
                   albums: sec.fallbackType === "album" ? searchRes.albums.slice(0, 16) : [],
                   playlists: sec.fallbackType === "playlist" ? searchRes.playlists.slice(0, 16) : [],
                   artists: [],
@@ -675,14 +775,7 @@ export function HomePage({
         (typeof surface === "object" && surface.browseId === "FEmusic_home" && !surface.params);
       if (!isHome || !active || !page?.shelves?.length) return;
 
-      const updatedYtShelves = splitMixedShelves(page.shelves).filter((s) => {
-        const lower = s.title.toLowerCase();
-        return (
-          !lower.includes("music video") &&
-          !lower.includes("recommended music video") &&
-          lower !== "videos"
-        );
-      });
+      const updatedYtShelves = splitMixedShelves(page.shelves);
 
       const { shelves: completePinned } = buildPinnedShelves(
         updatedYtShelves,
@@ -709,9 +802,17 @@ export function HomePage({
     libraryState.library?.playlists,
     libraryState.library?.likedSongs,
     libraryState.library?.albums,
+    libraryState.library?.artists,
   ]);
 
   const handleSelectMood = async (chip: HomeMoodChip) => {
+    if (chip.id === "trending") {
+      if (destinations?.onOpenBrowse) {
+        destinations.onOpenBrowse();
+        return;
+      }
+    }
+
     setActiveMood(chip.id);
     if (chip.id === "all") {
       setMoodShelves(null);
