@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { Album, Artist, BrowseShelf, Playlist } from "../../datasource/types";
+import type { Album, Artist, BrowseShelf, Playlist, Track } from "../../datasource/types";
 import type { LibraryController, LibraryState } from "../../player/LibraryController";
-import type { PlayerControllerActions } from "../../player/playerStore";
+import { type PlayerControllerActions, shallowEqual, usePlayerSelector } from "../../player/playerStore";
 import type { SearchController } from "../../player/SearchController";
 import { BrowseShelves } from "../components/BrowseShelves";
 import type { HomeDestinationHandlers } from "../components/HomeDestinations";
@@ -10,6 +10,18 @@ import { useTrackContextMenu } from "../components/TrackContextMenu";
 import { AlbumGridSkeleton } from "../components/Skeleton";
 import { useAuthProfile } from "@/lib/authProfile";
 import { requestAuthModal } from "../components/AuthModal";
+import { PauseActiveIcon, PlayActiveIcon } from "@/ui/icons";
+import { playerUIStore } from "../stores/playerUIStore";
+
+export const MAKKAH_LIVE_TRACK: Track = {
+  id: "wyR3geelZZ4",
+  source: "youtube",
+  title: "🔴 Makkah Live HD | بث مباشر مكة المكرمة",
+  artist: "قناة القرآن الكريم السعودية",
+  artworkUrl: "https://i.ytimg.com/vi/wyR3geelZZ4/hqdefault.jpg",
+  album: "بث مباشر من المسجد الحرام",
+  isVideo: true,
+};
 
 interface HomeMoodChip {
   id: string;
@@ -19,6 +31,7 @@ interface HomeMoodChip {
 
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
+  { id: "spiritual", label: "Spiritual", query: "تلاوة قرآن كريم quran recitation" },
   { id: "podcasts", label: "Podcasts", query: "popular podcast episodes talk show" },
   { id: "videos", label: "Music Videos", query: "top official music videos trending" },
   { id: "sleep", label: "Sleep", query: "sleep relaxing calm music deep sleep" },
@@ -375,6 +388,116 @@ function buildPinnedShelves(
   return { shelves: result, matchedIds };
 }
 
+function MakkahLiveHeroCard({
+  playerController,
+  isLivePlaying,
+}: {
+  playerController: PlayerControllerActions;
+  isLivePlaying: boolean;
+}) {
+  const togglePlayLive = () => {
+    if (isLivePlaying) {
+      playerController.pause();
+    } else {
+      playerController.playTrackById(MAKKAH_LIVE_TRACK.id, [MAKKAH_LIVE_TRACK], true);
+    }
+  };
+
+  const watchVideoLive = () => {
+    playerController.playTrackById(MAKKAH_LIVE_TRACK.id, [MAKKAH_LIVE_TRACK], true);
+    playerUIStore.setLyricsMediaMode("video");
+    playerUIStore.setNowPlayingFullscreen(true);
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-r from-emerald-950/70 via-card/85 to-card/60 p-4 sm:p-6 backdrop-blur-md shadow-2xl transition-all">
+      {/* Ambient background glow */}
+      <div className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full bg-emerald-500/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 size-72 rounded-full bg-amber-500/10 blur-3xl" />
+
+      <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        {/* Left: Thumbnail & Details */}
+        <div className="flex items-center gap-4 sm:gap-5 min-w-0 flex-1">
+          <div
+            className="relative size-20 sm:size-24 md:size-28 shrink-0 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10 group cursor-pointer"
+            onClick={togglePlayLive}
+          >
+            <img
+              src={MAKKAH_LIVE_TRACK.artworkUrl}
+              alt="Makkah Live"
+              className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
+              loading="eager"
+            />
+            <div className="absolute inset-0 bg-black/35 group-hover:bg-black/55 transition-colors flex items-center justify-center">
+              <div className="size-10 sm:size-11 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg group-hover:scale-110 active:scale-95 transition-transform">
+                {isLivePlaying ? (
+                  <PauseActiveIcon size={20} />
+                ) : (
+                  <PlayActiveIcon size={20} className="translate-x-0.5" />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/20 px-2.5 py-0.5 text-[11px] font-bold text-red-400 border border-red-500/30 shadow-xs">
+                <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+                LIVE • بث مباشر 24/7
+              </span>
+              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                الحرم المكي الشريف
+              </span>
+            </div>
+
+            <h2 className="text-base sm:text-xl font-bold text-foreground tracking-tight line-clamp-1">
+              🔴 Makkah Live HD | بث مباشر مكة المكرمة
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-1">
+              قناة القرآن الكريم السعودية • تلاوات خاشعة وطواف الكعبة المشرفة على مدار الساعة
+            </p>
+          </div>
+        </div>
+
+        {/* Right Actions */}
+        <div className="flex items-center gap-3 shrink-0 w-full md:w-auto justify-end">
+          <button
+            type="button"
+            onClick={togglePlayLive}
+            className={cn(
+              "flex-1 md:flex-initial flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs sm:text-sm font-semibold shadow-lg transition-all active:scale-95 cursor-pointer",
+              isLivePlaying
+                ? "bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                : "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105",
+            )}
+          >
+            {isLivePlaying ? (
+              <>
+                <PauseActiveIcon size={16} />
+                <span>Pause Live / إيقاف</span>
+              </>
+            ) : (
+              <>
+                <PlayActiveIcon size={16} />
+                <span>Listen Live / استماع مباشر</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={watchVideoLive}
+            className="flex items-center justify-center gap-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-semibold px-4 py-2.5 text-xs sm:text-sm border border-white/15 transition-all shadow-md hover:scale-105 active:scale-95 cursor-pointer"
+            title="Watch Live Video in Fullscreen"
+          >
+            <span>Watch Video</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HomePage({
   tabId: _tabId,
   playerController,
@@ -397,6 +520,15 @@ export function HomePage({
   const [isLoadingHomeShelves, setIsLoadingHomeShelves] = useState(
     () => !cachedRealHomeShelves || cachedRealHomeShelves.length === 0,
   );
+
+  const { currentTrackId, isPlaying } = usePlayerSelector(
+    (p) => ({
+      currentTrackId: p.currentTrack?.id,
+      isPlaying: p.status === "playing",
+    }),
+    shallowEqual,
+  );
+  const isLivePlaying = currentTrackId === MAKKAH_LIVE_TRACK.id && isPlaying;
 
   const lastAccountRef = useRef<string | undefined>(libraryState.library?.account?.name);
 
@@ -590,6 +722,61 @@ export function HomePage({
       return;
     }
 
+    if (chip.id === "spiritual") {
+      setIsLoadingMood(true);
+      try {
+        const [tracksRes, albumsRes, playlistsRes] = await Promise.all([
+          searchController.searchCategory("تلاوة قرآن كريم quran recitation", "song").catch(() => null),
+          searchController.searchCategory("المصحف المرتل quran full album", "album").catch(() => null),
+          searchController.searchCategory("إذاعة القرآن الكريم quran playlist", "playlist").catch(() => null),
+        ]);
+        const shelves: BrowseShelf[] = [];
+        const rawTracks = tracksRes?.tracks ?? [];
+        const quranTracks: Track[] = [
+          MAKKAH_LIVE_TRACK,
+          ...rawTracks.filter((t) => t.id !== MAKKAH_LIVE_TRACK.id),
+        ];
+
+        if (quranTracks.length > 0) {
+          shelves.push({
+            title: "Quick picks — تلاوات مختارة",
+            tracks: quranTracks.slice(0, 32),
+            albums: [],
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
+        if (albumsRes && albumsRes.albums.length > 0) {
+          shelves.push({
+            title: "Recitations & Surahs — المصحف المرتل",
+            tracks: [],
+            albums: albumsRes.albums.slice(0, 24),
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
+        if (playlistsRes && playlistsRes.playlists.length > 0) {
+          shelves.push({
+            title: "Playlists & Radios — إذاعات وقوائم تشغيل",
+            tracks: [],
+            albums: [],
+            playlists: playlistsRes.playlists.slice(0, 24),
+            artists: [],
+            links: [],
+          });
+        }
+        cachedMoodShelves.set(chip.id, shelves);
+        setMoodShelves(shelves);
+      } catch {
+        // Fallback gracefully
+      } finally {
+        setIsLoadingMood(false);
+      }
+      return;
+    }
+
     setIsLoadingMood(true);
     try {
       if (chip.query) {
@@ -708,6 +895,13 @@ export function HomePage({
             Connect YouTube
           </button>
         </section>
+      )}
+
+      {activeMood === "spiritual" && (
+        <MakkahLiveHeroCard
+          playerController={playerController}
+          isLivePlaying={isLivePlaying}
+        />
       )}
 
       {displayShelves.length > 0 ? (
