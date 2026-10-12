@@ -282,8 +282,10 @@ export function VideoPlayerView({
       playerController.setVideoDelegate(null);
 
       // If user navigates away while video is playing, keep music playing seamlessly
-      if (wasPlaying && finalTime > 0) {
-        void playerController.seekTo(finalTime);
+      if (wasPlaying && (finalTime > 0 || track.isLive)) {
+        if (finalTime > 0 && !track.isLive) {
+          void playerController.seekTo(finalTime);
+        }
         void playerController.play();
       }
     };

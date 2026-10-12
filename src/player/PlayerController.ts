@@ -1722,6 +1722,19 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
        * never reached at all.
        */
       const isDownloaded = isTrackDownloaded(track.id);
+      /*
+       * Live streams (like 24/7 broadcasts) cannot be decoded into static audio buffers by Rust
+       * because they are infinite chunked streams without content-length or single files.
+       * Route live streams directly to the IFrame deck so background audio plays seamlessly.
+       */
+      if (track.isLive) {
+        await this.audioEngine.loadIframeFallback(track.id);
+        this.loadedTrackId = track.id;
+        this.warmNextTrack();
+        this.beginPlayReport(track);
+        return;
+      }
+
       const requiresStreamData = this.audioEngine.usesRustAudio() || this.audioEngine.usesNativeAudio() || isDownloaded;
       /*
        * A warmed track skips the whole resolve-and-download round trip, which is the entire
@@ -1993,7 +2006,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
 
   /** Whether a track can be handed to a standby deck rather than loaded on the spot. */
   private usesPreloadDeck(track: Track): boolean {
-    if (track.streamUrl) return false;
+    if (track.streamUrl || track.isLive) return false;
     return hasPreloadDeck(getAudioEngineMode(), {
       isLocal: track.source === "local",
       isDownloaded: isTrackDownloaded(track.id),

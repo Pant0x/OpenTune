@@ -245,13 +245,22 @@ export function SeekBar() {
 
   const isDisabled = !state.currentTrack || state.status === "loading";
 
+  const isLive = Boolean(state.currentTrack?.isLive);
+
   return (
     <div className="group/seek flex w-full items-center gap-2.5">
       <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {formatTime(currentTime)}
+        {isLive ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-500">
+            <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+            LIVE
+          </span>
+        ) : (
+          formatTime(currentTime)
+        )}
       </span>
       <div className="relative flex-1 flex items-center min-w-0 playback-progressbar overflow-visible">
-        {isWave && (
+        {isWave && !isLive && (
           <WaveformCanvas
             progress={duration > 0 ? currentTime / duration : 0}
             isPlaying={state.status === "playing"}
@@ -262,25 +271,25 @@ export function SeekBar() {
         <input
           type="range"
           min="0"
-          max={duration || 100}
+          max={isLive ? 100 : (duration || 100)}
           step="any"
-          value={currentTime}
+          value={isLive ? 100 : currentTime}
           onChange={handleSeekChange}
           onKeyUp={commitKeyboardSeek}
           onPointerDown={handleSeekStart}
           onPointerMove={handleSeekMove}
           onPointerUp={(event) => void handleSeekEnd(event)}
           onPointerCancel={handleSeekCancel}
-          disabled={isDisabled}
-          className={cn(SEEK_SLIDER, isWave && "opacity-0 hover:opacity-100 focus-visible:opacity-100 transition-opacity")}
+          disabled={isDisabled || isLive}
+          className={cn(SEEK_SLIDER, isWave && !isLive && "opacity-0 hover:opacity-100 focus-visible:opacity-100 transition-opacity")}
           style={{
-            "--slider-progress": `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+            "--slider-progress": isLive ? "100%" : `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
           } as React.CSSProperties}
-          aria-label="Seek"
+          aria-label={isLive ? "Live stream" : "Seek"}
         />
       </div>
       <span className="w-10 shrink-0 text-xs tabular-nums text-muted-foreground">
-        {formatTime(duration)}
+        {isLive ? "24/7" : formatTime(duration)}
       </span>
     </div>
   );

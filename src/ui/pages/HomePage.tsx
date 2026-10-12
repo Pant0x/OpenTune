@@ -21,6 +21,7 @@ export const MAKKAH_LIVE_TRACK: Track = {
   artworkUrl: "https://i.ytimg.com/vi/wyR3geelZZ4/hqdefault.jpg",
   album: "بث مباشر من المسجد الحرام",
   isVideo: true,
+  isLive: true,
 };
 
 interface HomeMoodChip {

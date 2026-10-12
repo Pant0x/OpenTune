@@ -6548,6 +6548,7 @@ export class YouTubeMusicDataSource extends DataSource {
       releaseDate: typeof rawUploadDate === "string" ? rawUploadDate : undefined,
       viewCount,
       viewCountText,
+      isLive: Boolean((trackBasic as any)?.is_live || (trackBasic as any)?.is_live_content),
     };
 
     logInternalInfo("YouTubeMusicDataSource.getTrack success", {
@@ -7657,6 +7658,10 @@ export class YouTubeMusicDataSource extends DataSource {
           const poToken =
             label === "download" ? await this.attestForTrack(yt, track.id) : undefined;
           const info = await yt.getBasicInfo(track.id, poToken ? { po_token: poToken } : undefined);
+
+          if (info.basic_info?.is_live || info.basic_info?.is_live_content || track.isLive) {
+            throw new Error("Live stream cannot be decoded as static audio file; use player.");
+          }
           /*
            * MP4 preferred, any audio accepted.
            *
