@@ -32,7 +32,6 @@ interface HomeMoodChip {
 
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
-  { id: "trending", label: "Trending" },
   { id: "spiritual", label: "Quran", query: "تلاوة قرآن كريم quran recitation" },
   { id: "podcasts", label: "Podcasts", query: "popular podcast episodes talk show" },
   { id: "videos", label: "Music Videos", query: "top official music videos trending" },
@@ -440,7 +439,8 @@ function MakkahLiveHeroCard({
   const watchVideoLive = () => {
     playerController.playTrackById(MAKKAH_LIVE_TRACK.id, [MAKKAH_LIVE_TRACK], true);
     playerUIStore.setLyricsMediaMode("video");
-    playerUIStore.setNowPlayingFullscreen(true);
+    playerUIStore.setLyricsOpen(true);
+    playerUIStore.setNowPlayingFullscreen(false);
   };
 
   return (
@@ -806,13 +806,6 @@ export function HomePage({
   ]);
 
   const handleSelectMood = async (chip: HomeMoodChip) => {
-    if (chip.id === "trending") {
-      if (destinations?.onOpenBrowse) {
-        destinations.onOpenBrowse();
-        return;
-      }
-    }
-
     setActiveMood(chip.id);
     if (chip.id === "all") {
       setMoodShelves(null);
@@ -1014,6 +1007,7 @@ export function HomePage({
           onOpenArtist={onOpenArtist ?? (() => {})}
           onOpenPlaylist={onOpenPlaylist ?? (() => {})}
           onOpenReleases={onOpenReleases}
+          onOpenTrending={destinations?.onOpenBrowse}
         />
       ) : (
         <div className="flex flex-col gap-6">

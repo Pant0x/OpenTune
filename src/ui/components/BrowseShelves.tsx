@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ArrowRightIcon, MenuDotsIcon, PlayActiveIcon } from "@/ui/icons";
+import { ArrowLeftIcon, ArrowRightIcon, MenuDotsIcon, PauseActiveIcon, PlayActiveIcon } from "@/ui/icons";
 import type { Album, Artist, BrowseLink, BrowseShelf, Playlist, Track } from "../../datasource/types";
 import type { PlayerControllerActions } from "../../player/playerStore";
 import { AlbumCard } from "./AlbumCard";
@@ -10,6 +10,90 @@ import { useNowPlaying } from "../hooks/useNowPlaying";
 import { usePlaylistContextMenu } from "./PlaylistContextMenu";
 import { useTrackContextMenu } from "./TrackContextMenu";
 import { playerUIStore } from "../stores/playerUIStore";
+
+function VideoCard({
+  track,
+  isPlaying,
+  isCurrent,
+  onSelect,
+  onContextMenu,
+}: {
+  track: Track;
+  isPlaying: boolean;
+  isCurrent: boolean;
+  onSelect: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+}) {
+  const formattedDuration = useMemo(() => {
+    if (!track.durationSec || track.durationSec <= 0) return null;
+    const hours = Math.floor(track.durationSec / 3600);
+    const mins = Math.floor((track.durationSec % 3600) / 60);
+    const secs = Math.floor(track.durationSec % 60);
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }, [track.durationSec]);
+
+  return (
+    <div
+      onClick={onSelect}
+      onContextMenu={onContextMenu}
+      className="group relative flex flex-col gap-2 rounded-2xl p-2 cursor-pointer transition-all hover:bg-card/70 hover:scale-[1.01] active:scale-[0.99] select-none"
+      role="button"
+      tabIndex={0}
+    >
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-card shadow-md ring-1 ring-white/5">
+        <TrackArtwork
+          className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+          artworkUrl={track.artworkUrl}
+          size={500}
+          iconSize={48}
+        />
+        <div className="absolute inset-0 bg-black/25 group-hover:bg-black/45 transition-colors flex items-center justify-center">
+          <div className="size-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-hover:scale-105 active:scale-95 transition-all">
+            {isPlaying && isCurrent ? (
+              <PauseActiveIcon size={20} />
+            ) : (
+              <PlayActiveIcon size={20} className="translate-x-0.5" />
+            )}
+          </div>
+        </div>
+
+        {formattedDuration && (
+          <div className="absolute bottom-2 right-2 rounded-md bg-black/80 backdrop-blur-xs px-2 py-0.5 text-[11px] font-mono font-semibold text-white/90 shadow-sm">
+            {formattedDuration}
+          </div>
+        )}
+
+        {onContextMenu && (
+          <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              aria-label={`Options for ${track.title}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onContextMenu(e);
+              }}
+              className="flex size-7 items-center justify-center rounded-full bg-black/70 hover:bg-black/90 text-white/90 hover:text-white shadow-md backdrop-blur-sm transition-all hover:scale-110 active:scale-95 cursor-pointer"
+            >
+              <MenuDotsIcon size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col min-w-0 px-0.5">
+        <span className="text-sm sm:text-base font-bold text-foreground tracking-tight line-clamp-1 group-hover:text-primary transition-colors">
+          {track.title}
+        </span>
+        <span className="text-xs sm:text-sm text-muted-foreground line-clamp-1 mt-0.5">
+          {track.artist}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function ArtistTile({ artist, onOpen }: { artist: Artist; onOpen: () => void }) {
   return (
@@ -89,6 +173,7 @@ function BrowseShelfSection({
   onOpenPlaylist,
   onFollowLink,
   onOpenReleases,
+  onOpenTrending,
 }: {
   shelf: BrowseShelf;
   playerController: PlayerControllerActions;
@@ -99,6 +184,7 @@ function BrowseShelfSection({
   onOpenPlaylist: (playlist: Playlist) => void;
   onFollowLink?: (link: BrowseLink) => void;
   onOpenReleases?: () => void;
+  onOpenTrending?: () => void;
 }) {
   const { openTrackMenu } = useTrackContextMenu();
   const { openPlaylistMenu, openAlbumMenu } = usePlaylistContextMenu();
@@ -106,9 +192,16 @@ function BrowseShelfSection({
   const cardsScrollRef = useRef<HTMLDivElement>(null);
   const artistsScrollRef = useRef<HTMLDivElement>(null);
 
+  const isVideoShelf =
+    shelf.title.toLowerCase().includes("music video") ||
+    shelf.title.toLowerCase().includes("live performance") ||
+    shelf.title.toLowerCase().includes("live concert");
+
   const scrollTracks = (direction: "left" | "right") => {
     if (!tracksScrollRef.current) return;
-    const distance = direction === "left" ? -480 : 480;
+    const distance = isVideoShelf
+      ? (direction === "left" ? -tracksScrollRef.current.clientWidth : tracksScrollRef.current.clientWidth)
+      : (direction === "left" ? -480 : 480);
     tracksScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
   };
 
@@ -124,16 +217,12 @@ function BrowseShelfSection({
     artistsScrollRef.current.scrollBy({ left: distance, behavior: "smooth" });
   };
 
-  const isVideoShelf =
-    shelf.title.toLowerCase().includes("music video") ||
-    shelf.title.toLowerCase().includes("live performance") ||
-    shelf.title.toLowerCase().includes("live concert");
-
   const playShelfTrack = (shelfTracks: Track[], track: Track) => {
     void playerController.playTrackById(track.id, shelfTracks, true);
     if (isVideoShelf || track.isVideo) {
       playerUIStore.setLyricsMediaMode("video");
-      playerUIStore.setNowPlayingFullscreen(true);
+      playerUIStore.setLyricsOpen(true);
+      playerUIStore.setNowPlayingFullscreen(false);
     }
   };
 
@@ -142,7 +231,7 @@ function BrowseShelfSection({
   const hasCards = cardsCount > 0;
   const hasArtists = shelf.artists.length > 0;
 
-  const hasMultipleTrackItems = shelf.tracks.length > 4;
+  const hasMultipleTrackItems = isVideoShelf ? shelf.tracks.length > 2 : shelf.tracks.length > 4;
   const hasMultipleCardItems = cardsCount > 4;
   const hasMultipleArtistItems = shelf.artists.length > 4;
 
@@ -156,7 +245,18 @@ function BrowseShelfSection({
             <button
               type="button"
               onClick={onOpenReleases}
-              className="group/title flex items-center gap-2 text-left transition hover:opacity-80 focus-visible:outline-none"
+              className="group/title flex items-center gap-2 text-left transition hover:opacity-80 focus-visible:outline-none cursor-pointer"
+            >
+              <h2 className="text-xl font-bold text-foreground tracking-tight group-hover/title:underline">
+                {shelf.title}
+              </h2>
+              <ArrowRightIcon size={16} className="text-muted-foreground group-hover/title:text-foreground transition-transform group-hover/title:translate-x-0.5" />
+            </button>
+          ) : (shelf.title.toLowerCase().includes("trending") && onOpenTrending) ? (
+            <button
+              type="button"
+              onClick={onOpenTrending}
+              className="group/title flex items-center gap-2 text-left transition hover:opacity-80 focus-visible:outline-none cursor-pointer"
             >
               <h2 className="text-xl font-bold text-foreground tracking-tight group-hover/title:underline">
                 {shelf.title}
@@ -248,45 +348,67 @@ function BrowseShelfSection({
       </div>
 
       {hasTracks && (
-        <div
-          ref={tracksScrollRef}
-          className={cn(
-            shelf.tracks.length >= 4
-              ? "grid grid-rows-4 grid-flow-col auto-cols-[280px] sm:auto-cols-[320px] md:auto-cols-[350px] gap-x-5 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
-              : "flex flex-col gap-1 max-w-2xl",
-          )}
-        >
-          {shelf.tracks.map((track, index) => (
-            <div
-              key={`${track.id}:${index}`}
-              className={cn(
-                shelf.tracks.length >= 4
-                  ? "w-[280px] sm:w-[320px] md:w-[350px] shrink-0 snap-start"
-                  : "w-full",
-              )}
-            >
-              <TrackRow
-                track={track}
-                index={index}
-                showIndex={false}
-                isCurrent={currentTrackId === track.id}
-                isPlaying={isPlaying && currentTrackId === track.id}
-                onSelect={() => playShelfTrack(shelf.tracks, track)}
-                onContextMenu={(event) => openTrackMenu(event, track)}
-                showRating
-                trailing={
-                  isLongListens && track.durationSec && track.durationSec > 0 ? (
-                    <span className="text-xs font-mono font-medium text-muted-foreground/80 tabular-nums pr-1">
-                      {Math.floor(track.durationSec / 3600) > 0
-                        ? `${Math.floor(track.durationSec / 3600)}:${Math.floor((track.durationSec % 3600) / 60).toString().padStart(2, "0")}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`
-                        : `${Math.floor(track.durationSec / 60)}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`}
-                    </span>
-                  ) : undefined
-                }
-              />
-            </div>
-          ))}
-        </div>
+        isVideoShelf ? (
+          <div
+            ref={tracksScrollRef}
+            className="flex gap-4 sm:gap-5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+          >
+            {shelf.tracks.map((track, index) => (
+              <div
+                key={`${track.id}:${index}`}
+                className="w-[calc(50%-10px)] min-w-[280px] max-w-[560px] shrink-0 snap-start"
+              >
+                <VideoCard
+                  track={track}
+                  isPlaying={isPlaying && currentTrackId === track.id}
+                  isCurrent={currentTrackId === track.id}
+                  onSelect={() => playShelfTrack(shelf.tracks, track)}
+                  onContextMenu={(event) => openTrackMenu(event, track)}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            ref={tracksScrollRef}
+            className={cn(
+              shelf.tracks.length >= 4
+                ? "grid grid-rows-4 grid-flow-col auto-cols-[280px] sm:auto-cols-[320px] md:auto-cols-[350px] gap-x-5 gap-y-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory"
+                : "flex flex-col gap-1 max-w-2xl",
+            )}
+          >
+            {shelf.tracks.map((track, index) => (
+              <div
+                key={`${track.id}:${index}`}
+                className={cn(
+                  shelf.tracks.length >= 4
+                    ? "w-[280px] sm:w-[320px] md:w-[350px] shrink-0 snap-start"
+                    : "w-full",
+                )}
+              >
+                <TrackRow
+                  track={track}
+                  index={index}
+                  showIndex={false}
+                  isCurrent={currentTrackId === track.id}
+                  isPlaying={isPlaying && currentTrackId === track.id}
+                  onSelect={() => playShelfTrack(shelf.tracks, track)}
+                  onContextMenu={(event) => openTrackMenu(event, track)}
+                  showRating
+                  trailing={
+                    isLongListens && track.durationSec && track.durationSec > 0 ? (
+                      <span className="text-xs font-mono font-medium text-muted-foreground/80 tabular-nums pr-1">
+                        {Math.floor(track.durationSec / 3600) > 0
+                          ? `${Math.floor(track.durationSec / 3600)}:${Math.floor((track.durationSec % 3600) / 60).toString().padStart(2, "0")}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`
+                          : `${Math.floor(track.durationSec / 60)}:${Math.floor(track.durationSec % 60).toString().padStart(2, "0")}`}
+                      </span>
+                    ) : undefined
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        )
       )}
 
       {onFollowLink && shelf.links.length > 0 && (
@@ -426,6 +548,7 @@ export function BrowseShelves({
   onOpenPlaylist,
   onFollowLink,
   onOpenReleases,
+  onOpenTrending,
   className,
 }: {
   shelves: readonly BrowseShelf[];
@@ -436,6 +559,7 @@ export function BrowseShelves({
   /** Absent hides the chips: a surface with nowhere to drill into should not offer to. */
   onFollowLink?: (link: BrowseLink) => void;
   onOpenReleases?: () => void;
+  onOpenTrending?: () => void;
   className?: string;
 }) {
   const { currentTrackId, isPlaying } = useNowPlaying();
@@ -454,6 +578,7 @@ export function BrowseShelves({
           onOpenPlaylist={onOpenPlaylist}
           onFollowLink={onFollowLink}
           onOpenReleases={onOpenReleases}
+          onOpenTrending={onOpenTrending}
         />
       ))}
     </div>
