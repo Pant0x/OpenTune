@@ -1060,7 +1060,7 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
   const synced = isSyncedLyrics(lyrics);
   const userOffset = getLyricsOffset(currentTrack?.id);
   const effectiveCurrentTime = currentTime + userOffset;
-  const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, effectiveCurrentTime) : -1;
+  const activeLyricIndex = synced && lyrics?.lines ? findActiveLineIndex(lyrics.lines, effectiveCurrentTime, 0.25) : -1;
   /*
    * The whole song, not a 4-line window: the card is a Spotify-tall scrolling pane and the
    * active line glides through it. Rows are keyed by absolute index and memoised inside
@@ -1717,7 +1717,11 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                           emptyStyle="note"
                           onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
                             const offset = getLyricsOffset(currentTrack?.id);
-                            const targetTime = Math.max(0, (lyrics?.lines[index]?.startTimeSec ?? 0) - offset);
+                            const start = lyrics?.lines[index]?.startTimeSec ?? 0;
+                            const prevStart = index > 0 ? lyrics?.lines[index - 1]?.startTimeSec : undefined;
+                            const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
+                            const leadIn = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
+                            const targetTime = Math.max(0, start - offset - leadIn);
                             void playerController.seekTo(targetTime);
                           } : undefined}
                           register={(i, el) => {

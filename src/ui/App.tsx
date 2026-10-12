@@ -300,12 +300,37 @@ export default function App() {
     };
   }, []);
 
-  const wasMaximizedBeforeFullscreenRef = useRef(false);
-  const isFullscreenActive = playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen;
+  const [isHtml5Fullscreen, setIsHtml5Fullscreen] = useState(false);
 
-  // Real OS fullscreen for both Lyrics fullscreen and Now Playing fullscreen:
+  useEffect(() => {
+    const handleFsChange = () => {
+      const isFs = Boolean(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsHtml5Fullscreen(isFs);
+      document.documentElement.toggleAttribute("data-window-maximized", isFs);
+    };
+
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
+  }, []);
+
+  const wasMaximizedBeforeFullscreenRef = useRef(false);
+  const isFullscreenActive =
+    playerUIState.isLyricsFullscreen ||
+    playerUIState.isNowPlayingFullscreen ||
+    isHtml5Fullscreen;
+
+  // Real OS fullscreen for Lyrics fullscreen, Now Playing fullscreen, and HTML5 video fullscreen:
   // Uses custom native Win32 atomic fullscreen to eliminate the minimize/shrink artifact
-  // while ensuring the Windows taskbar is 100% covered.
+  // while ensuring the Windows taskbar is 100% covered and blue accent border is removed.
   useEffect(() => {
     if (!isTauriEnvironment()) return;
     const win = getCurrentWindow();
@@ -1342,6 +1367,16 @@ export default function App() {
 
       // Fullscreen exit via Escape or F11 must ALWAYS work regardless of what element currently has focus
       if (event.key === "Escape" || event.code === "Escape") {
+        if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (document.exitFullscreen) {
+            void document.exitFullscreen().catch(() => {});
+          } else if ((document as any).webkitExitFullscreen) {
+            void (document as any).webkitExitFullscreen();
+          }
+          return;
+        }
         const currentUI = playerUIStore.getState();
         if (currentUI.isNowPlayingFullscreen) {
           event.preventDefault();
@@ -1506,12 +1541,12 @@ export default function App() {
     <VolumeSyncBridge />
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden bg-shell ${
-        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen
+        nativeWindowControls || isWindowMaximizedOrFullscreen || playerUIState.isLyricsFullscreen || playerUIState.isNowPlayingFullscreen || isHtml5Fullscreen
           ? "rounded-none border-0 ring-0 p-0 m-0"
           : "rounded-[var(--window-radius)] border-none ring-0"
       }`}
     >
-      {!playerUIState.isLyricsFullscreen && (
+      {!playerUIState.isLyricsFullscreen && !isHtml5Fullscreen && (
         <TitleBar
           sidebarWidth={sidebarWidth}
           isHomeActive={currentView.view === "home"}

@@ -657,9 +657,9 @@ export function VideoPlayerView({
           ref={iframeRef}
           src={embedUrl}
           title={track.title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowFullScreen
-          className="absolute inset-0 size-full border-0"
+          className="absolute inset-0 size-full border-0 outline-none ring-0"
           onLoad={() => {
             if (iframeRef.current?.contentWindow) {
               iframeRef.current.contentWindow.postMessage(

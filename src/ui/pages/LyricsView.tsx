@@ -491,7 +491,7 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       }
       const time = engineTime + offset;
       const currentLines = linesRef.current;
-      const next = findActiveLineIndex(currentLines, time);
+      const next = findActiveLineIndex(currentLines, time, 0.25);
 
       /* Committing every frame would re-render the whole column sixty times a second for a
          value that flips a few times a minute. Only the flip is worth a render. */
@@ -634,7 +634,12 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       resumeTimerRef.current = null;
     }
     setIsFollowPaused(false);
-    const target = Math.max(0, start - offset);
+    // Provide a clean pre-roll lead-in so seeking lands right before the artist's initial consonant/breath,
+    // ensuring the user hears the very beginning of the bar/words rather than mid-syllable.
+    const prevStart = index > 0 ? lines[index - 1]?.startTimeSec : undefined;
+    const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
+    const leadInSec = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
+    const target = Math.max(0, start - offset - leadInSec);
     pendingSeekRef.current = { target, at: performance.now() };
     setCurrentPlaybackTime(target);
     setActiveIndex(index);

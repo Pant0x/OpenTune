@@ -356,7 +356,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
       const effectiveTime = engineTime + effectiveIntro + lyricsOffsetRef.current;
       const lines = currentLyrics.lines;
-      const next = findActiveLineIndex(lines, effectiveTime);
+      const next = findActiveLineIndex(lines, effectiveTime, 0.25);
 
       if (next !== prevActiveIndexRef.current) {
         prevActiveIndexRef.current = next;
@@ -678,7 +678,10 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                             const start = lyrics.lines[i]?.startTimeSec;
                             if (start !== undefined) {
                               const autoIntro = lyrics.autoIntroOffsetSec ?? 0;
-                              const targetSeek = Math.max(0, start + autoIntro - lyricsOffsetRef.current);
+                              const prevStart = i > 0 ? lyrics.lines[i - 1]?.startTimeSec : undefined;
+                              const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
+                              const leadIn = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
+                              const targetSeek = Math.max(0, start + autoIntro - lyricsOffsetRef.current - leadIn);
                               pendingSeekRef.current = { target: targetSeek, at: performance.now() };
                               setActiveLyricIndex(i);
                               prevActiveIndexRef.current = i;

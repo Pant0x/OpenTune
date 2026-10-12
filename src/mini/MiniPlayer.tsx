@@ -391,7 +391,7 @@ function LyricsBody({
   synced: boolean;
 }) {
   const activeLineIndex = synced && lyrics?.length
-    ? findActiveLineIndex(lyrics, position)
+    ? findActiveLineIndex(lyrics, position, 0.25)
     : -1;
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
