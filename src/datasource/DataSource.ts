@@ -59,6 +59,7 @@ export abstract class DataSource {
   /** Resolves a pasted YouTube link. Null when it points at something Amber cannot open. */
   resolveLink?(url: string): Promise<ResolvedLink | null>;
   searchTracks?(query: string, onUpdate?: (tracks: Track[]) => void): Promise<Track[]>;
+  searchVideos?(query: string): Promise<Track[]>;
   searchPodcasts?(query: string): Promise<{ shows: Playlist[]; episodes: Track[] }>;
   getSearchSuggestions?(query: string, onUpdate?: (suggestions: string[]) => void): Promise<string[]>;
   getStreamData?(track: Track): Promise<StreamData>;

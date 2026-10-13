@@ -35,7 +35,7 @@ const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
   { id: "spiritual", label: "Quran", query: "تلاوة قرآن كريم quran recitation" },
   { id: "podcasts", label: "Podcasts", query: "بودكاست كلام في البرمجة بتاع افلام podcast" },
-  { id: "videos", label: "Music Videos", query: "top official music videos trending" },
+  { id: "videos", label: "Video Clips", query: "official music video trending clips اغاني كليب فيديو" },
   { id: "sleep", label: "Sleep", query: "sleep relaxing calm music deep sleep" },
   { id: "relax", label: "Relax", query: "relax chill lofi acoustic" },
   { id: "sad", label: "Sad", query: "sad emotional songs acoustic" },
@@ -91,22 +91,6 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     fallbackType: "song",
   },
   {
-    id: "shows-for-you",
-    title: "Shows for you",
-    matchPatterns: [/shows for you/i, /^shows$/i, /عروض مقترحة/i, /برامج مقترحة/i, /بودكاست لك/i],
-    browseTarget: { browseId: "FEmusic_podcasts", title: "Shows for you" },
-    fallbackQuery: "بودكاست كلام في البرمجة بتاع افلام",
-    fallbackType: "playlist",
-  },
-  {
-    id: "episodes-for-you",
-    title: "Episodes for you",
-    matchPatterns: [/episodes for you/i, /top episodes/i, /recommended episodes/i, /حلقات مقترحة/i, /حلقات بودكاست/i, /podcasts/i],
-    browseTarget: { browseId: "FEmusic_podcasts", title: "Episodes for you" },
-    fallbackQuery: "بودكاست حلقات كلام في البرمجة بتاع افلام",
-    fallbackType: "song",
-  },
-  {
     id: "albums-for-you",
     title: "Albums for you",
     matchPatterns: [/albums for you/i, /recommended albums/i, /popular albums/i, /albums & singles/i, /singles & eps/i, /^albums$/i],
@@ -135,6 +119,13 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     browseTarget: { browseId: "FEmusic_new_releases_albums", title: "New releases" },
     fallbackQuery: "new releases albums songs",
     fallbackType: "album",
+  },
+  {
+    id: "video-clips",
+    title: "Video clips",
+    matchPatterns: [/video clips/i, /music videos/i, /videos for you/i, /كليبات/i, /فيديو كليب/i, /music video/i],
+    fallbackQuery: "official music video trending clips",
+    fallbackType: "song",
   },
   {
     id: "from-the-community",
@@ -194,13 +185,6 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     matchPatterns: [/trending songs/i, /trending/i, /charts/i, /top songs/i, /today's hits/i],
     browseTarget: { browseId: "FEmusic_charts", title: "Charts" },
     fallbackQuery: "YouTube Music Top 100 Trending hits",
-    fallbackType: "song",
-  },
-  {
-    id: "music-videos-for-you",
-    title: "Music videos for you",
-    matchPatterns: [/music videos for you/i, /music videos/i, /videos for you/i, /recommended music video/i],
-    fallbackQuery: "top official music videos trending",
     fallbackType: "song",
   },
   {
@@ -821,41 +805,39 @@ export function HomePage({
                   }
                 }
 
+                if (sec.id === "video-clips") {
+                  try {
+                    const videoTracks = await searchController
+                      .searchVideos("official music video trending clips اغاني كليب فيديو")
+                      .catch(() => null);
+                    if (videoTracks && videoTracks.length > 0) {
+                      return {
+                        sec,
+                        shelf: {
+                          title: sec.title,
+                          tracks: videoTracks.slice(0, 24).map((t) => ({ ...t, isVideo: true })),
+                          albums: [],
+                          playlists: [],
+                          artists: [],
+                          links: [],
+                        },
+                      };
+                    }
+                  } catch {}
+                }
+
                 if (sec.browseTarget) {
                   const browseRes = await libraryController
                     .getBrowsePage(sec.browseTarget)
                     .catch(() => null);
                   if (browseRes && browseRes.shelves.length > 0) {
-                    if (sec.id === "shows-for-you") {
-                      const showShelf =
-                        browseRes.shelves.find((s) => s.playlists.length > 0 && /shows|عروض|بودكاست/i.test(s.title)) ||
-                        browseRes.shelves.find((s) => s.playlists.length > 0);
-                      if (showShelf) {
-                        return { sec, shelf: { ...showShelf, title: sec.title } };
-                      }
-                    } else if (sec.id === "episodes-for-you") {
-                      const epShelf =
-                        browseRes.shelves.find((s) => s.tracks.length > 0 && /episodes|حلقات|podcasts/i.test(s.title)) ||
-                        browseRes.shelves.find((s) => s.tracks.length > 0);
-                      if (epShelf) {
-                        return {
-                          sec,
-                          shelf: {
-                            ...epShelf,
-                            title: sec.title,
-                            tracks: epShelf.tracks.map((t) => ({ ...t, isVideo: true })),
-                          },
-                        };
-                      }
-                    } else {
-                      const firstShelf = browseRes.shelves[0];
-                      if (
-                        firstShelf.tracks.length > 0 ||
-                        firstShelf.albums.length > 0 ||
-                        firstShelf.playlists.length > 0
-                      ) {
-                        return { sec, shelf: { ...firstShelf, title: sec.title } };
-                      }
+                    const firstShelf = browseRes.shelves[0];
+                    if (
+                      firstShelf.tracks.length > 0 ||
+                      firstShelf.albums.length > 0 ||
+                      firstShelf.playlists.length > 0
+                    ) {
+                      return { sec, shelf: { ...firstShelf, title: sec.title } };
                     }
                   }
                 }
@@ -876,9 +858,8 @@ export function HomePage({
                 const fallbackShelf: BrowseShelf = {
                   title: sec.title,
                   tracks: (sec.fallbackType === "song" ? searchRes.tracks.slice(0, 24) : []).map((t) =>
-                    sec.id === "music-videos-for-you" ||
-                    sec.id === "live-performances" ||
-                    sec.id === "episodes-for-you"
+                    sec.id === "video-clips" ||
+                    sec.id === "live-performances"
                       ? { ...t, isVideo: true }
                       : t,
                   ),
@@ -1119,6 +1100,35 @@ export function HomePage({
         setMoodShelves(shelves);
       } catch (err) {
         logInternalWarn("HomePage load podcasts failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setIsLoadingMood(false);
+      }
+      return;
+    }
+
+    if (chip.id === "videos") {
+      setIsLoadingMood(true);
+      try {
+        const videoTracks = await searchController
+          .searchVideos("official music video trending clips اغاني كليب فيديو")
+          .catch(() => []);
+        const shelves: BrowseShelf[] = [];
+        if (videoTracks.length > 0) {
+          shelves.push({
+            title: "Video clips",
+            tracks: videoTracks.slice(0, 32).map((t) => ({ ...t, isVideo: true })),
+            albums: [],
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
+        cachedMoodShelves.set(chip.id, shelves);
+        setMoodShelves(shelves);
+      } catch (err) {
+        logInternalWarn("HomePage load video clips failed", {
           error: err instanceof Error ? err.message : String(err),
         });
       } finally {

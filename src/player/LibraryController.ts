@@ -729,6 +729,14 @@ export class LibraryController {
     return this.dataSource.searchPodcasts(trimmed);
   }
 
+  async searchVideos(query: string): Promise<Track[]> {
+    const trimmed = query.trim();
+    if (!trimmed || !this.dataSource.searchVideos) {
+      return [];
+    }
+    return this.dataSource.searchVideos(trimmed);
+  }
+
   async searchTracks(query: string): Promise<Track[]> {
     if (this.dataSource.searchTracks) {
       return this.dataSource.searchTracks(query);

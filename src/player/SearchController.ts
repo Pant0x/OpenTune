@@ -77,6 +77,14 @@ export class SearchController {
     return this.dataSource.searchPodcasts(trimmed);
   }
 
+  async searchVideos(query: string): Promise<Track[]> {
+    const trimmed = query.trim();
+    if (!trimmed || !this.dataSource.searchVideos) {
+      return [];
+    }
+    return this.dataSource.searchVideos(trimmed);
+  }
+
   async searchTracks(query: string, onUpdate?: (tracks: Track[]) => void): Promise<Track[]> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery || !this.dataSource.searchTracks) return [];

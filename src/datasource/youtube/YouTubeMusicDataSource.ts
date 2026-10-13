@@ -8843,52 +8843,120 @@ export class YouTubeMusicDataSource extends DataSource {
     }
   }
 
+  async searchVideos(query: string): Promise<Track[]> {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const cacheKey = `youtube:videos:v1:${trimmed.toLowerCase()}`;
+    const cached = await getCachedJson<Track[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const webClient = await this.getWebClient();
+      const res: any = await webClient.search(trimmed, { type: "video" });
+      const tracks: Track[] = [];
+
+      for (const v of res?.videos || []) {
+        if (!v.id || !v.title) continue;
+        const durText = typeof v.duration?.text === "string" ? v.duration.text : undefined;
+        const durSec = typeof v.duration?.seconds === "number" ? v.duration.seconds : undefined;
+        tracks.push({
+          id: v.id,
+          source: "youtube",
+          title: v.title.toString(),
+          artist: v.author?.name || "Official Artist",
+          artworkUrl: v.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+          isVideo: true,
+          duration: durText,
+          durationSec: durSec,
+        });
+      }
+
+      const uniqueTracks = this.uniqueById(tracks);
+      await setCachedJson(cacheKey, uniqueTracks);
+      return uniqueTracks;
+    } catch (error) {
+      logInternalWarn("YouTubeMusicDataSource.searchVideos failed", {
+        query: trimmed,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
   async searchPodcasts(query: string): Promise<{ shows: Playlist[]; episodes: Track[] }> {
     const trimmed = query.trim();
     const empty = { shows: [], episodes: [] };
     if (!trimmed) return empty;
 
-    const cacheKey = `youtube-music:podcasts:v1:${trimmed.toLowerCase()}`;
+    const cacheKey = `youtube-music:podcasts:v2:${trimmed.toLowerCase()}`;
     const cached = await getCachedJson<{ shows: Playlist[]; episodes: Track[] }>(cacheKey);
     if (cached) return cached;
 
     try {
-      const client = await this.getMusicClient();
-      const response: any = await client.music.search(trimmed);
-      const items = this.collectMusicItems(response?.page, BROWSE_ITEM_TYPES);
+      const [musicClient, webClient] = await Promise.all([
+        this.getMusicClient(),
+        this.getWebClient(),
+      ]);
+
+      const [musicRes, webRes] = await Promise.all([
+        musicClient.music.search(trimmed).catch(() => null),
+        webClient.search(trimmed, { type: "video" }).catch(() => null),
+      ]);
 
       const shows: Playlist[] = [];
       const episodes: Track[] = [];
 
-      for (const item of items) {
-        const isShow = item.item_type === "podcast_show" || (typeof item.id === "string" && item.id.startsWith("MPSP"));
-        const isEpisode = item.item_type === "non_music_track" || (item.item_type === "video" && /حلقة|بودكاست|episode|podcast/i.test(this.getTitle(item) || ""));
+      if (musicRes?.page) {
+        const items = this.collectMusicItems(musicRes.page, BROWSE_ITEM_TYPES);
+        for (const item of items) {
+          const isShow = item.item_type === "podcast_show" || (typeof item.id === "string" && item.id.startsWith("MPSP"));
+          const isEpisode = item.item_type === "non_music_track" || (item.item_type === "video" && /حلقة|بودكاست|episode|podcast/i.test(this.getTitle(item) || ""));
 
-        if (isShow) {
-          const playlist = this.toPlaylist(item);
-          if (playlist) {
-            if ((!playlist.owner || playlist.owner === "YouTube Music playlist" || playlist.owner === "Unknown artist") && (item as any).flex_columns?.length > 1) {
-              const runs = (item as any).flex_columns[1]?.title?.runs || [];
-              for (const r of runs) {
-                const text = r.text?.trim();
-                if (text && !/^(podcast|بودكاست|•|\s)+$/i.test(text)) {
-                  playlist.owner = text;
-                  break;
+          if (isShow) {
+            const playlist = this.toPlaylist(item);
+            if (playlist) {
+              if ((!playlist.owner || playlist.owner === "YouTube Music playlist" || playlist.owner === "Unknown artist") && (item as any).flex_columns?.length > 1) {
+                const runs = (item as any).flex_columns[1]?.title?.runs || [];
+                for (const r of runs) {
+                  const text = r.text?.trim();
+                  if (text && !/^(podcast|بودكاست|•|\s)+$/i.test(text)) {
+                    playlist.owner = text;
+                    break;
+                  }
                 }
               }
+              shows.push(playlist);
             }
-            shows.push(playlist);
-          }
-        } else if (isEpisode) {
-          const track = this.toTrack(item);
-          if (track) {
-            track.isVideo = true;
-            if ((!track.artist || track.artist === "Unknown artist") && (item as any).flex_columns?.length > 1) {
-              const text = (item as any).flex_columns[1]?.title?.text;
-              if (text) track.artist = text;
+          } else if (isEpisode) {
+            const track = this.toTrack(item);
+            if (track) {
+              track.isVideo = true;
+              if ((!track.artist || track.artist === "Unknown artist") && (item as any).flex_columns?.length > 1) {
+                const text = (item as any).flex_columns[1]?.title?.text;
+                if (text) track.artist = text;
+              }
+              episodes.push(track);
             }
-            episodes.push(track);
           }
+        }
+      }
+
+      if (webRes && (webRes as any).videos) {
+        for (const v of (webRes as any).videos) {
+          if (!v.id || !v.title) continue;
+          const durText = typeof v.duration?.text === "string" ? v.duration.text : undefined;
+          const durSec = typeof v.duration?.seconds === "number" ? v.duration.seconds : undefined;
+          episodes.push({
+            id: v.id,
+            source: "youtube",
+            title: v.title.toString(),
+            artist: v.author?.name || "Podcast",
+            artworkUrl: v.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+            isVideo: true,
+            duration: durText,
+            durationSec: durSec,
+          });
         }
       }
 
