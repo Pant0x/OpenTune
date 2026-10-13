@@ -336,6 +336,7 @@ function buildPinnedShelves(
 
     if (matchedFromYt) {
       if (
+        section.id === "video-clips" ||
         section.id === "music-videos-for-you" ||
         section.id === "live-performances" ||
         section.id === "episodes-for-you"
@@ -410,6 +411,7 @@ function buildPinnedShelves(
     if (fallbackShelf) {
       let finalShelf = fallbackShelf;
       if (
+        section.id === "video-clips" ||
         section.id === "music-videos-for-you" ||
         section.id === "live-performances" ||
         section.id === "episodes-for-you"
@@ -807,8 +809,11 @@ export function HomePage({
 
                 if (sec.id === "video-clips") {
                   try {
+                    const videoQuery = topArtist
+                      ? `${topArtist} official music video clips`
+                      : "official music video trending clips";
                     const videoTracks = await searchController
-                      .searchVideos("official music video trending clips اغاني كليب فيديو")
+                      .searchVideos(videoQuery)
                       .catch(() => null);
                     if (videoTracks && videoTracks.length > 0) {
                       return {
@@ -1020,84 +1025,69 @@ export function HomePage({
     if (chip.id === "podcasts") {
       setIsLoadingMood(true);
       try {
-        const subscribedCreators = (libraryState.library?.artists ?? []).slice(0, 8);
-        const podcastQueries = [
-          ...subscribedCreators.map((c) => `${c.name} بودكاست`),
-          "بودكاست كلام في البرمجة Yehia Tech",
-          "بودكاست بتاع افلام",
-          "سلسلة استهدى بالله محمد الغليظ",
-          "بودكاست نور ديزاين",
-          "بودكاست جت علينا",
-          "قصة مش مهم تسمعها يحيى عزام",
-          "بودكاست فنجان ثمانية",
-        ];
+        const [podcastBrowse, homeBrowse] = await Promise.all([
+          libraryController.getBrowsePage("podcasts").catch(() => null),
+          libraryController.getBrowsePage("home").catch(() => null),
+        ]);
 
-        const podcastResults = await Promise.all(
-          podcastQueries.map((q) =>
-            searchController.searchPodcasts(q).catch(() => ({ shows: [] as Playlist[], episodes: [] as Track[] })),
-          ),
-        );
-
-        const candidateShows: Playlist[] = [];
-        const seenShowIds = new Set<string>();
-        const candidateEpisodes: Track[] = [];
-        const seenEpIds = new Set<string>();
-
-        for (const res of podcastResults) {
-          for (const show of res.shows) {
-            if (!seenShowIds.has(show.id)) {
-              seenShowIds.add(show.id);
-              candidateShows.push(show);
-            }
-          }
-          for (const ep of res.episodes) {
-            if (!seenEpIds.has(ep.id)) {
-              seenEpIds.add(ep.id);
-              candidateEpisodes.push({ ...ep, isVideo: true });
+        const rawShelves: BrowseShelf[] = [];
+        if (podcastBrowse?.shelves) {
+          rawShelves.push(...splitMixedShelves(podcastBrowse.shelves));
+        }
+        if (homeBrowse?.shelves) {
+          const homePodcasts = splitMixedShelves(homeBrowse.shelves).filter((s) =>
+            /shows|podcasts|episodes|عروض|حلقات|بودكاست/i.test(s.title),
+          );
+          for (const s of homePodcasts) {
+            if (!rawShelves.some((existing) => existing.title.toLowerCase() === s.title.toLowerCase())) {
+              rawShelves.push(s);
             }
           }
         }
 
-        const shelves: BrowseShelf[] = [];
+        // Ensure all tracks in podcast shelves have isVideo: true so they render in 16:9 widescreen format
+        let finalizedShelves = rawShelves.map((s) => ({
+          ...s,
+          tracks: s.tracks.map((t) => ({ ...t, isVideo: true })),
+        }));
 
-        // 1. "Shows for you" - real shows with square covers, title, and creator names
-        if (candidateShows.length > 0) {
-          shelves.push({
-            title: "Shows for you",
-            tracks: [],
-            albums: [],
-            playlists: candidateShows.slice(0, 20),
-            artists: [],
-            links: [],
-          });
+        // If neither shows nor episodes came back (e.g. guest or fresh account with no podcast history),
+        // query YouTube for real shows and video episodes tailored to user's music taste:
+        const hasShows = finalizedShelves.some((s) => s.playlists.length > 0);
+        const hasEpisodes = finalizedShelves.some((s) => s.tracks.length > 0);
+
+        if (!hasShows || !hasEpisodes) {
+          const userArtist =
+            libraryState.library?.likedSongs?.[0]?.artist ||
+            libraryState.library?.recentlyPlayed?.[0]?.artist ||
+            libraryState.library?.artists?.[0]?.name;
+          const query = userArtist ? `${userArtist} podcast` : "popular podcasts";
+          const res = await searchController.searchPodcasts(query).catch(() => null);
+
+          if (!hasShows && res?.shows && res.shows.length > 0) {
+            finalizedShelves.unshift({
+              title: "Shows for you",
+              tracks: [],
+              albums: [],
+              playlists: res.shows.slice(0, 20),
+              artists: [],
+              links: [],
+            });
+          }
+          if (!hasEpisodes && res?.episodes && res.episodes.length > 0) {
+            finalizedShelves.push({
+              title: "Episodes for you",
+              tracks: res.episodes.slice(0, 20).map((t) => ({ ...t, isVideo: true })),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
         }
 
-        // 2. "Episodes for you" - 16:9 widescreen VideoCards with duration badges
-        if (candidateEpisodes.length > 0) {
-          shelves.push({
-            title: "Episodes for you",
-            tracks: candidateEpisodes.slice(0, 20),
-            albums: [],
-            playlists: [],
-            artists: [],
-            links: [],
-          });
-        }
-
-        // 3. More episodes if available
-        if (candidateEpisodes.length > 20) {
-          shelves.push({
-            title: "Quick picks — المزيد من الحلقات",
-            tracks: candidateEpisodes.slice(20, 40),
-            albums: [],
-            playlists: [],
-            artists: [],
-            links: [],
-          });
-        }
-
-        cachedMoodShelves.set(chip.id, shelves);
-        setMoodShelves(shelves);
+        cachedMoodShelves.set(chip.id, finalizedShelves);
+        setMoodShelves(finalizedShelves);
       } catch (err) {
         logInternalWarn("HomePage load podcasts failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -1111,20 +1101,82 @@ export function HomePage({
     if (chip.id === "videos") {
       setIsLoadingMood(true);
       try {
-        const videoTracks = await searchController
-          .searchVideos("official music video trending clips اغاني كليب فيديو")
-          .catch(() => []);
+        const userArtists = [
+          ...(libraryState.library?.artists ?? []).map((a) => a.name),
+          ...(libraryState.library?.likedSongs ?? []).slice(0, 10).map((t) => t.artist),
+          ...(libraryState.library?.recentlyPlayed ?? []).slice(0, 10).map((t) => t.artist),
+        ].filter(Boolean);
+        const topArtists = Array.from(new Set(userArtists)).slice(0, 3);
+        const forYouQuery = topArtists.length > 0
+          ? `${topArtists.join(" ")} official music video`
+          : "official music video trending clips";
+
+        const [exploreBrowse, forYouVideos, trendingVideos, liveVideos] = await Promise.all([
+          libraryController.getBrowsePage("explore").catch(() => null),
+          searchController.searchVideos(forYouQuery).catch(() => []),
+          searchController.searchVideos("trending official music video clips hits").catch(() => []),
+          searchController.searchVideos("live performance concert live session official").catch(() => []),
+        ]);
+
         const shelves: BrowseShelf[] = [];
-        if (videoTracks.length > 0) {
+
+        // 1. YouTube Explore's real "New music videos" shelf if available
+        if (exploreBrowse?.shelves) {
+          const ytVideoShelf = exploreBrowse.shelves.find(
+            (s) => /music video|new video|فيديو|كليب/i.test(s.title) && s.tracks.length > 0,
+          );
+          if (ytVideoShelf && ytVideoShelf.tracks.length > 0) {
+            shelves.push({
+              title: "New music videos",
+              tracks: ytVideoShelf.tracks.slice(0, 24).map((t) => ({ ...t, isVideo: true })),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        }
+
+        // 2. Personalized "Video clips for you" (from user's artists or top hits)
+        if (forYouVideos.length > 0) {
           shelves.push({
-            title: "Video clips",
-            tracks: videoTracks.slice(0, 32).map((t) => ({ ...t, isVideo: true })),
+            title: topArtists.length > 0 ? "Video clips for you" : "Featured video clips",
+            tracks: forYouVideos.slice(0, 24).map((t) => ({ ...t, isVideo: true })),
             albums: [],
             playlists: [],
             artists: [],
             links: [],
           });
         }
+
+        // 3. Trending video clips
+        if (trendingVideos.length > 0) {
+          const seenIds = new Set(forYouVideos.map((t) => t.id));
+          const uniqueTrending = trendingVideos.filter((t) => !seenIds.has(t.id));
+          if (uniqueTrending.length > 0) {
+            shelves.push({
+              title: "Trending video clips",
+              tracks: uniqueTrending.slice(0, 24).map((t) => ({ ...t, isVideo: true })),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        }
+
+        // 4. Live performances & concerts
+        if (liveVideos.length > 0) {
+          shelves.push({
+            title: "Live performances",
+            tracks: liveVideos.slice(0, 24).map((t) => ({ ...t, isVideo: true })),
+            albums: [],
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
+
         cachedMoodShelves.set(chip.id, shelves);
         setMoodShelves(shelves);
       } catch (err) {
