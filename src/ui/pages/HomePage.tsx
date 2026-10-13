@@ -33,7 +33,7 @@ interface HomeMoodChip {
 const HOME_MOOD_CHIPS: HomeMoodChip[] = [
   { id: "all", label: "All" },
   { id: "spiritual", label: "Quran", query: "تلاوة قرآن كريم quran recitation" },
-  { id: "podcasts", label: "Podcasts", query: "popular podcast episodes talk show" },
+  { id: "podcasts", label: "Podcasts", query: "بودكاست كلام في البرمجة بتاع افلام podcast" },
   { id: "videos", label: "Music Videos", query: "top official music videos trending" },
   { id: "sleep", label: "Sleep", query: "sleep relaxing calm music deep sleep" },
   { id: "relax", label: "Relax", query: "relax chill lofi acoustic" },
@@ -85,8 +85,24 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "quick-picks",
     title: "Quick picks",
-    matchPatterns: [/^quick picks/i, /start radio/i],
+    matchPatterns: [/^quick picks/i, /start radio/i, /اختيارات سريعة/i],
     fallbackQuery: "trending top songs hits",
+    fallbackType: "song",
+  },
+  {
+    id: "shows-for-you",
+    title: "Shows for you",
+    matchPatterns: [/shows for you/i, /^shows$/i, /عروض مقترحة/i, /برامج مقترحة/i, /بودكاست لك/i],
+    browseTarget: { browseId: "FEmusic_podcasts", title: "Shows for you" },
+    fallbackQuery: "بودكاست كلام في البرمجة بتاع افلام",
+    fallbackType: "playlist",
+  },
+  {
+    id: "episodes-for-you",
+    title: "Episodes for you",
+    matchPatterns: [/episodes for you/i, /top episodes/i, /recommended episodes/i, /حلقات مقترحة/i, /حلقات بودكاست/i, /podcasts/i],
+    browseTarget: { browseId: "FEmusic_podcasts", title: "Episodes for you" },
+    fallbackQuery: "بودكاست حلقات كلام في البرمجة بتاع افلام",
     fallbackType: "song",
   },
   {
@@ -205,13 +221,6 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
     title: "Long listens",
     matchPatterns: [/long listens/i, /extended/i, /deep focus/i],
     fallbackQuery: "extended mix lofi live dj set long listen",
-    fallbackType: "song",
-  },
-  {
-    id: "podcasts",
-    title: "Podcasts & Shows",
-    matchPatterns: [/podcasts/i, /podcast/i, /episodes/i, /shows/i],
-    fallbackQuery: "popular podcast episodes full show talk",
     fallbackType: "song",
   },
 ];
@@ -341,7 +350,11 @@ function buildPinnedShelves(
     }
 
     if (matchedFromYt) {
-      if (section.id === "music-videos-for-you" || section.id === "live-performances") {
+      if (
+        section.id === "music-videos-for-you" ||
+        section.id === "live-performances" ||
+        section.id === "episodes-for-you"
+      ) {
         matchedFromYt = {
           ...matchedFromYt,
           tracks: matchedFromYt.tracks.map((t) => ({ ...t, isVideo: true })),
@@ -411,7 +424,11 @@ function buildPinnedShelves(
     const fallbackShelf = fallbackMap.get(section.id);
     if (fallbackShelf) {
       let finalShelf = fallbackShelf;
-      if (section.id === "music-videos-for-you" || section.id === "live-performances") {
+      if (
+        section.id === "music-videos-for-you" ||
+        section.id === "live-performances" ||
+        section.id === "episodes-for-you"
+      ) {
         finalShelf = {
           ...finalShelf,
           tracks: finalShelf.tracks.map((t) => ({ ...t, isVideo: true })),
@@ -419,6 +436,21 @@ function buildPinnedShelves(
       }
       result.push({ ...finalShelf, title: section.title });
       matchedIds.add(section.id);
+    }
+  }
+
+  // 5. Append any unused real YouTube shelves at the end so the user gets ALL their real YouTube recommendations!
+  for (let i = 0; i < ytShelves.length; i++) {
+    if (!usedYtIndices.has(i)) {
+      const remainingShelf = ytShelves[i];
+      const hasContent =
+        remainingShelf.tracks.length > 0 ||
+        remainingShelf.albums.length > 0 ||
+        remainingShelf.playlists.length > 0 ||
+        remainingShelf.artists.length > 0;
+      if (hasContent) {
+        result.push(remainingShelf);
+      }
     }
   }
 
@@ -760,18 +792,69 @@ export function HomePage({
                   } catch {}
                 }
 
+                if (sec.id === "quick-picks") {
+                  const userTracks = [
+                    ...(libraryState.library?.likedSongs ?? []).slice(0, 16),
+                    ...(libraryState.library?.recentlyPlayed ?? []).slice(0, 16),
+                  ];
+                  if (userTracks.length > 0) {
+                    const seen = new Set<string>();
+                    const uniqueUserTracks = userTracks.filter((t) => {
+                      if (seen.has(t.id)) return false;
+                      seen.add(t.id);
+                      return true;
+                    });
+                    if (uniqueUserTracks.length >= 6) {
+                      return {
+                        sec,
+                        shelf: {
+                          title: sec.title,
+                          tracks: uniqueUserTracks.slice(0, 24),
+                          albums: [],
+                          playlists: [],
+                          artists: [],
+                          links: [],
+                        },
+                      };
+                    }
+                  }
+                }
+
                 if (sec.browseTarget) {
                   const browseRes = await libraryController
                     .getBrowsePage(sec.browseTarget)
                     .catch(() => null);
                   if (browseRes && browseRes.shelves.length > 0) {
-                    const firstShelf = browseRes.shelves[0];
-                    if (
-                      firstShelf.tracks.length > 0 ||
-                      firstShelf.albums.length > 0 ||
-                      firstShelf.playlists.length > 0
-                    ) {
-                      return { sec, shelf: { ...firstShelf, title: sec.title } };
+                    if (sec.id === "shows-for-you") {
+                      const showShelf =
+                        browseRes.shelves.find((s) => s.playlists.length > 0 && /shows|عروض|بودكاست/i.test(s.title)) ||
+                        browseRes.shelves.find((s) => s.playlists.length > 0);
+                      if (showShelf) {
+                        return { sec, shelf: { ...showShelf, title: sec.title } };
+                      }
+                    } else if (sec.id === "episodes-for-you") {
+                      const epShelf =
+                        browseRes.shelves.find((s) => s.tracks.length > 0 && /episodes|حلقات|podcasts/i.test(s.title)) ||
+                        browseRes.shelves.find((s) => s.tracks.length > 0);
+                      if (epShelf) {
+                        return {
+                          sec,
+                          shelf: {
+                            ...epShelf,
+                            title: sec.title,
+                            tracks: epShelf.tracks.map((t) => ({ ...t, isVideo: true })),
+                          },
+                        };
+                      }
+                    } else {
+                      const firstShelf = browseRes.shelves[0];
+                      if (
+                        firstShelf.tracks.length > 0 ||
+                        firstShelf.albums.length > 0 ||
+                        firstShelf.playlists.length > 0
+                      ) {
+                        return { sec, shelf: { ...firstShelf, title: sec.title } };
+                      }
                     }
                   }
                 }
@@ -792,7 +875,9 @@ export function HomePage({
                 const fallbackShelf: BrowseShelf = {
                   title: sec.title,
                   tracks: (sec.fallbackType === "song" ? searchRes.tracks.slice(0, 24) : []).map((t) =>
-                    sec.id === "music-videos-for-you" || sec.id === "live-performances"
+                    sec.id === "music-videos-for-you" ||
+                    sec.id === "live-performances" ||
+                    sec.id === "episodes-for-you"
                       ? { ...t, isVideo: true }
                       : t,
                   ),
@@ -941,6 +1026,126 @@ export function HomePage({
         }
         cachedMoodShelves.set(chip.id, shelves);
         setMoodShelves(shelves);
+      } catch {
+        // Fallback gracefully
+      } finally {
+        setIsLoadingMood(false);
+      }
+      return;
+    }
+
+    if (chip.id === "podcasts") {
+      setIsLoadingMood(true);
+      try {
+        const [podcastBrowse, homeBrowse] = await Promise.all([
+          libraryController.getBrowsePage("podcasts").catch(() => null),
+          libraryController.getBrowsePage("home").catch(() => null),
+        ]);
+
+        const rawShelves: BrowseShelf[] = [];
+        if (podcastBrowse?.shelves) {
+          rawShelves.push(...splitMixedShelves(podcastBrowse.shelves));
+        }
+        if (homeBrowse?.shelves) {
+          const homePodcasts = splitMixedShelves(homeBrowse.shelves).filter((s) =>
+            /shows|podcasts|episodes|عروض|حلقات|بودكاست/i.test(s.title),
+          );
+          for (const s of homePodcasts) {
+            if (!rawShelves.some((existing) => existing.title === s.title)) {
+              rawShelves.push(s);
+            }
+          }
+        }
+
+        const subscribedCreators = (libraryState.library?.artists ?? []).slice(0, 8);
+        const hasShows = rawShelves.some((s) => s.playlists.length > 0);
+        const hasEpisodes = rawShelves.some((s) => s.tracks.length > 0);
+
+        if (!hasShows) {
+          const showQueries = [
+            ...subscribedCreators.map((c) => `${c.name} بودكاست`),
+            "بودكاست كلام في البرمجة Yehia Tech",
+            "بودكاست بتاع افلام",
+            "بودكاست نور ديزاين",
+            "سلسلة استهدى بالله محمد الغليظ",
+            "بودكاست جت علينا",
+            "قصة مش مهم تسمعها يحيى عزام",
+          ].slice(0, 5);
+
+          const showResults = await Promise.all(
+            showQueries.map((q) => searchController.searchCategory(q, "playlist").catch(() => null)),
+          );
+
+          const candidatePlaylists: Playlist[] = [];
+          const seenPlIds = new Set<string>();
+          for (const res of showResults) {
+            if (res?.playlists) {
+              for (const pl of res.playlists) {
+                if (!seenPlIds.has(pl.id)) {
+                  seenPlIds.add(pl.id);
+                  candidatePlaylists.push(pl);
+                }
+              }
+            }
+          }
+
+          if (candidatePlaylists.length > 0) {
+            rawShelves.unshift({
+              title: "Shows for you",
+              tracks: [],
+              albums: [],
+              playlists: candidatePlaylists.slice(0, 16),
+              artists: [],
+              links: [],
+            });
+          }
+        }
+
+        if (!hasEpisodes) {
+          const epQueries = [
+            ...subscribedCreators.map((c) => `${c.name} بودكاست`),
+            "بودكاست كلام في البرمجة",
+            "بودكاست بتاع افلام",
+            "حلقات بودكاست جديدة",
+          ].slice(0, 4);
+
+          const epResults = await Promise.all(
+            epQueries.map((q) => searchController.searchCategory(q, "video").catch(() => null)),
+          );
+
+          const candidateTracks: Track[] = [];
+          const seenTrackIds = new Set<string>();
+          for (const res of epResults) {
+            if (res?.tracks) {
+              for (const t of res.tracks) {
+                if (!seenTrackIds.has(t.id)) {
+                  seenTrackIds.add(t.id);
+                  candidateTracks.push({ ...t, isVideo: true });
+                }
+              }
+            }
+          }
+
+          if (candidateTracks.length > 0) {
+            rawShelves.push({
+              title: "Episodes for you",
+              tracks: candidateTracks.slice(0, 24),
+              albums: [],
+              playlists: [],
+              artists: [],
+              links: [],
+            });
+          }
+        }
+
+        // Ensure all tracks in podcast shelves have isVideo: true so they render as 16:9 VideoCards!
+        const finalizedShelves = rawShelves.map((s) => ({
+          ...s,
+          tracks: s.tracks.map((t) => ({ ...t, isVideo: true })),
+        }));
+
+        cachedMoodShelves.set(chip.id, finalizedShelves);
+        setMoodShelves(finalizedShelves);
       } catch {
         // Fallback gracefully
       } finally {

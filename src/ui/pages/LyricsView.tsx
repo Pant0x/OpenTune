@@ -312,14 +312,14 @@ export function LyricsView({ onClose }: LyricsViewProps) {
 
   const activeBackgroundUrl = effectiveArtworkUrl;
 
-  const pendingSeekRef = useRef<{ target: number; at: number } | null>(null);
+  const pendingSeekRef = useRef<{ target: number; at: number; index?: number } | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
       const engineTime = playerController.getCurrentTime();
       const pending = pendingSeekRef.current;
       if (pending) {
-        if (performance.now() - pending.at < 800 && Math.abs(engineTime - pending.target) > 0.75) {
+        if (performance.now() - pending.at < 1200 && Math.abs(engineTime - pending.target) > 0.4) {
           setCurrentPlaybackTime(pending.target);
           return;
         }
@@ -351,6 +351,8 @@ export function LyricsView({ onClose }: LyricsViewProps) {
      array identity every render would tear it down sixty times a second. */
   const linesRef = useRef(lines);
   linesRef.current = lines;
+  const lyricsRef = useRef(lyrics);
+  lyricsRef.current = lyrics;
   const durationRef = useRef(track?.durationSec);
   durationRef.current = track?.durationSec;
 
@@ -483,27 +485,37 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       const pending = pendingSeekRef.current;
       let engineTime = rawEngineTime;
       if (pending) {
-        if (performance.now() - pending.at < 800 && Math.abs(rawEngineTime - pending.target) > 0.75) {
+        if (performance.now() - pending.at < 1200 && Math.abs(rawEngineTime - pending.target) > 0.4) {
           engineTime = pending.target;
         } else {
           pendingSeekRef.current = null;
         }
       }
-      const time = engineTime + offset;
+      const autoIntro = mediaMode === "video" ? 0 : (lyricsRef.current?.autoIntroOffsetSec ?? 0);
+      const time = engineTime + autoIntro + offset;
       const currentLines = linesRef.current;
-      const next = findActiveLineIndex(currentLines, time, 0.25);
+      const calculatedNext = findActiveLineIndex(currentLines, time, 0.25);
+      const next = (pending?.index !== undefined && performance.now() - pending.at < 800)
+        ? pending.index
+        : calculatedNext;
 
       /* Committing every frame would re-render the whole column sixty times a second for a
          value that flips a few times a minute. Only the flip is worth a render. */
       if (next !== current) {
-        if (current >= 0 && lineRefs.current[current]) {
-          const prevEl = lineRefs.current[current]!;
-          setLineSweepState(prevEl, "sung");
-          prevEl.classList.remove("is-active", "lyrics-lyricsContent-active");
-        }
-        if (next >= 0 && lineRefs.current[next]) {
-          const nextEl = lineRefs.current[next]!;
-          nextEl.classList.add("is-active", "lyrics-lyricsContent-active", "lyric-sweep");
+        const lineCount = currentLines.length;
+        for (let i = 0; i < lineCount; i++) {
+          const el = lineRefs.current[i];
+          if (!el) continue;
+          if (i < next) {
+            setLineSweepState(el, "sung");
+            el.classList.remove("is-active", "lyrics-lyricsContent-active");
+          } else if (i > next) {
+            setLineSweepState(el, "unsung");
+            el.classList.remove("is-active", "lyrics-lyricsContent-active");
+          } else {
+            setLineSweepState(el, "unsung");
+            el.classList.add("is-active", "lyrics-lyricsContent-active", "lyric-sweep");
+          }
         }
         current = next;
         setActiveIndex(next);
@@ -634,26 +646,28 @@ export function LyricsView({ onClose }: LyricsViewProps) {
       resumeTimerRef.current = null;
     }
     setIsFollowPaused(false);
-    // Provide a clean pre-roll lead-in so seeking lands right before the artist's initial consonant/breath,
-    // ensuring the user hears the very beginning of the bar/words rather than mid-syllable.
-    const prevStart = index > 0 ? lines[index - 1]?.startTimeSec : undefined;
-    const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
-    const leadInSec = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
-    const target = Math.max(0, start - offset - leadInSec);
-    pendingSeekRef.current = { target, at: performance.now() };
+    const autoIntro = mediaMode === "video" ? 0 : (lyrics?.autoIntroOffsetSec ?? 0);
+    const target = Math.max(0, start - autoIntro - offset);
+    pendingSeekRef.current = { target, at: performance.now(), index };
     setCurrentPlaybackTime(target);
     setActiveIndex(index);
     scrollToLine(index, !reduce);
 
     // Immediately update line sweep states across the column
-    for (let i = 0; i < index; i++) {
-      if (lineRefs.current[i]) setLineSweepState(lineRefs.current[i]!, "sung");
-    }
-    if (lineRefs.current[index]) {
-      setLineSweepState(lineRefs.current[index]!, "unsung");
-    }
-    for (let i = index + 1; i < lines.length; i++) {
-      if (lineRefs.current[i]) setLineSweepState(lineRefs.current[i]!, "unsung");
+    const lineCount = lines.length;
+    for (let i = 0; i < lineCount; i++) {
+      const el = lineRefs.current[i];
+      if (!el) continue;
+      if (i < index) {
+        setLineSweepState(el, "sung");
+        el.classList.remove("is-active", "lyrics-lyricsContent-active");
+      } else if (i > index) {
+        setLineSweepState(el, "unsung");
+        el.classList.remove("is-active", "lyrics-lyricsContent-active");
+      } else {
+        setLineSweepState(el, "unsung");
+        el.classList.add("is-active", "lyrics-lyricsContent-active", "lyric-sweep");
+      }
     }
 
     void playerController.seekTo(target);
@@ -774,6 +788,16 @@ export function LyricsView({ onClose }: LyricsViewProps) {
           max={track.durationSec || 100}
           step="any"
           value={currentPlaybackTime}
+          onPointerDown={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            if (rect.width > 0) {
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              const t = ratio * (track.durationSec || 100);
+              pendingSeekRef.current = { target: t, at: performance.now() };
+              setCurrentPlaybackTime(t);
+              void playerController.seekTo(t);
+            }
+          }}
           onChange={(e) => {
             const t = parseFloat(e.target.value);
             pendingSeekRef.current = { target: t, at: performance.now() };

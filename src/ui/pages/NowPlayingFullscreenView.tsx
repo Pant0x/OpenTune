@@ -309,7 +309,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
     };
   }, [resetIdleTimer]);
 
-  const pendingSeekRef = useRef<{ target: number; at: number } | null>(null);
+  const pendingSeekRef = useRef<{ target: number; at: number; index?: number } | null>(null);
   const prevActiveIndexRef = useRef(-1);
 
   const [spotifyCover, setSpotifyCover] = useState<string | null>(null);
@@ -340,7 +340,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       const pending = pendingSeekRef.current;
       let engineTime = rawEngineTime;
       if (pending) {
-        if (performance.now() - pending.at < 800 && Math.abs(rawEngineTime - pending.target) > 0.75) {
+        if (performance.now() - pending.at < 1200 && Math.abs(rawEngineTime - pending.target) > 0.4) {
           engineTime = pending.target;
         } else {
           pendingSeekRef.current = null;
@@ -356,7 +356,10 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
       const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
       const effectiveTime = engineTime + effectiveIntro + lyricsOffsetRef.current;
       const lines = currentLyrics.lines;
-      const next = findActiveLineIndex(lines, effectiveTime, 0.25);
+      const calculatedNext = findActiveLineIndex(lines, effectiveTime, 0.25);
+      const next = (pending?.index !== undefined && performance.now() - pending.at < 800)
+        ? pending.index
+        : calculatedNext;
 
       if (next !== prevActiveIndexRef.current) {
         prevActiveIndexRef.current = next;
@@ -370,6 +373,8 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
           if (i < next) {
             setLineSweepState(el, "sung");
           } else if (i > next) {
+            setLineSweepState(el, "unsung");
+          } else {
             setLineSweepState(el, "unsung");
           }
         }
@@ -678,11 +683,9 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                             const start = lyrics.lines[i]?.startTimeSec;
                             if (start !== undefined) {
                               const autoIntro = lyrics.autoIntroOffsetSec ?? 0;
-                              const prevStart = i > 0 ? lyrics.lines[i - 1]?.startTimeSec : undefined;
-                              const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
-                              const leadIn = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
-                              const targetSeek = Math.max(0, start + autoIntro - lyricsOffsetRef.current - leadIn);
-                              pendingSeekRef.current = { target: targetSeek, at: performance.now() };
+                              const effectiveIntro = uiState.lyricsMediaMode === "video" ? 0 : autoIntro;
+                              const targetSeek = Math.max(0, start - effectiveIntro - lyricsOffsetRef.current);
+                              pendingSeekRef.current = { target: targetSeek, at: performance.now(), index: i };
                               setActiveLyricIndex(i);
                               prevActiveIndexRef.current = i;
                               setIsLyricsSyncLocked(true);
@@ -694,6 +697,7 @@ export function NowPlayingFullscreenView({ onClose }: NowPlayingFullscreenViewPr
                                 if (!el) continue;
                                 if (j < i) setLineSweepState(el, "sung");
                                 else if (j > i) setLineSweepState(el, "unsung");
+                                else setLineSweepState(el, "unsung");
                               }
 
                               const container = lyricsScrollerRef.current;

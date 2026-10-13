@@ -668,6 +668,7 @@ fn run(
         rate: 1.0,
         playing: false,
         fade: None,
+        last_seek: None,
     };
 
     if ready.send(Ok(())).is_err() {
@@ -711,6 +712,7 @@ struct Engine {
     rate: f32,
     playing: bool,
     fade: Option<Fade>,
+    last_seek: Option<Instant>,
 }
 
 /// Standard output gain factor: 1.0 for full standard volume.
@@ -807,6 +809,7 @@ impl Engine {
             }
             Command::Seek(seconds) => {
                 let target = Duration::from_secs_f64(seconds.max(0.0));
+                self.last_seek = Some(Instant::now());
                 if let Err(error) = self.decks[self.active].sink.try_seek(target) {
                     eprintln!("[internal][tauri][warn] native audio seek failed: {error}");
                 }
@@ -990,9 +993,14 @@ impl Engine {
         /*
          * An empty sink means the decoder ran out, which is the only end-of-track signal there
          * is. Suppressed mid-fade: the outgoing deck emptying there is the transition working,
-         * not the new track finishing.
+         * not the new track finishing. Also suppressed for 500ms after a seek so transient buffer
+         * dips do not cause premature track ends or restarts.
          */
-        if self.playing && self.fade.is_none() && self.decks[index].sink.empty() {
+        let is_seeking_recently = self
+            .last_seek
+            .as_ref()
+            .map_or(false, |t| t.elapsed() < Duration::from_millis(2000));
+        if self.playing && self.fade.is_none() && !is_seeking_recently && self.decks[index].sink.empty() {
             self.decks[index].clear(self._stream.mixer());
             self.playing = false;
             let _ = self.app.emit("native-audio-ended", EndedEvent { track_id });

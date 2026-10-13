@@ -1717,11 +1717,9 @@ export function QueuePanel({ onClose, onOpenHistory }: QueuePanelProps) {
                           emptyStyle="note"
                           onSeek={synced && item.line.startTimeSec !== undefined ? (index) => {
                             const offset = getLyricsOffset(currentTrack?.id);
+                            const autoIntro = lyrics?.autoIntroOffsetSec ?? 0;
                             const start = lyrics?.lines[index]?.startTimeSec ?? 0;
-                            const prevStart = index > 0 ? lyrics?.lines[index - 1]?.startTimeSec : undefined;
-                            const gapToPrev = prevStart !== undefined ? Math.max(0, start - prevStart) : 1.0;
-                            const leadIn = Math.min(0.25, Math.max(0, gapToPrev * 0.35));
-                            const targetTime = Math.max(0, start - offset - leadIn);
+                            const targetTime = Math.max(0, start - autoIntro - offset);
                             void playerController.seekTo(targetTime);
                           } : undefined}
                           register={(i, el) => {

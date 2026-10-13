@@ -1280,6 +1280,17 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
     const track = this.state.currentTrack;
     if (!track) return false;
 
+    // A seek that arrived recently can cause transient buffer dips while rewinding/demuxing.
+    // Suppress treating it as a premature track end so it never downgrades to YouTube Iframe
+    // or loops/advances the queue.
+    if (this.lastSeekPosition && (performance.now() - this.lastSeekPosition.timestamp) < 2500) {
+      logInternalWarn("PlayerController.recoverFromPrematureEnd suppressed during recent seek", {
+        trackId: track.id,
+        seekTime: this.lastSeekPosition.time,
+      });
+      return true;
+    }
+
     /*
      * The snapshot, not the live getters. `ended` clears the engine's track id before the
      * callback runs, so by the time this is reached `getDuration()` answers 0 and every
@@ -1293,7 +1304,7 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
         : (track.durationSec && track.durationSec > 0)
           ? track.durationSec
           : 0;
-    const position = ended?.positionSec ?? this.audioEngine.getCurrentTime();
+    const position = this.pendingSeekTime ?? ended?.positionSec ?? this.audioEngine.getCurrentTime();
 
     const isPremature = isPrematureEnd({
       durationSec: duration,
@@ -2255,7 +2266,8 @@ const spotifyToYoutubeTrackCache = new Map<string, Track>();
       return;
     }
 
-    if (this.loadedTrackId !== currentTrack.id) {
+    const isLoaded = this.loadedTrackId === currentTrack.id || (Boolean(currentTrack.originalId) && this.loadedTrackId === currentTrack.originalId);
+    if (!isLoaded) {
       logInternalInfo("PlayerController.seekTo track not loaded, loading...", { trackId: currentTrack.id });
       this.pendingSeekTime = seekTime;
       try {

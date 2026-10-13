@@ -362,7 +362,16 @@ export function removeAccountOutcome(
   return newActiveCookie ? "switched" : "signed-out";
 }
 
-const BROWSE_ITEM_TYPES = new Set(["song", "video", "album", "playlist", "artist"]);
+const BROWSE_ITEM_TYPES = new Set([
+  "song",
+  "video",
+  "album",
+  "playlist",
+  "artist",
+  "podcast_show",
+  "non_music_track",
+  "endpoint",
+]);
 /*
  * v6: v5 snapshots were capped at the first page of each section, so they are discarded rather
  * than shown as a complete library until the background refresh replaces them.
@@ -1432,7 +1441,7 @@ export class YouTubeMusicDataSource extends DataSource {
       isExplicit: this.isExplicitItem(item),
       duration,
       durationSec,
-      isVideo: item.item_type === "video" || (item as any).type === "video",
+      isVideo: item.item_type === "video" || item.item_type === "non_music_track" || (item as any).type === "video",
     };
   }
 
@@ -1631,10 +1640,28 @@ export class YouTubeMusicDataSource extends DataSource {
     const response = root as ParsedMusicResponse;
     const nodeTypes = [YTNodes.MusicResponsiveListItem, YTNodes.MusicTwoRowItem];
 
+    const isAccepted = (item: MusicItem): boolean => {
+      if (!item.item_type || !this.getTitle(item)) return false;
+      if (acceptedTypes.has(item.item_type)) {
+        if (item.item_type === "endpoint") {
+          const browseId = this.findBrowseId(item.endpoint) ?? item.id;
+          const pageType = (item.endpoint?.payload as any)?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+          return Boolean(
+            browseId?.startsWith("MPSP") ||
+            pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW" ||
+            pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE" ||
+            item.endpoint?.payload?.videoId
+          );
+        }
+        return true;
+      }
+      return false;
+    };
+
     for (const memo of [response.contents_memo, response.continuation_contents_memo]) {
       if (!memo) continue;
       for (const item of memo.getType(...nodeTypes)) {
-        if (item.item_type && acceptedTypes.has(item.item_type) && this.getTitle(item)) {
+        if (isAccepted(item)) {
           results.push(item);
         }
       }
@@ -1646,7 +1673,7 @@ export class YouTubeMusicDataSource extends DataSource {
       seen.add(value);
 
       const item = value as MusicItem;
-      if (item.item_type && acceptedTypes.has(item.item_type) && this.getTitle(item)) {
+      if (isAccepted(item)) {
         results.push(item);
       }
 
@@ -2402,14 +2429,14 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private async collectPlaylistTracks(client: Innertube, playlistId: string): Promise<Track[]> {
-    const browseId = playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`;
+    const browseId = playlistId.startsWith("VL") || playlistId.startsWith("MPSP") ? playlistId : `VL${playlistId}`;
     let page = await this.executeMusicBrowse(client, { browseId });
     let pageCount = 0;
     const items: MusicItem[] = [];
     const seenContinuations = new Set<string>();
 
     while (true) {
-      const pageItems = this.collectMusicItems(page, new Set(["song", "video"]));
+      const pageItems = this.collectMusicItems(page, new Set(["song", "video", "non_music_track", "endpoint"]));
       items.push(...pageItems);
       pageCount += 1;
 
@@ -2470,7 +2497,7 @@ export class YouTubeMusicDataSource extends DataSource {
       const tracks = await this.collectPlaylistTracks(client, playlistId);
       if (tracks.length > 0) return tracks;
 
-      const browseId = playlistId.startsWith("VL") ? playlistId : `VL${playlistId}`;
+      const browseId = playlistId.startsWith("VL") || playlistId.startsWith("MPSP") ? playlistId : `VL${playlistId}`;
       logInternalWarn("YouTubeMusicDataSource.collectPlaylistTracksWithEmptyRetries retrying empty response", {
         playlistId,
         browseId,
@@ -2500,7 +2527,10 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private collectParsedPlaylistPageTracks(page: YouTubeMusicPlaylistPage, seenTrackIds: Set<string>): Track[] {
-    const items = page.items ?? page.contents ?? [];
+    const rawItems = page.items ?? page.contents ?? [];
+    const items = rawItems.length > 0
+      ? rawItems
+      : this.collectMusicItems(page, new Set(["song", "video", "non_music_track", "endpoint"]));
     const tracks: Track[] = [];
 
     for (const item of items) {
@@ -4866,10 +4896,13 @@ export class YouTubeMusicDataSource extends DataSource {
           });
           return { tracks: [], hasMore: false };
         }
-        tracks = this.collectParsedPlaylistPageTracks(page, seenTrackIds);
       }
     } else {
-      page = await client.music.getPlaylist(playlist.id) as YouTubeMusicPlaylistPage;
+      if (playlist.id.startsWith("MPSP")) {
+        page = await this.executeMusicBrowse(client, { browseId: playlist.id }) as YouTubeMusicPlaylistPage;
+      } else {
+        page = await client.music.getPlaylist(playlist.id) as YouTubeMusicPlaylistPage;
+      }
       if (cachedTracks?.length) {
         seenTrackIds = new Set(cachedTracks.map((track) => track.id));
         const freshTracks = this.collectParsedPlaylistPageTracks(page, seenTrackIds);
@@ -7950,8 +7983,8 @@ export class YouTubeMusicDataSource extends DataSource {
     // turn rather than assuming one, because a wrong id answers 404 rather than empty.
     podcasts: {
       ids: [
-        "FEmusic_non_music_audio",
         "FEmusic_podcasts",
+        "FEmusic_non_music_audio",
         "FEmusic_library_non_music_audio_list",
       ],
       title: "Podcasts",
@@ -8524,9 +8557,15 @@ export class YouTubeMusicDataSource extends DataSource {
     for (const item of this.collectMusicItems(node, BROWSE_ITEM_TYPES)) {
       switch (item.item_type) {
         case "song":
-        case "video": {
+        case "video":
+        case "non_music_track": {
           const track = this.toTrack(item);
-          if (track) shelf.tracks.push(track);
+          if (track) {
+            if (item.item_type === "non_music_track") {
+              track.isVideo = true;
+            }
+            shelf.tracks.push(track);
+          }
           break;
         }
         case "album": {
@@ -8534,7 +8573,8 @@ export class YouTubeMusicDataSource extends DataSource {
           if (album) shelf.albums.push(album);
           break;
         }
-        case "playlist": {
+        case "playlist":
+        case "podcast_show": {
           const playlist = this.toPlaylist(item);
           if (playlist) shelf.playlists.push(playlist);
           break;
@@ -8542,6 +8582,25 @@ export class YouTubeMusicDataSource extends DataSource {
         case "artist": {
           const artist = this.toArtist(item);
           if (artist) shelf.artists.push(artist);
+          break;
+        }
+        case "endpoint": {
+          const browseId = this.findBrowseId(item.endpoint) ?? item.id;
+          const pageType = (item.endpoint?.payload as any)?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+          if (
+            browseId?.startsWith("MPSP") ||
+            pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW" ||
+            pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE"
+          ) {
+            const playlist = this.toPlaylist(item);
+            if (playlist) shelf.playlists.push(playlist);
+          } else if (item.endpoint?.payload?.videoId) {
+            const track = this.toTrack(item);
+            if (track) {
+              track.isVideo = true;
+              shelf.tracks.push(track);
+            }
+          }
           break;
         }
         default:
@@ -8598,6 +8657,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const browseId = payload.browseId;
     if (browseId?.startsWith("MPRE")) return { kind: "album", id: browseId };
+    if (browseId?.startsWith("MPSP")) return { kind: "playlist", id: browseId };
     if (browseId?.startsWith("UC")) return { kind: "artist", id: browseId };
 
     const playlistId = payload.playlistId
@@ -8884,7 +8944,9 @@ export class YouTubeMusicDataSource extends DataSource {
 
     try {
       const client = await this.getMusicClient();
-      const page = await client.music.getPlaylist(playlist.id) as YouTubeMusicPlaylistPage;
+      const page = playlist.id.startsWith("MPSP")
+        ? await this.executeMusicBrowse(client, { browseId: playlist.id }) as YouTubeMusicPlaylistPage
+        : await client.music.getPlaylist(playlist.id) as YouTubeMusicPlaylistPage;
       const description = page.description?.toString().trim() ?? "";
       await setCachedJson(cacheKey, { description });
       return description || null;

@@ -195,7 +195,12 @@ function BrowseShelfSection({
   const isVideoShelf =
     shelf.title.toLowerCase().includes("music video") ||
     shelf.title.toLowerCase().includes("live performance") ||
-    shelf.title.toLowerCase().includes("live concert");
+    shelf.title.toLowerCase().includes("live concert") ||
+    shelf.title.toLowerCase().includes("podcast") ||
+    shelf.title.toLowerCase().includes("episode") ||
+    shelf.title.toLowerCase().includes("بودكاست") ||
+    shelf.title.toLowerCase().includes("حلقات") ||
+    (shelf.tracks.length > 0 && shelf.tracks.every((t) => t.isVideo));
 
   const scrollTracks = (direction: "left" | "right") => {
     if (!tracksScrollRef.current) return;

@@ -120,7 +120,8 @@ fn container_duration(
 }
 
 pub(crate) struct OpusSource {
-    format: Box<dyn FormatReader>,
+    format: Option<Box<dyn FormatReader>>,
+    hint: Hint,
     decoder: opus::Decoder,
     track_id: u32,
     channels: ChannelCount,
@@ -129,9 +130,13 @@ pub(crate) struct OpusSource {
     /// Reused across packets so decoding does not allocate per frame.
     scratch: Vec<f32>,
     total_duration: Option<Duration>,
+    time_base: Option<symphonia::core::units::TimeBase>,
+    current_position: Duration,
+    initial_skip_samples: usize,
     /// Samples the encoder asks to be thrown away — the codec's own warm-up, not audio.
     skip_samples: usize,
     exhausted: bool,
+    consecutive_demux_errors: usize,
 }
 
 impl OpusSource {
@@ -174,6 +179,7 @@ impl OpusSource {
 
         let params = &track.codec_params;
         let track_id = track.id;
+        let time_base = params.time_base;
         let channel_count = params.channels.map(|channels| channels.count()).unwrap_or(2).max(1);
         let channels = ChannelCount::new(channel_count as u16)
             .ok_or_else(|| "opus track declared zero channels".to_string())?;
@@ -201,23 +207,104 @@ impl OpusSource {
         let skip_samples = params.delay.unwrap_or(0) as usize * channel_count;
 
         Ok(Self {
-            format,
+            format: Some(format),
+            hint,
             decoder,
             track_id,
             channels,
             pending: VecDeque::with_capacity(MAX_FRAME_SAMPLES * channel_count),
             scratch: vec![0.0; MAX_FRAME_SAMPLES * channel_count],
             total_duration,
+            time_base,
+            current_position: Duration::ZERO,
+            initial_skip_samples: skip_samples,
             skip_samples,
             exhausted: false,
+            consecutive_demux_errors: 0,
         })
+    }
+
+    /// Rewinds the underlying media source stream to the start and fast-forwards to `position`.
+    fn rewind_and_seek_to(&mut self, position: Duration) -> Result<(), rodio::source::SeekError> {
+        let old_format = self.format.take().ok_or(rodio::source::SeekError::NotSupported {
+            underlying_source: "OpusSource",
+        })?;
+
+        let mut stream = old_format.into_inner();
+        use std::io::Seek;
+        if let Err(error) = stream.seek(std::io::SeekFrom::Start(0)) {
+            eprintln!("[internal][tauri][warn] opus stream rewind failed: {error}");
+            return Err(rodio::source::SeekError::NotSupported {
+                underlying_source: "OpusSource",
+            });
+        }
+
+        let probed = match symphonia::default::get_probe().format(
+            &self.hint,
+            stream,
+            &FormatOptions { enable_gapless: true, ..Default::default() },
+            &MetadataOptions::default(),
+        ) {
+            Ok(probed) => probed,
+            Err(error) => {
+                eprintln!("[internal][tauri][warn] opus format re-probe failed: {error}");
+                return Err(rodio::source::SeekError::NotSupported {
+                    underlying_source: "OpusSource",
+                });
+            }
+        };
+
+        let mut new_format = probed.format;
+        if position.as_secs_f64() > 0.05 {
+            let target_ts = Time::from(position.as_secs_f64());
+            let seek_res = new_format.seek(
+                SeekMode::Coarse,
+                SeekTo::Time {
+                    time: target_ts,
+                    track_id: Some(self.track_id),
+                },
+            );
+            match seek_res {
+                Ok(seeked) => {
+                    if let Some(tb) = self.time_base {
+                        let actual = tb.calc_time(seeked.actual_ts);
+                        self.current_position = Duration::from_secs_f64(actual.seconds as f64 + actual.frac);
+                    } else {
+                        self.current_position = position;
+                    }
+                }
+                Err(error) => {
+                    eprintln!("[internal][tauri][warn] opus forward seek after rewind failed: {error}");
+                    self.current_position = Duration::ZERO;
+                }
+            }
+            self.skip_samples = 0;
+        } else {
+            self.current_position = Duration::ZERO;
+            self.skip_samples = self.initial_skip_samples;
+        }
+
+        self.format = Some(new_format);
+        self.pending.clear();
+        self.exhausted = false;
+        self.consecutive_demux_errors = 0;
+        let _ = self.decoder.reset_state();
+        Ok(())
     }
 
     /// Decodes the next packet belonging to our track. False means the stream ended.
     fn fill(&mut self) -> bool {
         while !self.exhausted {
-            let packet = match self.format.next_packet() {
-                Ok(packet) => packet,
+            let Some(format) = self.format.as_mut() else {
+                self.exhausted = true;
+                return false;
+            };
+
+            let packet = match format.next_packet() {
+                Ok(packet) => {
+                    self.consecutive_demux_errors = 0;
+                    packet
+                }
                 Err(SymphoniaError::IoError(error))
                     if error.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
@@ -228,8 +315,7 @@ impl OpusSource {
                  * A stalled fetch, not a finished track. `BufferReader` times out a read that
                  * has waited too long for bytes that are still on their way — the fill behind it
                  * only gives up for real by marking the buffer failed, and *that* is what turns
-                 * into the `UnexpectedEof` above. Latching `exhausted` on a bare timeout is what
-                 * let a slow range end a track that was still downloading fine.
+                 * into the `UnexpectedEof` above.
                  */
                 Err(SymphoniaError::IoError(error))
                     if error.kind() == std::io::ErrorKind::TimedOut =>
@@ -237,14 +323,24 @@ impl OpusSource {
                     continue;
                 }
                 Err(error) => {
-                    eprintln!("[internal][tauri][warn] opus demux ended: {error}");
-                    self.exhausted = true;
-                    return false;
+                    eprintln!("[internal][tauri][warn] opus demux error: {error}");
+                    self.consecutive_demux_errors += 1;
+                    if self.consecutive_demux_errors > 8 {
+                        eprintln!("[internal][tauri][warn] opus demux ended after repeated errors");
+                        self.exhausted = true;
+                        return false;
+                    }
+                    continue;
                 }
             };
             // A WebM file interleaves streams; packets for the video track are not ours.
             if packet.track_id() != self.track_id {
                 continue;
+            }
+
+            if let Some(tb) = self.time_base {
+                let time = tb.calc_time(packet.ts());
+                self.current_position = Duration::from_secs_f64(time.seconds as f64 + time.frac);
             }
 
             let frames = match self.decoder.decode_float(&packet.data, &mut self.scratch, false) {
@@ -259,6 +355,10 @@ impl OpusSource {
                     continue;
                 }
             };
+
+            if self.time_base.is_none() {
+                self.current_position += Duration::from_secs_f64(frames as f64 / OPUS_SAMPLE_RATE as f64);
+            }
 
             let sample_count = frames * self.channels.get() as usize;
             let mut decoded = &self.scratch[..sample_count.min(self.scratch.len())];
@@ -320,28 +420,51 @@ impl Source for OpusSource {
     }
 
     fn try_seek(&mut self, position: Duration) -> Result<(), rodio::source::SeekError> {
-        self.format
-            .seek(
+        // If seeking backwards, Symphonia's Matroska demuxer cannot seek backward on streaming WebM
+        // (which lacks cues). Rewind the underlying stream to 0 and scan forward cleanly.
+        if position < self.current_position {
+            return self.rewind_and_seek_to(position);
+        }
+
+        // For forward seeking, try coarse seek on current format reader first:
+        let target_ts = Time::from(position.as_secs_f64());
+        let res = self.format.as_mut().map(|f| {
+            f.seek(
                 SeekMode::Coarse,
                 SeekTo::Time {
-                    time: Time::from(position.as_secs_f64()),
+                    time: target_ts,
                     track_id: Some(self.track_id),
                 },
             )
-            .map_err(|error| {
-                eprintln!("[internal][tauri][warn] opus seek failed: {error}");
-                rodio::source::SeekError::NotSupported { underlying_source: "OpusSource" }
-            })?;
+        });
 
-        /*
-         * Everything decoded before the seek belongs to where the track *was*. The decoder also
-         * has to forget its inter-frame state, or the first frames after a jump are reconstructed
-         * against samples from somewhere else entirely and arrive as a burst of noise.
-         */
-        self.pending.clear();
-        self.exhausted = false;
-        let _ = self.decoder.reset_state();
-        Ok(())
+        match res {
+            Some(Ok(seeked)) => {
+                let actual_sec = self.time_base.map(|tb| {
+                    let time = tb.calc_time(seeked.actual_ts);
+                    time.seconds as f64 + time.frac
+                });
+
+                if let Some(actual) = actual_sec {
+                    // If coarse seek didn't advance or overshot unreasonably, rewind:
+                    if actual < (self.current_position.as_secs_f64() - 1.0).max(0.0)
+                        || (actual - position.as_secs_f64()).abs() > 5.0
+                    {
+                        return self.rewind_and_seek_to(position);
+                    }
+                    self.current_position = Duration::from_secs_f64(actual);
+                } else {
+                    self.current_position = position;
+                }
+
+                self.pending.clear();
+                self.exhausted = false;
+                self.consecutive_demux_errors = 0;
+                let _ = self.decoder.reset_state();
+                Ok(())
+            }
+            _ => self.rewind_and_seek_to(position),
+        }
     }
 }
 

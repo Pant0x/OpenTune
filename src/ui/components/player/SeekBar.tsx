@@ -172,36 +172,54 @@ export function SeekBar() {
     };
   }, [uiState.isSeeking, state.status]);
 
+  const calculateTargetFromPointer = (event: React.PointerEvent<HTMLInputElement>): number => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width) return displayedTimeRef.current;
+    const maxVal = isLive ? 100 : (durationRef.current || 100);
+    const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    return fraction * maxVal;
+  };
+
   const handleSeekStart = (event: React.PointerEvent<HTMLInputElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
     pointerStartRef.current = { x: event.clientX, y: event.clientY };
     isPointerDownRef.current = true;
     isDraggingRef.current = false;
-    seekTargetRef.current = displayedTimeRef.current;
+    const target = calculateTargetFromPointer(event);
+    seekTargetRef.current = target;
+    void animateTo(target);
     playerUIStore.setSeeking(true);
   };
 
   const handleSeekMove = (event: React.PointerEvent<HTMLInputElement>) => {
-    if (!isPointerDownRef.current || isDraggingRef.current) return;
+    if (!isPointerDownRef.current) return;
 
     const distance = Math.hypot(
       event.clientX - pointerStartRef.current.x,
       event.clientY - pointerStartRef.current.y,
     );
-    if (distance < 3) return;
+    if (distance >= 3) {
+      isDraggingRef.current = true;
+    }
 
-    isDraggingRef.current = true;
     cancelSeekAnimation();
-    const target = Number(event.currentTarget.value);
+    const target = calculateTargetFromPointer(event);
     seekTargetRef.current = target;
     setDisplayedTime(target);
   };
 
-  const handleSeekEnd = async (_event: React.PointerEvent<HTMLInputElement>) => {
+  const handleSeekEnd = async (event: React.PointerEvent<HTMLInputElement>) => {
     const wasDragging = isDraggingRef.current;
     isPointerDownRef.current = false;
     isDraggingRef.current = false;
-    const seekTime = seekTargetRef.current;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+
+    const seekTime = calculateTargetFromPointer(event);
+    seekTargetRef.current = seekTime;
+    setDisplayedTime(seekTime);
+
     const animationDone = wasDragging
       ? Promise.resolve()
       : (seekAnimationPromiseRef.current ?? Promise.resolve());
@@ -223,16 +241,16 @@ export function SeekBar() {
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const target = parseFloat(e.target.value);
+    if (!Number.isFinite(target)) return;
     seekTargetRef.current = target;
-
     if (isDraggingRef.current || !isPointerDownRef.current) {
       cancelSeekAnimation();
       setDisplayedTime(target);
       return;
     }
-
     void animateTo(target);
   };
+
 
   const commitKeyboardSeek = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) {
