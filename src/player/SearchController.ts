@@ -1,5 +1,5 @@
 import type { DataSource } from "../datasource/DataSource";
-import type { SearchCategory, SearchResults, Track } from "../datasource/types";
+import type { Playlist, SearchCategory, SearchResults, Track } from "../datasource/types";
 import { reRankSearchResults } from "./searchAffinity";
 
 export class SearchController {
@@ -67,6 +67,14 @@ export class SearchController {
     const ranked = reRankSearchResults(query, results, { suggestions });
     this.categoryCache.set(normalizedKey, { data: ranked, timestamp: Date.now() });
     return ranked;
+  }
+
+  async searchPodcasts(query: string): Promise<{ shows: Playlist[]; episodes: Track[] }> {
+    const trimmed = query.trim();
+    if (!trimmed || !this.dataSource.searchPodcasts) {
+      return { shows: [], episodes: [] };
+    }
+    return this.dataSource.searchPodcasts(trimmed);
   }
 
   async searchTracks(query: string, onUpdate?: (tracks: Track[]) => void): Promise<Track[]> {

@@ -4899,7 +4899,12 @@ export class YouTubeMusicDataSource extends DataSource {
       }
     } else {
       if (playlist.id.startsWith("MPSP")) {
-        page = await this.executeMusicBrowse(client, { browseId: playlist.id }) as YouTubeMusicPlaylistPage;
+        try {
+          const strippedId = playlist.id.replace(/^MPSP/, "");
+          page = await client.music.getPlaylist(strippedId) as YouTubeMusicPlaylistPage;
+        } catch {
+          page = await this.executeMusicBrowse(client, { browseId: playlist.id }) as YouTubeMusicPlaylistPage;
+        }
       } else {
         page = await client.music.getPlaylist(playlist.id) as YouTubeMusicPlaylistPage;
       }
@@ -6722,7 +6727,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
     const fallbackItems = this.collectMusicItems(
       response.page,
-      new Set(["artist", "song", "video", "album", "playlist"]),
+      BROWSE_ITEM_TYPES,
     );
     const artistFallbackItems = artistResponse
       ? this.collectMusicItems(artistResponse.page, new Set(["artist"]))
@@ -6739,7 +6744,7 @@ export class YouTubeMusicDataSource extends DataSource {
     const playlists = [
       ...shelfPlaylists,
       ...fallbackItems
-        .filter((item) => item.item_type === "playlist")
+        .filter((item) => item.item_type === "playlist" || item.item_type === "podcast_show" || (typeof item.id === "string" && item.id.startsWith("MPSP")))
         .map((item) => this.toPlaylist(item))
         .filter((item): item is Playlist => Boolean(item)),
     ]
@@ -8814,7 +8819,7 @@ export class YouTubeMusicDataSource extends DataSource {
         ),
         playlists: this.uniqueById(
           items
-            .filter((item) => item.item_type === "playlist")
+            .filter((item) => item.item_type === "playlist" || item.item_type === "podcast_show" || (typeof item.id === "string" && item.id.startsWith("MPSP")))
             .map((item) => this.toPlaylist(item))
             .filter((item): item is Playlist => Boolean(item)),
         ),
@@ -8832,6 +8837,71 @@ export class YouTubeMusicDataSource extends DataSource {
     } catch (error) {
       logInternalWarn("YouTubeMusicDataSource.searchCategory failed", {
         category,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return empty;
+    }
+  }
+
+  async searchPodcasts(query: string): Promise<{ shows: Playlist[]; episodes: Track[] }> {
+    const trimmed = query.trim();
+    const empty = { shows: [], episodes: [] };
+    if (!trimmed) return empty;
+
+    const cacheKey = `youtube-music:podcasts:v1:${trimmed.toLowerCase()}`;
+    const cached = await getCachedJson<{ shows: Playlist[]; episodes: Track[] }>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const client = await this.getMusicClient();
+      const response: any = await client.music.search(trimmed);
+      const items = this.collectMusicItems(response?.page, BROWSE_ITEM_TYPES);
+
+      const shows: Playlist[] = [];
+      const episodes: Track[] = [];
+
+      for (const item of items) {
+        const isShow = item.item_type === "podcast_show" || (typeof item.id === "string" && item.id.startsWith("MPSP"));
+        const isEpisode = item.item_type === "non_music_track" || (item.item_type === "video" && /حلقة|بودكاست|episode|podcast/i.test(this.getTitle(item) || ""));
+
+        if (isShow) {
+          const playlist = this.toPlaylist(item);
+          if (playlist) {
+            if ((!playlist.owner || playlist.owner === "YouTube Music playlist" || playlist.owner === "Unknown artist") && (item as any).flex_columns?.length > 1) {
+              const runs = (item as any).flex_columns[1]?.title?.runs || [];
+              for (const r of runs) {
+                const text = r.text?.trim();
+                if (text && !/^(podcast|بودكاست|•|\s)+$/i.test(text)) {
+                  playlist.owner = text;
+                  break;
+                }
+              }
+            }
+            shows.push(playlist);
+          }
+        } else if (isEpisode) {
+          const track = this.toTrack(item);
+          if (track) {
+            track.isVideo = true;
+            if ((!track.artist || track.artist === "Unknown artist") && (item as any).flex_columns?.length > 1) {
+              const text = (item as any).flex_columns[1]?.title?.text;
+              if (text) track.artist = text;
+            }
+            episodes.push(track);
+          }
+        }
+      }
+
+      const result = {
+        shows: this.uniqueById(shows),
+        episodes: this.uniqueById(episodes),
+      };
+
+      await setCachedJson(cacheKey, result);
+      return result;
+    } catch (error) {
+      logInternalWarn("YouTubeMusicDataSource.searchPodcasts failed", {
+        query: trimmed,
         error: error instanceof Error ? error.message : String(error),
       });
       return empty;

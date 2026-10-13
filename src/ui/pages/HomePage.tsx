@@ -12,6 +12,7 @@ import { useAuthProfile } from "@/lib/authProfile";
 import { requestAuthModal } from "../components/AuthModal";
 import { PauseActiveIcon, PlayActiveIcon } from "@/ui/icons";
 import { playerUIStore } from "../stores/playerUIStore";
+import { logInternalWarn } from "../../internal/logging";
 
 export const MAKKAH_LIVE_TRACK: Track = {
   id: "wyR3geelZZ4",
@@ -969,8 +970,9 @@ export function HomePage({
 
   const handleSelectMood = async (chip: HomeMoodChip) => {
     setActiveMood(chip.id);
+    setMoodShelves(null);
+
     if (chip.id === "all") {
-      setMoodShelves(null);
       return;
     }
 
@@ -1037,117 +1039,88 @@ export function HomePage({
     if (chip.id === "podcasts") {
       setIsLoadingMood(true);
       try {
-        const [podcastBrowse, homeBrowse] = await Promise.all([
-          libraryController.getBrowsePage("podcasts").catch(() => null),
-          libraryController.getBrowsePage("home").catch(() => null),
-        ]);
-
-        const rawShelves: BrowseShelf[] = [];
-        if (podcastBrowse?.shelves) {
-          rawShelves.push(...splitMixedShelves(podcastBrowse.shelves));
-        }
-        if (homeBrowse?.shelves) {
-          const homePodcasts = splitMixedShelves(homeBrowse.shelves).filter((s) =>
-            /shows|podcasts|episodes|عروض|حلقات|بودكاست/i.test(s.title),
-          );
-          for (const s of homePodcasts) {
-            if (!rawShelves.some((existing) => existing.title === s.title)) {
-              rawShelves.push(s);
-            }
-          }
-        }
-
         const subscribedCreators = (libraryState.library?.artists ?? []).slice(0, 8);
-        const hasShows = rawShelves.some((s) => s.playlists.length > 0);
-        const hasEpisodes = rawShelves.some((s) => s.tracks.length > 0);
+        const podcastQueries = [
+          ...subscribedCreators.map((c) => `${c.name} بودكاست`),
+          "بودكاست كلام في البرمجة Yehia Tech",
+          "بودكاست بتاع افلام",
+          "سلسلة استهدى بالله محمد الغليظ",
+          "بودكاست نور ديزاين",
+          "بودكاست جت علينا",
+          "قصة مش مهم تسمعها يحيى عزام",
+          "بودكاست فنجان ثمانية",
+        ];
 
-        if (!hasShows) {
-          const showQueries = [
-            ...subscribedCreators.map((c) => `${c.name} بودكاست`),
-            "بودكاست كلام في البرمجة Yehia Tech",
-            "بودكاست بتاع افلام",
-            "بودكاست نور ديزاين",
-            "سلسلة استهدى بالله محمد الغليظ",
-            "بودكاست جت علينا",
-            "قصة مش مهم تسمعها يحيى عزام",
-          ].slice(0, 5);
+        const podcastResults = await Promise.all(
+          podcastQueries.map((q) =>
+            searchController.searchPodcasts(q).catch(() => ({ shows: [] as Playlist[], episodes: [] as Track[] })),
+          ),
+        );
 
-          const showResults = await Promise.all(
-            showQueries.map((q) => searchController.searchCategory(q, "playlist").catch(() => null)),
-          );
+        const candidateShows: Playlist[] = [];
+        const seenShowIds = new Set<string>();
+        const candidateEpisodes: Track[] = [];
+        const seenEpIds = new Set<string>();
 
-          const candidatePlaylists: Playlist[] = [];
-          const seenPlIds = new Set<string>();
-          for (const res of showResults) {
-            if (res?.playlists) {
-              for (const pl of res.playlists) {
-                if (!seenPlIds.has(pl.id)) {
-                  seenPlIds.add(pl.id);
-                  candidatePlaylists.push(pl);
-                }
-              }
+        for (const res of podcastResults) {
+          for (const show of res.shows) {
+            if (!seenShowIds.has(show.id)) {
+              seenShowIds.add(show.id);
+              candidateShows.push(show);
             }
           }
-
-          if (candidatePlaylists.length > 0) {
-            rawShelves.unshift({
-              title: "Shows for you",
-              tracks: [],
-              albums: [],
-              playlists: candidatePlaylists.slice(0, 16),
-              artists: [],
-              links: [],
-            });
+          for (const ep of res.episodes) {
+            if (!seenEpIds.has(ep.id)) {
+              seenEpIds.add(ep.id);
+              candidateEpisodes.push({ ...ep, isVideo: true });
+            }
           }
         }
 
-        if (!hasEpisodes) {
-          const epQueries = [
-            ...subscribedCreators.map((c) => `${c.name} بودكاست`),
-            "بودكاست كلام في البرمجة",
-            "بودكاست بتاع افلام",
-            "حلقات بودكاست جديدة",
-          ].slice(0, 4);
+        const shelves: BrowseShelf[] = [];
 
-          const epResults = await Promise.all(
-            epQueries.map((q) => searchController.searchCategory(q, "video").catch(() => null)),
-          );
-
-          const candidateTracks: Track[] = [];
-          const seenTrackIds = new Set<string>();
-          for (const res of epResults) {
-            if (res?.tracks) {
-              for (const t of res.tracks) {
-                if (!seenTrackIds.has(t.id)) {
-                  seenTrackIds.add(t.id);
-                  candidateTracks.push({ ...t, isVideo: true });
-                }
-              }
-            }
-          }
-
-          if (candidateTracks.length > 0) {
-            rawShelves.push({
-              title: "Episodes for you",
-              tracks: candidateTracks.slice(0, 24),
-              albums: [],
-              playlists: [],
-              artists: [],
-              links: [],
-            });
-          }
+        // 1. "Shows for you" - real shows with square covers, title, and creator names
+        if (candidateShows.length > 0) {
+          shelves.push({
+            title: "Shows for you",
+            tracks: [],
+            albums: [],
+            playlists: candidateShows.slice(0, 20),
+            artists: [],
+            links: [],
+          });
         }
 
-        // Ensure all tracks in podcast shelves have isVideo: true so they render as 16:9 VideoCards!
-        const finalizedShelves = rawShelves.map((s) => ({
-          ...s,
-          tracks: s.tracks.map((t) => ({ ...t, isVideo: true })),
-        }));
+        // 2. "Episodes for you" - 16:9 widescreen VideoCards with duration badges
+        if (candidateEpisodes.length > 0) {
+          shelves.push({
+            title: "Episodes for you",
+            tracks: candidateEpisodes.slice(0, 20),
+            albums: [],
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
 
-        cachedMoodShelves.set(chip.id, finalizedShelves);
-        setMoodShelves(finalizedShelves);
-      } catch {
-        // Fallback gracefully
+        // 3. More episodes if available
+        if (candidateEpisodes.length > 20) {
+          shelves.push({
+            title: "Quick picks — المزيد من الحلقات",
+            tracks: candidateEpisodes.slice(20, 40),
+            albums: [],
+            playlists: [],
+            artists: [],
+            links: [],
+          });
+        }
+
+        cachedMoodShelves.set(chip.id, shelves);
+        setMoodShelves(shelves);
+      } catch (err) {
+        logInternalWarn("HomePage load podcasts failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setIsLoadingMood(false);
       }
@@ -1204,8 +1177,8 @@ export function HomePage({
   };
 
   const displayShelves = useMemo(() => {
-    if (activeMood !== "all" && moodShelves) {
-      return moodShelves;
+    if (activeMood !== "all") {
+      return moodShelves ?? [];
     }
 
     return homeShelves;
