@@ -116,7 +116,7 @@ jobs:
             build_args: --target aarch64-apple-darwin --bundles app,dmg
             apple_signing_identity: "-"
           - name: macOS Intel
-            os: macos-15-intel
+            os: macos-13
             rust_target: x86_64-apple-darwin
             build_args: --target x86_64-apple-darwin --bundles app,dmg
             apple_signing_identity: "-"

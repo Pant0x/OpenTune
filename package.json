@@ -1,7 +1,7 @@
 {
   "name": "opentune",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "Panto",
   "type": "module",
   "scripts": {
@@ -38,6 +38,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
