@@ -70,6 +70,40 @@ function checkAndHandleWebOAuthCallback(): boolean {
 
   if (!hasAuth) return false;
 
+  const isDesktopFlow = search.includes("source=desktop") || search.includes("client=desktop");
+  const isExplicitWebFlow =
+    search.includes("source=web") ||
+    (() => {
+      try {
+        return (
+          sessionStorage.getItem("opentune_oauth_origin") === "web" ||
+          localStorage.getItem("opentune_oauth_origin") === "web"
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+  // If this authentication was initiated on the Web (or not specifically requested by Desktop):
+  // Let the OpenTune Web App mount immediately!
+  if (isExplicitWebFlow || !isDesktopFlow) {
+    try {
+      sessionStorage.removeItem("opentune_oauth_origin");
+      localStorage.removeItem("opentune_oauth_origin");
+    } catch {}
+
+    // Clean up OAuth tokens from URL after Supabase initializes
+    setTimeout(() => {
+      try {
+        if (window.location.hash.includes("access_token") || window.location.search.includes("code=")) {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      } catch {}
+    }, 1200);
+
+    return false;
+  }
+
   const root = document.getElementById("root");
   if (root) {
     root.innerHTML = `
@@ -130,7 +164,15 @@ function checkAndHandleWebOAuthCallback(): boolean {
           try { window.close(); } catch {}
         }, 1800);
       } else {
-        statusEl.innerText = "✓ Authenticated! Please return to OpenTune.";
+        statusEl.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:12px;align-items:center;">
+            <span style="color:#10b981;">✓ Successfully Authenticated!</span>
+            <a href="/" style="display:inline-block;padding:10px 20px;background:#3b82f6;color:#ffffff;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">Open OpenTune Web &rarr;</a>
+          </div>
+        `;
+        setTimeout(() => {
+          bootstrap();
+        }, 600);
       }
     }
 

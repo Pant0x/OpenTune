@@ -47,6 +47,7 @@ export async function signInWithOAuthBrowser(provider: "google" | "discord"): Pr
           redirectTo: callbackUrl,
           skipBrowserRedirect: true,
           scopes: provider === "discord" ? "identify email" : undefined,
+          queryParams: { source: "desktop" },
         },
       });
 
@@ -89,10 +90,14 @@ export async function signInWithOAuthBrowser(provider: "google" | "discord"): Pr
     }
   } else {
     // Web fallback
+    try {
+      sessionStorage.setItem("opentune_oauth_origin", "web");
+      localStorage.setItem("opentune_oauth_origin", "web");
+    } catch {}
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/?source=web`,
       },
     });
     if (error) throw error;
