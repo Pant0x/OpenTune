@@ -1641,15 +1641,32 @@ export class YouTubeMusicDataSource extends DataSource {
     const nodeTypes = [YTNodes.MusicResponsiveListItem, YTNodes.MusicTwoRowItem];
 
     const isAccepted = (item: MusicItem): boolean => {
-      if (!item.item_type || !this.getTitle(item)) return false;
-      if (acceptedTypes.has(item.item_type)) {
+      if (!this.getTitle(item)) return false;
+      const browseId = this.findBrowseId(item.endpoint) ?? item.id;
+      const pageType = (item.endpoint?.payload as any)?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
+
+      if (acceptedTypes.has("playlist")) {
+        if (
+          item.item_type === "playlist" ||
+          browseId?.startsWith("VL") ||
+          browseId?.startsWith("PL") ||
+          browseId?.startsWith("MPSP") ||
+          pageType?.includes("PLAYLIST")
+        ) {
+          return true;
+        }
+      }
+
+      if (item.item_type && acceptedTypes.has(item.item_type)) {
         if (item.item_type === "endpoint") {
-          const browseId = this.findBrowseId(item.endpoint) ?? item.id;
-          const pageType = (item.endpoint?.payload as any)?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType;
           return Boolean(
             browseId?.startsWith("MPSP") ||
+            browseId?.startsWith("VL") ||
+            browseId?.startsWith("PL") ||
             pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW" ||
             pageType === "MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE" ||
+            pageType?.includes("PLAYLIST") ||
+            pageType?.includes("ALBUM") ||
             item.endpoint?.payload?.videoId
           );
         }
@@ -2633,6 +2650,63 @@ export class YouTubeMusicDataSource extends DataSource {
           return true;
         }),
     );
+
+    const webPlaylists: Playlist[] = [];
+    try {
+      const webClient = await this.getWebClient();
+      const feed = await webClient.getPlaylists();
+      let currentFeed: any = feed;
+      let pages = 0;
+      while (currentFeed && pages < 10) {
+        const rawPlaylists = currentFeed.playlists ?? [];
+        for (const item of rawPlaylists) {
+          const id = item.id ?? item.content_id;
+          const title = (item.title?.text ?? item.title?.toString?.() ?? item.metadata?.title?.text ?? "").trim();
+          if (!id || !title) continue;
+          const normalizedId = id.replace(/^VL/, "").toUpperCase();
+          if (normalizedId === "LM") continue;
+          const lowerTitle = title.toLocaleLowerCase();
+          if (lowerTitle === "liked songs" || lowerTitle === "likes" || lowerTitle.includes("new releases") || lowerTitle.includes("new episodes")) continue;
+
+          let artworkUrl: string | undefined;
+          if (Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
+            artworkUrl = item.thumbnails[item.thumbnails.length - 1]?.url;
+          } else if (item.content_image?.primary_thumbnail?.thumbnails?.length > 0) {
+            const thumbs = item.content_image.primary_thumbnail.thumbnails;
+            artworkUrl = thumbs[thumbs.length - 1]?.url;
+          }
+
+          const owner = item.author?.name ?? item.metadata?.short_byline?.text ?? "YouTube playlist";
+          webPlaylists.push({
+            id,
+            title,
+            owner,
+            artworkUrl,
+            isSaved: true,
+            isEditable: true,
+          });
+        }
+        if (!currentFeed.has_continuation) break;
+        currentFeed = await currentFeed.getContinuation();
+        pages++;
+      }
+    } catch (err) {
+      logInternalWarn("YouTubeMusicDataSource.getCreatedPlaylists webClient.getPlaylists failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const seenNormalized = new Set<string>();
+    const mergedPlaylists: Playlist[] = [];
+    for (const pl of [...playlists, ...webPlaylists]) {
+      const norm = this.normalizePlaylistId(pl.id);
+      if (seenNormalized.has(norm)) continue;
+      seenNormalized.add(norm);
+      mergedPlaylists.push(pl);
+    }
+
+    const webPlaylistIds = new Set(webPlaylists.map((p) => this.normalizePlaylistId(p.id)));
+
     /*
      * Deciding "did I create this playlist?" costs one browse request each, and a full library
      * can be hundreds of playlists. Ownership never changes, so anything already classified in
@@ -2641,7 +2715,12 @@ export class YouTubeMusicDataSource extends DataSource {
     const cachedLibrary = await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
     const cachedById = new Map((cachedLibrary?.playlists ?? []).map((playlist) => [playlist.id, playlist]));
     const createdPlaylistIds = new Set<string>();
-    const queue = playlists.filter((playlist) => {
+    const queue = mergedPlaylists.filter((playlist) => {
+      const norm = this.normalizePlaylistId(playlist.id);
+      if (webPlaylistIds.has(norm)) {
+        createdPlaylistIds.add(playlist.id);
+        return false;
+      }
       const cached = cachedById.get(playlist.id);
       if (!cached || cached.isEditable === undefined) return true;
       if (cached.isEditable) createdPlaylistIds.add(playlist.id);
@@ -2682,11 +2761,14 @@ export class YouTubeMusicDataSource extends DataSource {
     });
 
     await Promise.all(workers);
-    return playlists.map((playlist) => ({
-      ...playlist,
-      isSaved: true,
-      isEditable: createdPlaylistIds.has(playlist.id),
-    }));
+    return mergedPlaylists.map((playlist) => {
+      const norm = this.normalizePlaylistId(playlist.id);
+      return {
+        ...playlist,
+        isSaved: true,
+        isEditable: webPlaylistIds.has(norm) || createdPlaylistIds.has(playlist.id),
+      };
+    });
   }
 
   /**
@@ -2800,6 +2882,29 @@ export class YouTubeMusicDataSource extends DataSource {
     return this.collectAllMusicItems(client, filtered, acceptedTypes, filterName);
   }
 
+  private matchesFilterChip(chipText: string, filterName: string): boolean {
+    const text = chipText.trim().toLowerCase();
+    const target = filterName.trim().toLowerCase();
+    if (text === target) return true;
+
+    switch (target) {
+      case "playlists":
+        return /playlist|قوائم|تشغيل|listas?|wiedergabe/i.test(text);
+      case "albums":
+        return /album|ألبوم|البوم/i.test(text);
+      case "artists":
+        return /artist|فنان|künstler/i.test(text);
+      case "subscriptions":
+        return /subscri|اشتراك|abonnement|abos/i.test(text);
+      case "songs":
+        return /song|أغان|اغان|cancion|chanson|titel/i.test(text);
+      case "podcasts":
+        return /podcast|بودكاست/i.test(text);
+      default:
+        return text.includes(target) || target.includes(text);
+    }
+  }
+
   private async applyLibraryFilter(
     client: Innertube,
     response: unknown,
@@ -2808,17 +2913,25 @@ export class YouTubeMusicDataSource extends DataSource {
     const parsed = response as ParsedMusicResponse;
     const chipCloud = parsed.contents_memo?.getType(YTNodes.ChipCloud)?.[0] as {
       chips?: Array<{
-        text?: string;
+        text?: string | { text?: string; toString?(): string };
         endpoint?: {
           call(actions: Innertube["actions"], args: { parse: true }): Promise<unknown>;
         };
       }>;
     } | undefined;
-    const filter = chipCloud?.chips?.find((chip) => chip.text === filterName);
+
+    const chips = chipCloud?.chips ?? [];
+    const filter = chips.find((chip) => {
+      const rawText = typeof chip.text === "string" ? chip.text : chip.text?.text ?? chip.text?.toString?.() ?? "";
+      return this.matchesFilterChip(rawText, filterName);
+    });
+
     if (!filter?.endpoint) {
       logInternalWarn("YouTubeMusicDataSource.applyLibraryFilter missing filter", {
         filterName,
-        availableFilters: chipCloud?.chips?.map((chip) => chip.text).filter(Boolean) ?? [],
+        availableFilters: chips
+          .map((chip) => (typeof chip.text === "string" ? chip.text : chip.text?.text ?? chip.text?.toString?.() ?? ""))
+          .filter(Boolean),
       });
       return response;
     }
@@ -3719,21 +3832,21 @@ export class YouTubeMusicDataSource extends DataSource {
     }
 
     const [albumItems, playlistItems, artistItems, subscribedArtistItems, songItems, recentItems] = await Promise.all([
-      this.loadLibrarySection(client, "FEmusic_liked_albums", libraryLanding, "Albums", ["album"]),
-      this.loadLibrarySection(client, "FEmusic_liked_playlists", libraryLanding, "Playlists", ["playlist"]),
+      this.loadLibrarySection(client, "FEmusic_liked_albums", libraryLanding, "Albums", ["album", "endpoint"]),
+      this.loadLibrarySection(client, "FEmusic_liked_playlists", libraryLanding, "Playlists", ["playlist", "podcast_show", "endpoint"]),
       /*
        * Artists are derivable from albums and liked songs, but only this section carries their
        * photos — an artist reference on a track is a name and a channel id, nothing else.
        * Rows here are typed `library_artist`, not `artist`: same artist, different page type.
        */
-      this.loadLibrarySection(client, "FEmusic_library_corpus_track_artists", libraryLanding, "Artists", ["artist", "library_artist"]),
-      this.loadLibrarySection(client, "FEmusic_subscriptions", libraryLanding, "Subscriptions", ["artist", "library_artist"]).catch(() => []),
+      this.loadLibrarySection(client, "FEmusic_library_corpus_track_artists", libraryLanding, "Artists", ["artist", "library_artist", "endpoint"]),
+      this.loadLibrarySection(client, "FEmusic_subscriptions", libraryLanding, "Subscriptions", ["artist", "library_artist", "endpoint"]).catch(() => []),
       // The library's own Songs section. It overlaps Liked Songs but is not the same list —
       // anything saved from an album lives here and in no playlist.
-      this.loadLibrarySection(client, "FEmusic_liked_videos", libraryLanding, "Songs", ["song", "video"]),
+      this.loadLibrarySection(client, "FEmusic_liked_videos", libraryLanding, "Songs", ["song", "video", "endpoint"]),
       // ponytail: history is unbounded and only feeds a "recently played" strip — a few pages is
       // already more than the UI shows. Raise if a full history view ever needs it.
-      this.collectAllMusicItems(client, historyResponse, new Set(["song", "video"]), "history", 3),
+      this.collectAllMusicItems(client, historyResponse, new Set(["song", "video", "endpoint"]), "history", 3),
     ]);
 
     const parsedAlbums = this.uniqueById(albumItems.map((item) => this.toAlbum(item)).filter((item): item is Album => Boolean(item)));
@@ -8112,7 +8225,26 @@ export class YouTubeMusicDataSource extends DataSource {
     const seenTitles = new Set<string>();
 
     for (const [index, section] of sections.entries()) {
-      const title = section.title?.trim() || `More ${index + 1}`;
+      let title = section.title?.trim();
+      if (!title || /^more\s*\d+$/i.test(title)) {
+        const sampleShelf = this.toBrowseShelf("temp", section.node, []);
+        if (sampleShelf.tracks.length > 0) {
+          title = index === 0 ? "Episodes for you" : "Recommended episodes";
+        } else if (sampleShelf.playlists.length > 0) {
+          const firstPlaylist = sampleShelf.playlists[0];
+          if (/later|حفظ|لاحق/i.test(firstPlaylist.title)) {
+            title = "Episodes for later";
+          } else {
+            title = index === 0 ? "Shows for you" : "Recommended shows";
+          }
+        } else if (sampleShelf.albums.length > 0) {
+          title = "Albums for you";
+        } else if (sampleShelf.artists.length > 0) {
+          title = "Featured artists";
+        } else {
+          title = "Featured";
+        }
+      }
       if (seenTitles.has(title)) continue;
 
       const shelf = this.toBrowseShelf(
@@ -8293,8 +8425,23 @@ export class YouTubeMusicDataSource extends DataSource {
     const readTitle = (value: unknown): string | undefined => {
       if (!value) return undefined;
       if (typeof value === "string") return value.trim() || undefined;
-      const text = (value as { toString?: () => string }).toString?.();
-      return text && text !== "[object Object]" ? text.trim() || undefined : undefined;
+      if (typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        if (typeof obj.text === "string" && obj.text.trim()) return obj.text.trim();
+        if (typeof obj.simpleText === "string" && obj.simpleText.trim()) return obj.simpleText.trim();
+        if (Array.isArray(obj.runs)) {
+          const joined = obj.runs.map((r: any) => r?.text ?? "").join("").trim();
+          if (joined) return joined;
+        }
+        if (obj.accessibility && typeof (obj.accessibility as any).accessibilityData?.label === "string") {
+          return (obj.accessibility as any).accessibilityData.label.trim();
+        }
+        const text = (value as { toString?: () => string }).toString?.();
+        if (text && text !== "[object Object]" && text !== "N/A") {
+          return text.trim() || undefined;
+        }
+      }
+      return undefined;
     };
 
     for (const memo of [response.contents_memo, response.continuation_contents_memo]) {
@@ -8306,12 +8453,13 @@ export class YouTubeMusicDataSource extends DataSource {
       // are narrowed locally rather than widening MusicItem for nodes that are not items.
       type ShelfNode = {
         title?: unknown;
-        header?: { title?: unknown } | null;
+        header?: { title?: unknown; strapline?: unknown } | null;
         contents?: unknown;
       };
 
       for (const shelf of memo.getType(YTNodes.MusicCarouselShelf) as unknown as ShelfNode[]) {
-        sections.push({ title: readTitle(shelf.header?.title), node: shelf.contents });
+        const shelfTitle = readTitle(shelf.header?.title) || readTitle(shelf.header?.strapline);
+        sections.push({ title: shelfTitle, node: shelf.contents });
       }
       for (const shelf of memo.getType(YTNodes.MusicShelf) as unknown as ShelfNode[]) {
         sections.push({ title: readTitle(shelf.title), node: shelf.contents });
@@ -8899,9 +9047,10 @@ export class YouTubeMusicDataSource extends DataSource {
         this.getWebClient(),
       ]);
 
-      const [musicRes, webRes] = await Promise.all([
+      const [musicRes, webVideosRes, webPlaylistsRes] = await Promise.all([
         musicClient.music.search(trimmed).catch(() => null),
         webClient.search(trimmed, { type: "video" }).catch(() => null),
+        webClient.search(`${trimmed} podcast`, { type: "playlist" }).catch(() => null),
       ]);
 
       const shows: Playlist[] = [];
@@ -8942,8 +9091,21 @@ export class YouTubeMusicDataSource extends DataSource {
         }
       }
 
-      if (webRes && (webRes as any).videos) {
-        for (const v of (webRes as any).videos) {
+      if (webPlaylistsRes && (webPlaylistsRes as any).playlists) {
+        for (const p of (webPlaylistsRes as any).playlists) {
+          if (!p.id || !p.title) continue;
+          shows.push({
+            id: p.id,
+            title: p.title.toString(),
+            owner: p.author?.name || "Podcast Show",
+            artworkUrl: p.thumbnails?.[0]?.url,
+            isSaved: false,
+          });
+        }
+      }
+
+      if (webVideosRes && (webVideosRes as any).videos) {
+        for (const v of (webVideosRes as any).videos) {
           if (!v.id || !v.title) continue;
           const durText = typeof v.duration?.text === "string" ? v.duration.text : undefined;
           const durSec = typeof v.duration?.seconds === "number" ? v.duration.seconds : undefined;

@@ -123,7 +123,7 @@ const PINNED_SECTIONS: PinnedSectionSpec[] = [
   {
     id: "video-clips",
     title: "Video clips",
-    matchPatterns: [/video clips/i, /music videos/i, /videos for you/i, /كليبات/i, /فيديو كليب/i, /music video/i],
+    matchPatterns: [/video clips/i, /music videos/i, /videos for you/i, /كليبات/i, /فيديو كليب/i, /music video/i, /episodes for you/i],
     fallbackQuery: "official music video trending clips",
     fallbackType: "song",
   },
@@ -430,6 +430,9 @@ function buildPinnedShelves(
   for (let i = 0; i < ytShelves.length; i++) {
     if (!usedYtIndices.has(i)) {
       const remainingShelf = ytShelves[i];
+      if (/episodes|podcasts|حلقات|بودكاست/i.test(remainingShelf.title)) {
+        continue;
+      }
       const hasContent =
         remainingShelf.tracks.length > 0 ||
         remainingShelf.albums.length > 0 ||
@@ -1045,18 +1048,33 @@ export function HomePage({
           }
         }
 
-        // Ensure all tracks in podcast shelves have isVideo: true so they render in 16:9 widescreen format
-        let finalizedShelves = rawShelves.map((s) => ({
-          ...s,
-          tracks: s.tracks.map((t) => ({ ...t, isVideo: true })),
-        }));
+        // Ensure all tracks in podcast shelves have isVideo: true and sanitize shelf titles
+        let finalizedShelves = rawShelves.map((s) => {
+          let title = s.title.trim();
+          if (/^more\s*\d+$/i.test(title)) {
+            if (s.playlists.length > 0 && /later|حفظ|لاحق/i.test(s.playlists[0]?.title || "")) {
+              title = "Episodes for later";
+            } else if (s.playlists.length > 0) {
+              title = "Shows for you";
+            } else {
+              title = "Episodes for you";
+            }
+          }
+          return {
+            ...s,
+            title,
+            tracks: s.tracks.map((t) => ({ ...t, isVideo: true })),
+          };
+        });
 
-        // If neither shows nor episodes came back (e.g. guest or fresh account with no podcast history),
-        // query YouTube for real shows and video episodes tailored to user's music taste:
-        const hasShows = finalizedShelves.some((s) => s.playlists.length > 0);
-        const hasEpisodes = finalizedShelves.some((s) => s.tracks.length > 0);
+        // Check if there are real shows (not just a single "Episodes for later" item)
+        const realShowsCount = finalizedShelves.reduce(
+          (sum, s) => sum + s.playlists.filter((p) => !/later|حفظ|لاحق/i.test(p.title)).length,
+          0,
+        );
+        const episodeCount = finalizedShelves.reduce((sum, s) => sum + s.tracks.length, 0);
 
-        if (!hasShows || !hasEpisodes) {
+        if (realShowsCount < 4 || episodeCount < 8) {
           const userArtist =
             libraryState.library?.likedSongs?.[0]?.artist ||
             libraryState.library?.recentlyPlayed?.[0]?.artist ||
@@ -1064,25 +1082,52 @@ export function HomePage({
           const query = userArtist ? `${userArtist} podcast` : "popular podcasts";
           const res = await searchController.searchPodcasts(query).catch(() => null);
 
-          if (!hasShows && res?.shows && res.shows.length > 0) {
-            finalizedShelves.unshift({
-              title: "Shows for you",
-              tracks: [],
-              albums: [],
-              playlists: res.shows.slice(0, 20),
-              artists: [],
-              links: [],
-            });
+          if (realShowsCount < 4 && res?.shows && res.shows.length > 0) {
+            const existingShowsShelfIndex = finalizedShelves.findIndex(
+              (s) => /shows|عروض/i.test(s.title) || (s.playlists.length > 0 && !/later|حفظ|لاحق/i.test(s.playlists[0]?.title || "")),
+            );
+            if (existingShowsShelfIndex >= 0) {
+              const existing = finalizedShelves[existingShowsShelfIndex];
+              const mergedPlaylists = [
+                ...existing.playlists,
+                ...res.shows.filter((show) => !existing.playlists.some((p) => p.id === show.id)),
+              ];
+              finalizedShelves[existingShowsShelfIndex] = { ...existing, playlists: mergedPlaylists };
+            } else {
+              finalizedShelves.unshift({
+                title: "Shows for you",
+                tracks: [],
+                albums: [],
+                playlists: res.shows.slice(0, 20),
+                artists: [],
+                links: [],
+              });
+            }
           }
-          if (!hasEpisodes && res?.episodes && res.episodes.length > 0) {
-            finalizedShelves.push({
-              title: "Episodes for you",
-              tracks: res.episodes.slice(0, 20).map((t) => ({ ...t, isVideo: true })),
-              albums: [],
-              playlists: [],
-              artists: [],
-              links: [],
-            });
+
+          if (episodeCount < 8 && res?.episodes && res.episodes.length > 0) {
+            const existingEpisodesShelfIndex = finalizedShelves.findIndex(
+              (s) => /episodes|حلقات/i.test(s.title) || s.tracks.length > 0,
+            );
+            if (existingEpisodesShelfIndex >= 0) {
+              const existing = finalizedShelves[existingEpisodesShelfIndex];
+              const mergedTracks = [
+                ...existing.tracks,
+                ...res.episodes
+                  .filter((ep) => !existing.tracks.some((t) => t.id === ep.id))
+                  .map((t) => ({ ...t, isVideo: true })),
+              ];
+              finalizedShelves[existingEpisodesShelfIndex] = { ...existing, tracks: mergedTracks };
+            } else {
+              finalizedShelves.push({
+                title: "Episodes for you",
+                tracks: res.episodes.slice(0, 20).map((t) => ({ ...t, isVideo: true })),
+                albums: [],
+                playlists: [],
+                artists: [],
+                links: [],
+              });
+            }
           }
         }
 
