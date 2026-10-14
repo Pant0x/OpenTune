@@ -205,9 +205,13 @@ function clearLocalOnboardingComplete(): void {
 }
 
 async function hasStoredYoutubeSession(): Promise<boolean> {
-  // The cookie is the session. This used to also consult an OAuth credential, which nothing in
-  // the app has ever written — a branch that could only ever be false, dressed as a second way
-  // of being signed in.
+  if (!isTauriEnvironment()) {
+    try {
+      return Boolean(typeof window !== "undefined" && localStorage.getItem("opentune:web_youtube_cookie"));
+    } catch {
+      return false;
+    }
+  }
   const cookie = await Promise.allSettled([invoke<string | null>("load_youtube_music_cookie")]);
   return cookie[0].status === "fulfilled" && cookie[0].value !== null;
 }
@@ -239,6 +243,7 @@ export default function App() {
 
   const [isWindowMaximizedOrFullscreen, setIsWindowMaximizedOrFullscreen] = useState(true);
   const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
+  const [isToastDismissed, setIsToastDismissed] = useState(false);
 
   // Background check for updates 4 seconds after app starts
   useEffect(() => {
@@ -1564,6 +1569,7 @@ export default function App() {
           onNavigateForward={handleNavigateForward}
           onNavigatePlaylist={handleNavigatePlaylist}
           hasUpdateAvailable={Boolean(availableUpdate)}
+          onTriggerUpdate={() => setIsToastDismissed(false)}
         />
       )}
 
@@ -1880,10 +1886,10 @@ export default function App() {
         }}
       />
 
-      {availableUpdate && (
+      {availableUpdate && !isToastDismissed && (
         <UpdateToast
           update={availableUpdate}
-          onDismiss={() => setAvailableUpdate(null)}
+          onDismiss={() => setIsToastDismissed(true)}
         />
       )}
 

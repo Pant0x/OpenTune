@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useAuthProfile } from "@/lib/authProfile";
+import { isTauriEnvironment } from "@/lib/oauthService";
 import {
   ArrowLeftIcon,
   CloseIcon,
@@ -118,6 +119,10 @@ export function ProfilePage({ onBack, onOpenSettings }: ProfilePageProps) {
   };
 
   const handlePickLocalImage = async () => {
+    if (!isTauriEnvironment()) {
+      fileInputRef.current?.click();
+      return;
+    }
     try {
       const selected = await openFileDialog({
         multiple: false,

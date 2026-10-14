@@ -116,18 +116,27 @@ export function useAuthProfile() {
             (user.identities?.[0]?.provider as "google" | "discord" | "email") ||
             (user.email ? "email" : "unknown");
 
+          const stored = getStoredProfile();
           const meta = user.user_metadata || {};
+          const identityData = (user.identities?.[0]?.identity_data || {}) as Record<string, any>;
+
           const username =
+            stored?.username ||
             meta.username ||
             meta.display_name ||
             meta.full_name ||
             meta.name ||
+            identityData.full_name ||
+            identityData.name ||
             user.email?.split("@")[0] ||
             "User";
 
           const avatarUrl =
+            stored?.avatarUrl ||
             meta.avatar_url ||
             meta.picture ||
+            identityData.avatar_url ||
+            identityData.picture ||
             null;
 
           const identities = user.identities || [];

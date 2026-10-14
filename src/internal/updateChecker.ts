@@ -120,6 +120,14 @@ async function checkViaGithubApi(): Promise<UpdateInfo | null> {
     const releaseUrl =
       data.html_url || `${RELEASES_URL}/${encodeURIComponent(tagName || latestVersion)}`;
 
+    const fallbackAssetName = isWindows
+      ? `OpenTune_${latestVersion}_x64-setup.exe`
+      : isMac
+      ? `OpenTune_${latestVersion}_aarch64.dmg`
+      : `OpenTune_${latestVersion}_amd64.AppImage`;
+
+    const fallbackAssetUrl = `https://github.com/Pant0x/OpenTune/releases/download/${encodeURIComponent(tagName || `v${latestVersion}`)}/${fallbackAssetName}`;
+
     return {
       installedVersion,
       version: latestVersion,
@@ -127,9 +135,9 @@ async function checkViaGithubApi(): Promise<UpdateInfo | null> {
       releaseTitle: data.name || `OpenTune ${latestVersion}`,
       releaseNotes: data.body || "",
       publishedAt: data.published_at,
-      canInstall: Boolean(matchedAsset),
-      downloadAssetUrl: matchedAsset?.browser_download_url,
-      downloadAssetName: matchedAsset?.name,
+      canInstall: true,
+      downloadAssetUrl: matchedAsset?.browser_download_url || fallbackAssetUrl,
+      downloadAssetName: matchedAsset?.name || fallbackAssetName,
       downloadAssetSize: matchedAsset?.size,
     };
   } catch (error) {

@@ -194,23 +194,21 @@ export function UpdateToast({ update, onDismiss }: UpdateToastProps) {
             <span>GitHub</span>
           </button>
 
-          {update.canInstall && (
-            <button
-              type="button"
-              disabled={installing}
-              onClick={() => void install()}
-              className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-4 py-1.5 transition shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-            >
-              {installing ? (
-                <>
-                  <Loader variant="spinner" size={13} />
-                  <span>Updating...</span>
-                </>
-              ) : (
-                <span>Update Now</span>
-              )}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={installing}
+            onClick={() => void install()}
+            className="rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-4 py-1.5 transition shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+          >
+            {installing ? (
+              <>
+                <Loader variant="spinner" size={13} />
+                <span>Installing...</span>
+              </>
+            ) : (
+              <span>Download &amp; Install</span>
+            )}
+          </button>
         </div>
       </div>
     </motion.div>

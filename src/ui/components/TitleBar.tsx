@@ -44,6 +44,7 @@ interface TitleBarProps {
   onNavigateForward?: () => void;
   onNavigatePlaylist?: (playlist: Playlist) => void;
   hasUpdateAvailable?: boolean;
+  onTriggerUpdate?: () => void;
 }
 
 const ACCOUNT_PANEL_ITEM =
@@ -68,6 +69,7 @@ export function TitleBar({
   onNavigateForward = () => {},
   onNavigatePlaylist,
   hasUpdateAvailable = false,
+  onTriggerUpdate,
 }: TitleBarProps) {
   const appWindow = isTauriEnvironment() ? getCurrentWindow() : null;
   const libraryState = useLibraryState();
@@ -249,7 +251,10 @@ export function TitleBar({
             <button
               type="button"
               aria-label="Update Available"
-              onClick={onOpenSettings}
+              onClick={() => {
+                onTriggerUpdate?.();
+                onOpenSettings?.();
+              }}
               className="flex items-center gap-1.5 rounded-full bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 px-2.5 py-1 text-xs font-semibold transition cursor-pointer shadow-sm"
             >
               <RefreshIcon size={13} className="text-primary" />

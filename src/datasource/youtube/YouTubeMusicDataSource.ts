@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { isTauriEnvironment } from "@/lib/oauthService";
 /*
  * Statically imported, deliberately.
  *
@@ -3600,7 +3601,15 @@ export class YouTubeMusicDataSource extends DataSource {
   async restoreSession(): Promise<boolean> {
     logInternalInfo("YouTubeMusicDataSource.restoreSession start");
     try {
-      this.musicCookie = await invoke<string | null>("load_youtube_music_cookie");
+      if (!isTauriEnvironment()) {
+        try {
+          this.musicCookie = typeof window !== "undefined" ? localStorage.getItem("opentune:web_youtube_cookie") : null;
+        } catch {
+          this.musicCookie = null;
+        }
+      } else {
+        this.musicCookie = await invoke<string | null>("load_youtube_music_cookie");
+      }
       if (!this.musicCookie) {
         logInternalInfo("YouTubeMusicDataSource.restoreSession no stored session");
         return false;
@@ -3608,20 +3617,6 @@ export class YouTubeMusicDataSource extends DataSource {
       logInternalInfo("YouTubeMusicDataSource.restoreSession credential loaded", {
         credentialBytes: this.musicCookie.length,
       });
-      /*
-       * Clients only — the same reasoning `refreshSession` documents: reading back a stored
-       * credential is the same person on the same channel.
-       *
-       * This used to call `resetMusicSessionSelection()`, which deletes the saved channel. It
-       * runs on every launch, so a brand account chosen in Settings survived exactly as long as
-       * the process did: on the next start the preference was gone before
-       * `findBestLibraryResponses` could read it, and the automatic probe put the user back on
-       * whichever channel holds the most library content. Wiping the selection belongs to
-       * sign-out and to a sign-in that lands on a different Google account, which both still do it.
-       *
-       * The in-memory half of that reset was a no-op here anyway: on a fresh process the account
-       * fields are already the values it assigns.
-       */
       this.resetMusicClients();
       await this.getMusicClient();
       logInternalInfo("YouTubeMusicDataSource.restoreSession success");
@@ -3632,15 +3627,11 @@ export class YouTubeMusicDataSource extends DataSource {
     }
   }
 
-  /**
-   * Renews the session from the sign-in webview's own Google session, invisibly.
-   *
-   * Deliberately does not clear the cache the way signIn does. The account has not changed, so
-   * everything cached is still correct — dropping it would turn a silent renewal into the full
-   * library resync this exists to avoid.
-   */
   async refreshSession(): Promise<boolean> {
     logInternalInfo("YouTubeMusicDataSource.refreshSession start");
+    if (!isTauriEnvironment()) {
+      return this.restoreSession();
+    }
     const cookie = await invoke<string | null>("refresh_youtube_music_cookie");
     if (!cookie) {
       logInternalInfo("YouTubeMusicDataSource.refreshSession no session to renew");
@@ -3666,9 +3657,35 @@ export class YouTubeMusicDataSource extends DataSource {
       userCode: "Browser sign-in",
       expiresInSec: 300,
     });
-    // Unbounded: this resolves when the person finishes signing in, not on a timer.
     onStage?.("browser");
-    const { cookie, accountChanged, slotId } = await invoke<SignInResult>("sign_in_youtube_music");
+
+    let cookie: string;
+    let accountChanged = true;
+    let slotId = "default";
+
+    if (!isTauriEnvironment()) {
+      const existing = typeof window !== "undefined" ? localStorage.getItem("opentune:web_youtube_cookie") : null;
+      const input = window.prompt(
+        "Connect YouTube Music on Web:\n\n1. Open music.youtube.com in your browser.\n2. Paste your cookie (or SAPISID / headers) below to sync your personal library:\n\n(Tip: Or install OpenTune Desktop for 1-click automatic connect!)",
+        existing || "",
+      );
+      if (!input || !input.trim()) {
+        const error = new Error("SignInCancelled");
+        (error as any).name = "SignInCancelled";
+        throw error;
+      }
+      cookie = input.trim();
+      try {
+        localStorage.setItem("opentune:web_youtube_cookie", cookie);
+      } catch {}
+      slotId = "web_slot";
+    } else {
+      const res = await invoke<SignInResult>("sign_in_youtube_music");
+      cookie = res.cookie;
+      accountChanged = res.accountChanged;
+      slotId = res.slotId;
+    }
+
     onStage?.("session");
     logInternalInfo("YouTubeMusicDataSource.signIn command completed", {
       credentialBytes: cookie.length,
@@ -3783,7 +3800,14 @@ export class YouTubeMusicDataSource extends DataSource {
    */
   async signOut(): Promise<boolean> {
     logInternalInfo("YouTubeMusicDataSource.signOut start");
-    const fallbackCookie = await invoke<string | null>("delete_youtube_music_cookie");
+    let fallbackCookie: string | null = null;
+    if (!isTauriEnvironment()) {
+      try {
+        localStorage.removeItem("opentune:web_youtube_cookie");
+      } catch {}
+    } else {
+      fallbackCookie = await invoke<string | null>("delete_youtube_music_cookie");
+    }
     try {
       await clearCache();
     } catch (error) {
@@ -3804,6 +3828,16 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   async listGoogleAccounts(): Promise<GoogleAccountOption[]> {
+    if (!isTauriEnvironment()) {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("opentune:web_youtube_cookie") : null;
+      if (!stored) return [];
+      return [{
+        id: "web_slot",
+        name: "YouTube Music (Web)",
+        artworkUrl: undefined,
+        isActive: true,
+      }];
+    }
     const accounts = await invoke<StoredGoogleAccount[]>("list_youtube_music_accounts");
     return accounts.map((account) => ({
       id: account.slotId,
@@ -3816,6 +3850,7 @@ export class YouTubeMusicDataSource extends DataSource {
   /** Makes a stored Google account active. Unlike signIn, never opens a browser window. */
   async switchGoogleAccount(id: string): Promise<void> {
     logInternalInfo("YouTubeMusicDataSource.switchGoogleAccount start");
+    if (!isTauriEnvironment()) return;
     const cookie = await invoke<string | null>("switch_youtube_music_account", { slotId: id });
     this.musicCookie = cookie;
     this.resetMusicSessionSelection();
@@ -3831,16 +3866,17 @@ export class YouTubeMusicDataSource extends DataSource {
     logInternalInfo("YouTubeMusicDataSource.switchGoogleAccount success");
   }
 
-  /**
-   * Forgets one stored Google account.
-   *
-   * The three outcomes are what `LibraryController` needs to know to update the UI correctly:
-   * removing an account that was not active changes nothing about the current session at all,
-   * removing the active one either falls back to another stored account or, if that was the
-   * last one, leaves nothing signed in.
-   */
   async removeGoogleAccount(id: string): Promise<"unchanged" | "switched" | "signed-out"> {
     logInternalInfo("YouTubeMusicDataSource.removeGoogleAccount start");
+    if (!isTauriEnvironment()) {
+      try {
+        localStorage.removeItem("opentune:web_youtube_cookie");
+      } catch {}
+      this.musicCookie = null;
+      this.resetMusicSessionSelection();
+      this.resetMusicClients();
+      return "signed-out";
+    }
     const previousCookie = this.musicCookie;
     const newActiveCookie = await invoke<string | null>("remove_youtube_music_account", { slotId: id });
     const outcome = removeAccountOutcome(previousCookie, newActiveCookie);
