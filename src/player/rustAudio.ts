@@ -14,6 +14,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { logInternalWarn } from "../internal/logging";
+import { isTauriEnvironment } from "../lib/oauthService";
 import type { RustAudioSource } from "../datasource/types";
 
 export type { RustAudioSource };
@@ -44,6 +45,9 @@ let unlisten: Promise<UnlistenFn[]> | null = null;
  * ever sets it.
  */
 function ensureListening(): Promise<UnlistenFn[]> {
+  if (typeof window !== "undefined" && !isTauriEnvironment()) {
+    return Promise.resolve([]);
+  }
   if (!unlisten) {
     unlisten = Promise.all([
       listen<PositionEvent>("native-audio-position", (event) => {

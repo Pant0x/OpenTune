@@ -5,15 +5,23 @@
 <h1 align="center">OpenTune</h1>
 
 <p align="center">
-  A fast, native-feeling desktop client for YouTube Music.<br />
-  Built with Tauri, React and TypeScript for <b>Windows, macOS and Linux</b>.
+  A fast, native-feeling modern client for YouTube Music.<br />
+  Available on the <b>Web</b> and as a native desktop app for <b>Windows, macOS, and Linux</b>.
 </p>
 
 <p align="center">
+  <a href="https://opentunex.vercel.app/"><img src="https://img.shields.io/badge/Web_App-Live_on_Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Web App"></a>
+  <a href="https://ko-fi.com/pant0x"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
   <a href="https://github.com/Pant0x/OpenTune/releases/latest"><img src="https://img.shields.io/github/downloads/Pant0x/OpenTune/total?style=for-the-badge&color=ffffff&label=downloads&labelColor=18181b" alt="Downloads"></a>
   <a href="https://github.com/Pant0x/OpenTune/releases/latest"><img src="https://img.shields.io/github/package-json/v/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=version&labelColor=18181b" alt="Version"></a>
   <a href="https://github.com/Pant0x/OpenTune/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=license&labelColor=18181b" alt="License"></a>
   <a href="https://github.com/Pant0x/OpenTune/stargazers"><img src="https://img.shields.io/github/stars/Pant0x/OpenTune?style=for-the-badge&color=ffffff&label=stars&labelColor=18181b" alt="Stars"></a>
+</p>
+
+<p align="center">
+  <a href="https://opentunex.vercel.app/"><b>🌐 Open Web App</b></a> •
+  <a href="https://github.com/Pant0x/OpenTune/releases/latest"><b>💾 Download Desktop Release</b></a> •
+  <a href="https://ko-fi.com/pant0x"><b>☕ Support on Ko-fi</b></a>
 </p>
 
 <p align="center">
@@ -25,18 +33,17 @@
 </p>
 
 > [!IMPORTANT]
-> OpenTune is an independent, unofficial project. It is not affiliated with, authorized by,
-> sponsored by, or endorsed by YouTube or Google.
+> OpenTune is an independent, unofficial open-source project. It is not affiliated with, authorized by, sponsored by, or endorsed by YouTube or Google.
 
 <br />
 
 ## About
 
-OpenTune brings YouTube Music to the desktop as its own application, not a browser tab. There is
-no official desktop client, so the goal is a fast, native-feeling one that holds up with large
-libraries.
+OpenTune brings YouTube Music to life both on the desktop as a lightweight native application and directly in your browser on the web. It is engineered from the ground up for speed, fluid navigation, and complete control over your music experience — with real account synchronization, line-by-line synchronized lyrics, and zero intrusive ads.
 
-If you find it useful, **starring the repo** genuinely helps.
+Try the web version right now at **[opentunex.vercel.app](https://opentunex.vercel.app/)** or install the native build for your operating system.
+
+If you enjoy OpenTune, consider **starring the repository** and supporting the project on **[Ko-fi](https://ko-fi.com/pant0x)**!
 
 <br />
 
@@ -44,74 +51,80 @@ If you find it useful, **starring the repo** genuinely helps.
 
 <table>
   <tr>
-    <td width="50%"><b>Synced lyrics</b></td>
-    <td width="50%"><b>Artist page</b></td>
+    <td width="50%"><b>Synced lyrics & Translation</b></td>
+    <td width="50%"><b>Artist page & Discography</b></td>
   </tr>
   <tr>
     <td><img src="assets/img/Amber-d-1.2.PNG" alt="Synced lyrics following the current line" /></td>
     <td><img src="assets/img/Amber-d4-1.2.PNG" alt="An artist page showing popular songs and releases" /></td>
   </tr>
   <tr>
-    <td><sub>Click a line to seek, nudge the timing if a match is off, and see which source the words came from.</sub></td>
-    <td><sub>Popular tracks and every release, filtered by albums, singles or EPs.</sub></td>
+    <td><sub>Click a line to seek, nudge timing, translate into 20+ languages, and unmask censored lyrics.</sub></td>
+    <td><sub>Explore top tracks, albums, singles, EPs, and music videos.</sub></td>
   </tr>
 </table>
 
 <table>
   <tr>
-    <td width="50%"><b>Queue</b></td>
-    <td width="50%"><b>Library</b></td>
+    <td width="50%"><b>Queue & Radio</b></td>
+    <td width="50%"><b>Library & Playlists</b></td>
   </tr>
   <tr>
     <td><img src="assets/img/Amber-d3-1.2.PNG" alt="The queue panel open beside the home view" /></td>
     <td><img src="assets/img/Amber-l5-1.2.PNG" alt="The library songs list, with explicit badges and the now-playing meter" /></td>
   </tr>
   <tr>
-    <td><sub>Separates what you added by hand from what came next on its own.</sub></td>
-    <td><sub>Marks what is liked, downloaded and explicit at a glance.</sub></td>
+    <td><sub>Manage up next, manual additions, infinite radio automix, and queue reordering.</sub></td>
+    <td><sub>Your authentic YouTube Music library synced in real-time with playlists, likes, and history.</sub></td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="assets/img/Amber-set-1.2.PNG" alt="Amber settings, showing the library and lyrics options" width="860" />
+  <img src="assets/img/Amber-set-1.2.PNG" alt="Settings dialog" width="860" />
   <br />
-  <sub>Settings — quality, lyrics source, translation and text size, downloads and the disk cap.</sub>
+  <sub>Granular settings — audio engines, output devices, equalizers, lyrics providers, translations, and theme customization.</sub>
 </p>
 
 <br />
 
-## Features
+## Key Features
 
 | Feature | Description |
 |---|---|
-| **Search** | Ctrl+Space from anywhere, across artists, songs, playlists and albums |
-| **Multiple tabs** | Each tab keeps its own queue, volume and player state — start an album in one, browse in another, and the first keeps playing |
-| **Offline downloads** | Save a song, a selection, or a whole album or playlist, with its own quality setting and a size cap you control |
-| **Mini player** | A morphing capsule that appears when you tab away; drag it anywhere, hover to expand |
-| **Synced lyrics** | Line-by-line lyrics that follow the song, unlike the official web client. Click a line to jump to it, nudge the timing if a match is off, and pick which source is tried first |
-| **Lyrics translation** | A translation under each line, in any of twenty languages, with an adjustable text size |
-| **Like & dislike** | Rate from the row, the player or the right-click menu — ratings sync to your YouTube Music account |
-| **Batch actions** | Shift/ctrl-select rows, then queue, download, add to a playlist or remove them together |
-| **Queue control** | Collapses to an artwork-only rail; end the queue at a track, generate more from it, shuffle or clear what's next |
-| **Recommendations** | Personalised suggestions plus a "surprise me" shuffle — hide the carousel if you would rather open on your library |
-| **Browse** | Explore, charts, moods and genres, and podcasts, with mood chips you can drill into |
-| **Local files** | Folders from your own machine sit alongside your library, with a tag editor for fixing metadata |
-| **Discord & Last.fm** | Rich Presence and scrobbling, each toggleable straight from the toolbar |
-| **Account support** | Sign in with Google for your library and playlists, and switch between channels on the same account |
-| **Playlist import/export** | Save a playlist to a file and bring it back, on this machine or another |
-| **Desktop integration** | Media keys, minimise to tray, launch at login, remembered window position, rebindable shortcuts |
-| **Light & dark themes** | Follows the OS by default, or pin either one — plus a reduced-motion mode |
-| **Caching** | Playlists, lyrics and artwork are cached, so revisits are instant |
-| **Auto-updates** | Signed updates install themselves; no manual re-download |
+| 🌐 **Web & Desktop** | Full cross-platform support. Run natively on Windows, macOS, and Linux, or in any modern web browser via [Vercel](https://opentunex.vercel.app/) |
+| 📖 **Quran & Spiritual Mode** | Dedicated Quran section featuring celebrated reciters (العفاسي، المنشاوي، عبد الباسط، الدوسري), complete Surahs, and 24/7 Makkah Live HD broadcast |
+| 🎤 **Uncensored Synced Lyrics** | Line-by-line synchronized lyrics that automatically unmask asterisks (`****`) to provide original, clean, authentic wording with translations |
+| ⚡ **Instant Search** | Global search across songs, artists, playlists, albums, and video clips (Ctrl+Space keyboard shortcut) |
+| 🗂️ **Real Account Data Sync** | Sign in securely with Google to access your actual YouTube Music playlists, liked songs, albums, and history |
+| 🎚️ **Dual Audio Engines** | High-fidelity Rust native engine (`rodio` + `symphonia`) on desktop and seamless YouTube IFrame engine for web and maximum compatibility |
+| 🗂️ **Multiple Workspace Tabs** | Keep separate queues, volume, and playback state across multiple tabs |
+| 📥 **Offline Downloads** | Download songs, full albums, or entire playlists with customizable quality and storage caps (Desktop) |
+| 💊 **Morphing Mini Player** | Compact picture-in-picture floating player with expandable playback controls |
+| 🎧 **Audio Equalizer & DSP** | Built-in equalizer, preamp controls, loudness normalization, and real audio output device selector |
+| 🎮 **Discord Rich Presence** | Display what you are currently listening to on Discord with album art and live progress |
+| 🎨 **Dynamic Themes** | Sleek dark and light themes with customizable accent colors and reduced motion options |
 
 <br />
 
-## Download
+## 🚀 Live Web Version
 
-Grab the newest installer from the **[latest release](https://github.com/Pant0x/OpenTune/releases/latest)**
-for Windows, macOS or Linux.
+You can use OpenTune directly in your browser without installing anything:
 
-On Arch and derivatives, install from the AUR instead:
+👉 **[Launch OpenTune Web (opentunex.vercel.app)](https://opentunex.vercel.app/)**
+
+- Zero installation required.
+- Full access to search, library sync, Quran mode, and synchronized lyrics.
+- Powered by Vercel Serverless proxy for YouTube API bypass and high availability.
+
+<br />
+
+## 💾 Desktop Downloads
+
+Download the latest prebuilt installer for your operating system from the **[Releases](https://github.com/Pant0x/OpenTune/releases/latest)** page:
+
+- **Windows**: `OpenTune-Setup.exe` (Installer) or standalone executable.
+- **macOS**: `OpenTune.dmg` (Universal / Apple Silicon & Intel).
+- **Linux**: `.AppImage`, `.deb`, `.rpm`, or via AUR:
 
 ```bash
 yay -S opentune     # or: paru -S opentune
@@ -119,183 +132,123 @@ yay -S opentune     # or: paru -S opentune
 
 <br />
 
-## Platform support
+## 💖 Support the Project
 
-- **Windows** — primary target; the most tested of the three.
-- **macOS** — supported; the build is unsigned (see below).
-- **Linux** — supported across major distros; runs on your system's WebKitGTK and GStreamer.
+OpenTune is an open-source project maintained with passion. If you love using OpenTune, consider buying a coffee to support continued development, hosting, and updates:
 
-### Linux notes
+<p align="center">
+  <a href="https://ko-fi.com/pant0x">
+    <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" height="48" alt="Buy Me a Coffee at ko-fi.com" />
+  </a>
+</p>
 
-Install the `.deb` or `.rpm`, or `opentune` from the AUR on Arch. All three run on your system's
-WebKitGTK (rendering) and GStreamer (playback) rather than bundling their own.
+<p align="center">
+  👉 <b><a href="https://ko-fi.com/pant0x">Support on Ko-fi (ko-fi.com/pant0x)</a></b>
+</p>
 
-<details>
-<summary>🔇 No sound, or "YouTube player error 5"</summary>
-
-Most distros don't install the codecs YouTube needs by default:
-
-```bash
-# Debian, Ubuntu, Mint
-sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-
-# Fedora (gstreamer1-libav needs RPM Fusion enabled)
-sudo dnf install gstreamer1-libav gstreamer1-plugins-base gstreamer1-plugins-good
-
-# Arch — installed automatically with the AUR package
-sudo pacman -S gst-libav gst-plugins-base gst-plugins-good
-```
-
-Confirm they registered:
-
-```bash
-gst-inspect-1.0 | grep -E 'avdec_aac|avdec_h264'
-```
-
-</details>
-
-<details>
-<summary>⬜ A blank grey window</summary>
-
-A WebKitGTK rendering problem under Wayland, most often on Nvidia. Launch from a terminal
-with one of:
-
-```bash
-WEBKIT_DISABLE_DMABUF_RENDERER=1 opentune
-WEBKIT_DISABLE_COMPOSITING_MODE=1 opentune
-GDK_BACKEND=x11 opentune
-```
-
-Launching from an app menu instead? Add the same variable to the `Exec` line of
-`opentune.desktop` (typically `/usr/share/applications/opentune.desktop`, or
-`~/.local/share/applications/opentune.desktop` for a user install):
-
-```
-Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 opentune
-```
-
-</details>
-
-<details>
-<summary>⚠️ An EGL error on launch</summary>
-
-Preload the system Wayland client library:
-
-```bash
-LD_PRELOAD=/usr/lib/libwayland-client.so ~/Downloads/OpenTune*.AppImage
-```
-
-In Gear Lever, add `LD_PRELOAD=/usr/lib/libwayland-client.so` to OpenTune's environment variables.
-
-</details>
-
-#### 🪵 Anything else
-
-Open **Settings → Library → Application log**, reproduce the problem, and attach the log to
-an issue along with your desktop environment, display server (X11 or Wayland) and distro —
-those three narrow down a Linux bug faster than anything else. The log also lives at
-`~/.local/share/com.pant0x.opentune/logs/current.log`.
-
-### macOS notes
-
-#### "Apple is not able to verify that it is free from malware"
-
-The macOS builds aren't signed with an Apple Developer ID, so Gatekeeper blocks them on first
-launch. This isn't a malware finding — it means the binary is unsigned. Drag OpenTune to
-Applications, then either:
-
-- open **System Settings → Privacy & Security**, scroll to the message about OpenTune, and click
-  **Open Anyway**, or
-- clear the quarantine flag yourself:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/OpenTune.app
-```
-
-Build from source instead if you'd rather not trust a prebuilt, unsigned binary.
-
-#### A Keychain prompt on sign-in
-
-OpenTune stores one encryption key in its own Keychain entry and encrypts your YouTube Music
-session with it before writing anything to the app data directory. Choose **Always Allow** to
-avoid repeated prompts — or **Deny** if you don't intend to sign in to YouTube Music.
+Your support directly helps keep the project active and independent!
 
 <br />
 
-## For developers
+## 🛠️ For Developers
 
 ### Prerequisites
 
-- Node.js LTS and npm
-- [Rust and Cargo](https://rustup.rs/)
-- C++ build tools (MSVC on Windows)
-- Microsoft Edge WebView2 Runtime (Windows)
+- [Node.js](https://nodejs.org/) (v18 or higher) & npm
+- [Rust & Cargo](https://rustup.rs/) (for desktop builds)
+- C++ build tools (MSVC on Windows, Xcode command line tools on macOS, build-essential on Linux)
+- Microsoft Edge WebView2 Runtime (Windows desktop)
 
-The Tauri CLI ships in the project's dev dependencies — no global install needed.
+### Quick Start
 
-### Install, run, build
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Pant0x/OpenTune.git
+   cd OpenTune
+   ```
 
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Run Web development server:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Run Desktop development app (Tauri):**
+   ```bash
+   npm run tauri dev
+   ```
+
+5. **Build for production:**
+   ```bash
+   # Build Web bundle
+   npm run build
+
+   # Build Desktop native installers
+   npm run tauri build
+   ```
+
+### Verification & Quality Checks
+
+Run the automated test suite and type checking:
 ```bash
-npm install
-npm run tauri dev
-npm run tauri build
+npm run verify
 ```
 
-### Architecture
+<br />
 
-The `docs/` folder documents the codebase:
+## Architecture
 
-- [`docs/architecture.md`](docs/architecture.md) — system overview and module map
-- [`docs/frontend.md`](docs/frontend.md) — React structure, styling tokens, icon conventions
-- [`docs/backend.md`](docs/backend.md) — Rust commands and the IPC surface
+The project is structured cleanly across frontend, backend, and platform layers:
 
-### Contributing
+- [`src/ui/`](src/ui/) — React components, tabs, player controls, lyrics display, and theme system.
+- [`src/datasource/`](src/datasource/) — YouTube Music InnerTube integration, web proxy fallbacks, and user library sync.
+- [`src/player/`](src/player/) — Audio orchestration, Rust audio engine bridge, and YouTube IFrame audio fallback.
+- [`src-tauri/`](src-tauri/) — Tauri 2.0 Rust backend, audio decoding via Symphonia/Rodio, Discord RPC, and OS integration.
+- [`api/`](api/) — Vercel serverless function proxy for seamless web browser execution without CORS hurdles.
 
-Contributions are welcome. Fork the repo, branch, test locally, and open a pull request
-describing what changed and why. For larger changes, open an issue first so the approach can
-be discussed.
-
-By contributing you agree to the [Contributor License Agreement](CLA.md).
+Detailed documentation:
+- [`docs/architecture.md`](docs/architecture.md) — System overview and module map
+- [`docs/frontend.md`](docs/frontend.md) — React styling, tokens, and component architecture
+- [`docs/backend.md`](docs/backend.md) — Rust commands and IPC surface
 
 <br />
 
-## Credits
+## 🤝 Contributing
 
-OpenTune is built upon and inspired by **[amber-musicplayer](https://github.com/2latemc/amber-musicplayer)**
-by [2latemc](https://github.com/2latemc), used under the Apache 2.0 licence. The original
-project did the hard groundwork of getting YouTube Music working on the desktop.
+Contributions are warmly welcome! Whether you are fixing a bug, adding new features, or improving documentation:
 
-If you want to support the original author, they accept donations
-[on Ko-fi](https://ko-fi.com/totally2late).
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m 'Add some amazing feature'`).
+4. Ensure checks pass (`npm run verify`).
+5. Push to the branch (`git push origin feature/amazing-feature`).
+6. Open a Pull Request.
+
+Please review the [Contributor License Agreement (CLA)](CLA.md) before submitting code.
 
 <br />
 
-## Legal
+## 📜 Credits & License
 
-**OpenTune provides no downloading functionality.** It is a client for audio listening, with
-theming and interface additions.
+- OpenTune is based upon and inspired by **[amber-musicplayer](https://github.com/2latemc/amber-musicplayer)** by [2latemc](https://github.com/2latemc), licensed under Apache 2.0.
+- Released under the [Apache 2.0 License](LICENSE).
 
-OpenTune interacts with YouTube and YouTube Music. Access to those services remains governed by
-their own terms, policies, availability and regional restrictions.
+<br />
 
-OpenTune does not host or claim ownership of music, videos, artwork, metadata, or any other
-content supplied by third parties. Rights in that content remain with their respective
-owners.
+## ⚖️ Legal & Disclaimer
 
-The project is not intended to circumvent access controls, geographic restrictions,
-advertising, paid service requirements, or content licensing, nor to enable unauthorised
-downloading, copying, redistribution or public performance of third-party content.
-
-YouTube and YouTube Music are trademarks of Google LLC. All other trademarks are the property
-of their respective owners. References to third-party products describe compatibility and
-integration only.
+OpenTune interacts with YouTube and YouTube Music. Access to those services remains governed by their respective terms, policies, and regional availability. OpenTune does not host, upload, or claim ownership of any third-party music, videos, artwork, or metadata. All rights belong to their respective copyright holders.
 
 - [YouTube Terms of Service](https://www.youtube.com/static?template=terms)
 - [YouTube API Services Terms of Service](https://developers.google.com/youtube/terms/api-services-terms-of-service)
 - [YouTube API Services Developer Policies](https://developers.google.com/youtube/terms/developer-policies)
 
-## Thanks to our contributors
+---
 
-<a href="https://github.com/Pant0x/OpenTune/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Pant0x/OpenTune" />
-</a>
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/Pant0x">Pant0x</a> and contributors.
+</p>

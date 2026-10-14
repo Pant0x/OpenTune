@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { isTauriEnvironment } from "../../lib/oauthService";
 import {
   hydrateLocalJsonSetting,
   readLocalJsonSetting,
@@ -70,6 +71,10 @@ function isAudioEngineMode(value: unknown): value is AudioEngineMode {
 let cachedMode: AudioEngineMode | null = null;
 
 function readMode(): AudioEngineMode {
+  if (typeof window !== "undefined" && !isTauriEnvironment()) {
+    return "iframe";
+  }
+
   if (cachedMode === null) {
     const stored = readLocalJsonSetting(STORAGE_KEY, isAudioEngineMode);
     // If setting is unset or was previously locked to "iframe", migrate to "rust"

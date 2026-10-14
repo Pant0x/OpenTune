@@ -1,6 +1,6 @@
 [package]
 name = "opentune"
-version = "1.0.0"
+version = "1.0.2"
 description = "OpenTune - a desktop music client"
 authors = ["Panto"]
 edition = "2021"

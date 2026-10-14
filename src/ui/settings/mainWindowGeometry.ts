@@ -15,6 +15,7 @@ import {
 } from "../../internal/durableLocalSetting";
 import { removeAppSetting } from "../../internal/appSettings";
 import { logInternalError } from "../../internal/logging";
+import { isTauriEnvironment } from "../../lib/oauthService";
 
 const STORAGE_KEY = "main-window-geometry";
 const GEOMETRY_ENABLED_STORAGE_KEY = "main-window-geometry-persistence-enabled";
@@ -92,6 +93,7 @@ async function isGeometryOnAnyMonitor(geometry: MainWindowGeometry): Promise<boo
 }
 
 async function saveCurrentMainWindowGeometry(): Promise<void> {
+  if (!isTauriEnvironment()) return;
   const win = getCurrentWindow();
   const [position, size, isMaximized, isFullscreen, isMinimized] = await Promise.all([
     win.outerPosition().catch(() => null),
@@ -155,7 +157,7 @@ export async function hydrateMainWindowGeometry(): Promise<void> {
 }
 
 export async function restoreMainWindowGeometry(): Promise<void> {
-  if (!readMainWindowGeometryPersistenceEnabled()) return;
+  if (!isTauriEnvironment() || !readMainWindowGeometryPersistenceEnabled()) return;
 
   const geometry = readLocalJsonSetting(STORAGE_KEY, isMainWindowGeometry);
   if (!geometry) return;
@@ -184,6 +186,7 @@ export async function restoreMainWindowGeometry(): Promise<void> {
 }
 
 export async function persistMainWindowGeometry(): Promise<() => void> {
+  if (!isTauriEnvironment()) return () => {};
   const win = getCurrentWindow();
   let saveTimer: number | null = null;
 

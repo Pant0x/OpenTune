@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { logInternalDebug, logInternalError, logInternalInfo } from "../../internal/logging";
+import { logInternalDebug, logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
 import { fromBase64, toBase64 } from "../../internal/base64";
+import { isTauriEnvironment } from "../../lib/oauthService";
 
 type ProxyHttpResponse = {
   status: number;
@@ -270,6 +271,45 @@ export async function tauriFetch(input: RequestInfo | URL, init?: TauriFetchInit
     headers: getSafeHeaders(headers),
     bodySummary: summarizeRequestBody(body_base64),
   });
+
+  if (!isTauriEnvironment()) {
+    try {
+      const proxyRes = await fetch("/api/proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          method,
+          headers,
+          body_base64,
+        }),
+      });
+
+      if (proxyRes.ok) {
+        const proxyResponse = (await proxyRes.json()) as ProxyHttpResponse;
+        if (proxyResponse.cookie) {
+          liveCookie = proxyResponse.cookie;
+        }
+        const bodyBytes = fromBase64(proxyResponse.body_base64);
+        const responseBody =
+          proxyResponse.status === 204 ||
+          proxyResponse.status === 205 ||
+          proxyResponse.status === 304
+            ? null
+            : bodyBytes;
+        return new Response(responseBody, {
+          status: proxyResponse.status,
+          headers: proxyResponse.headers,
+        });
+      }
+    } catch (e) {
+      logInternalWarn("tauriFetch web proxy failed, falling back to direct fetch", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
+    return fetch(input, init);
+  }
 
   try {
     const proxyResponse = await invoke<ProxyHttpResponse>("proxy_http_request", {

@@ -53,6 +53,7 @@ import { hydrateLyricsOffset } from "./ui/settings/lyricsOffset";
 import { hydrateLocalMusicFolder } from "./player/localFilesManager";
 import { hydrateFriendsListeningSettings } from "./lib/friendsListeningService";
 import { hydratePlayerUISettings } from "./ui/stores/playerUIStore";
+import { isTauriEnvironment } from "./lib/oauthService";
 
 function checkAndHandleWebOAuthCallback(): boolean {
   if (typeof window === "undefined") return false;
@@ -210,14 +211,16 @@ void Promise.all([
   logInternalError("settings hydration failed", error);
 });
 
-// Initialize Discord RPC (non-blocking)
-logInternalInfo("[Discord RPC] Initializing Discord RPC service");
-try {
-  void DiscordRpcService.init().catch((error) => {
-    logInternalError("[Discord RPC] initialization error", error);
-  });
-} catch (error) {
-  logInternalError("[Discord RPC] failed to initialize", error);
+// Initialize Discord RPC (non-blocking) in desktop environment
+if (isTauriEnvironment()) {
+  logInternalInfo("[Discord RPC] Initializing Discord RPC service");
+  try {
+    void DiscordRpcService.init().catch((error) => {
+      logInternalError("[Discord RPC] initialization error", error);
+    });
+  } catch (error) {
+    logInternalError("[Discord RPC] failed to initialize", error);
+  }
 }
 
 window.addEventListener("error", (event) => {
@@ -236,7 +239,9 @@ window.addEventListener("unhandledrejection", (event) => {
  * Clean up Discord RPC on app close
  */
 window.addEventListener("beforeunload", () => {
-  void DiscordRpcService.shutdown();
+  if (isTauriEnvironment()) {
+    void DiscordRpcService.shutdown();
+  }
 });
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -247,10 +252,12 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </React.StrictMode>,
 );
 
-syncLocalAudioWatcher();
-void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
-// Feeds the external mini player window (snapshots out, transport commands in).
-startMiniBridge();
+if (isTauriEnvironment()) {
+  syncLocalAudioWatcher();
+  void listen("local-audio-changed", () => notifyLocalPlaylistsChanged());
+  // Feeds the external mini player window (snapshots out, transport commands in).
+  startMiniBridge();
+}
 }
 
 

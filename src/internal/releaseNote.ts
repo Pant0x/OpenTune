@@ -23,12 +23,12 @@ import { getAppSetting, setAppSetting } from "./appSettings";
  */
 const SEEN_VERSION_KEY = "release-note-seen-version";
 
-export const RELEASE_NOTE_BODY = `**Accounts** — switch between multiple YouTube Music accounts instantly, no signing out required.
-**Sound** — pick your exact output device (real speaker/headphone names on Linux too), plus a bypass toggle and mini EQ right in the player bar.
-**Playlists** — shuffle now truly shuffles the whole playlist from wherever you are in it, loop cycles properly instead of getting stuck, and any playlist can be hidden from your library.
-**Discovery** — start a radio station from any track, and pages load in with proper skeletons instead of a blank flash.
-**Fixes** — some tracks auto-skipping a few seconds in, crossfade stalling when minimized, YouTube embed errors now falling back automatically, and a second launch refocusing OpenTune instead of opening twice.
-Report anything broken on GitHub (https://github.com/Pant0x/OpenTune) or /r/AmberMusic.
+export const RELEASE_NOTE_BODY = `**Web & Desktop** — OpenTune is now live on the web at https://opentunex.vercel.app/ with complete cross-platform support.
+**Lyrics** — authentic, uncensored lyrics engine that automatically unmasks asterisks and preserves full song lyrics.
+**Quran & Spiritual** — dedicated Quran mood section featuring renowned reciters, complete Surahs, and 24/7 Makkah Live HD broadcast.
+**YouTube Library** — real-time YouTube Music account library sync, personalized playlists, albums, and video clips.
+**Performance** — ultra-fast IFrame & Rust audio engines, smooth animations, and optimized offline caching.
+Support OpenTune on Ko-fi (https://ko-fi.com/pant0x) or report issues on GitHub (https://github.com/Pant0x/OpenTune).
 
 Thanks :)`;
 

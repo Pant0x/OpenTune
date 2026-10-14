@@ -685,6 +685,7 @@ export default function App() {
   }, [currentView, persistAppSession]);
 
   useEffect(() => {
+    if (!isTauriEnvironment()) return;
     const unlistenPromise = listen("main-window-recovery-reload", persistAppSession);
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
@@ -705,6 +706,7 @@ export default function App() {
   }, [persistAppSession]);
 
   useEffect(() => {
+    if (!isTauriEnvironment()) return;
     const unlistenPromise = listen("os-close-requested", persistAppSession);
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());

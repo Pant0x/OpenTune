@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { logInternalError } from "../../internal/logging";
 import { isWindows } from "../platform";
+import { isTauriEnvironment } from "../../lib/oauthService";
 import {
   hydrateLocalBooleanSetting,
   readLocalBooleanSetting,
@@ -65,6 +66,7 @@ export function setForceWindowControls(enabled: boolean) {
 }
 
 export async function applyNativeWindowControls(enabled = readNativeWindowControls()) {
+  if (!isTauriEnvironment()) return;
   try {
     await getCurrentWindow().setDecorations(enabled);
     document.documentElement.toggleAttribute("data-native-window-controls", enabled);

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/motion/tooltip";
 import { FriendActivityIcon, LoginIcon, RefreshIcon, SettingsIcon, UserIcon } from "@/ui/icons";
 import { logInternalError, logInternalInfo, logInternalWarn } from "../../internal/logging";
+import { isTauriEnvironment } from "../../lib/oauthService";
 import {
   isLinux,
   isTilingWindowManager,
@@ -68,7 +69,7 @@ export function TitleBar({
   onNavigatePlaylist,
   hasUpdateAvailable = false,
 }: TitleBarProps) {
-  const appWindow = getCurrentWindow();
+  const appWindow = isTauriEnvironment() ? getCurrentWindow() : null;
   const libraryState = useLibraryState();
   const account = libraryState.library?.account;
   const isSignedIn = Boolean(account) && libraryState.status !== "signed-out";
@@ -93,7 +94,8 @@ export function TitleBar({
     isTilingWindowManager,
     () => false,
   );
-  const showCustomWindowControls = !nativeWindowControls
+  const showCustomWindowControls = isTauriEnvironment()
+    && !nativeWindowControls
     && (!isLinux || !tilingWindowManager || forceWindowControls);
   const notificationsVisible = useToolbarItemVisible("notifications");
   const friendActivityVisible = useToolbarItemVisible("friendActivity");
@@ -111,6 +113,7 @@ export function TitleBar({
   };
 
   const startWindowDrag = async () => {
+    if (!appWindow) return;
     try {
       window.dispatchEvent(new Event("main-window-drag-started"));
       await appWindow.startDragging();
@@ -120,6 +123,7 @@ export function TitleBar({
   };
 
   const handleMinimize = async () => {
+    if (!appWindow) return;
     try {
       if (await appWindow.isFullscreen()) {
         await appWindow.setFullscreen(false);
@@ -133,6 +137,7 @@ export function TitleBar({
   };
 
   const handleToggleMaximize = async () => {
+    if (!appWindow) return;
     try {
       const isMax = await appWindow.isMaximized();
       if (isMax) {
@@ -513,7 +518,7 @@ export function TitleBar({
                 .catch((error) => {
                   logInternalError("TitleBar.close quit_app failed", error);
                   logInternalWarn("TitleBar.close fallback to appWindow.close");
-                  void appWindow.close();
+                  if (appWindow) void appWindow.close();
                 });
             }}
           >
