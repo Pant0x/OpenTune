@@ -483,7 +483,7 @@ function MakkahLiveHeroCard({
             onClick={togglePlayLive}
           >
             <img
-              src={MAKKAH_LIVE_TRACK.artworkUrl}
+              src="https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?w=400&auto=format&fit=crop&q=80"
               alt="Makkah Live"
               className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
               loading="eager"
@@ -973,30 +973,40 @@ export function HomePage({
     if (chip.id === "spiritual") {
       setIsLoadingMood(true);
       try {
-        const [quranVideos, quranRecitations, fullSurahs, quranPlaylists] = await Promise.all([
-          searchController.searchVideos("تلاوة خاشعة قرآن كريم تلاوات").catch(() => []),
-          searchController.searchVideos("تلاوة هادئة راحة نفسية الشيخ مشاري راشد عبد الباسط").catch(() => []),
-          searchController.searchVideos("سورة البقرة الكهف الملك يس الرحمن كاملة تلاوة").catch(() => []),
-          searchController.searchCategory("المصحف المرتل كامل إذاعة القرآن الكريم", "playlist").catch(() => null),
+        const [songsRes, tracksRes, albumsRes, playlistsRes, exploreRes] = await Promise.all([
+          searchController.searchCategory("تلاوة قرآن كريم", "song").catch(() => null),
+          searchController.searchTracks("تلاوة خاشعة هادئة الشيخ مشاري راشد عبد الباسط").catch(() => []),
+          searchController.searchCategory("القرآن الكريم المصحف المرتل كامل", "album").catch(() => null),
+          searchController.searchCategory("إذاعة القرآن الكريم تلاوات وقراء", "playlist").catch(() => null),
+          searchController.search("قرآن كريم تلاوات خاشعة المصحف").catch(() => null),
         ]);
 
         const shelves: BrowseShelf[] = [];
 
-        // 1. Quick picks with Makkah Live and top peaceful recitations
-        const seenIds = new Set<string>();
-        const allTracks: Track[] = [MAKKAH_LIVE_TRACK];
-        seenIds.add(MAKKAH_LIVE_TRACK.id);
+        // 1. Quick picks — classic TrackRow audio tracks (NOT video format!)
+        const candidateTracks: Track[] = [
+          ...(songsRes?.tracks ?? []),
+          ...(tracksRes ?? []),
+          ...(exploreRes?.tracks ?? []),
+        ];
 
-        for (const t of [...quranVideos, ...quranRecitations]) {
-          if (!t?.id || seenIds.has(t.id)) continue;
-          seenIds.add(t.id);
-          allTracks.push({ ...t, isVideo: true });
+        const seenTrackIds = new Set<string>();
+        const quranTracks: Track[] = [];
+
+        for (const t of candidateTracks) {
+          if (!t?.id || seenTrackIds.has(t.id)) continue;
+          seenTrackIds.add(t.id);
+          // Crucial: isVideo MUST be false so it renders in standard TrackRow audio format!
+          quranTracks.push({
+            ...t,
+            isVideo: false,
+          });
         }
 
-        if (allTracks.length > 0) {
+        if (quranTracks.length > 0) {
           shelves.push({
-            title: "Quick picks — تلاوات خاشعة ومختارة",
-            tracks: allTracks.slice(0, 32),
+            title: "Quick picks — تلاوات مختارة",
+            tracks: quranTracks.slice(0, 32),
             albums: [],
             playlists: [],
             artists: [],
@@ -1004,31 +1014,49 @@ export function HomePage({
           });
         }
 
-        // 2. Long Surahs (Al-Baqarah, Al-Kahf, Yaseen, Al-Mulk)
-        const surahTracks: Track[] = [];
-        for (const t of fullSurahs) {
-          if (!t?.id || seenIds.has(t.id)) continue;
-          seenIds.add(t.id);
-          surahTracks.push({ ...t, isVideo: true });
+        // 2. Recitations & Surahs — square AlbumCards
+        const candidateAlbums: Album[] = [
+          ...(albumsRes?.albums ?? []),
+          ...(exploreRes?.albums ?? []),
+        ];
+        const seenAlbumIds = new Set<string>();
+        const uniqueAlbums: Album[] = [];
+        for (const a of candidateAlbums) {
+          if (!a?.id || seenAlbumIds.has(a.id)) continue;
+          seenAlbumIds.add(a.id);
+          uniqueAlbums.push(a);
         }
-        if (surahTracks.length > 0) {
+
+        if (uniqueAlbums.length > 0) {
           shelves.push({
-            title: "Surahs & Long Listens — سور وتلاوات كاملة",
-            tracks: surahTracks.slice(0, 24),
-            albums: [],
+            title: "Recitations & Surahs — المصحف المرتل",
+            tracks: [],
+            albums: uniqueAlbums.slice(0, 24),
             playlists: [],
             artists: [],
             links: [],
           });
         }
 
-        // 3. Playlists & Reciters
-        if (quranPlaylists && quranPlaylists.playlists.length > 0) {
+        // 3. Playlists & Radios — square PlaylistTiles
+        const candidatePlaylists: Playlist[] = [
+          ...(playlistsRes?.playlists ?? []),
+          ...(exploreRes?.playlists ?? []),
+        ];
+        const seenPlaylistIds = new Set<string>();
+        const uniquePlaylists: Playlist[] = [];
+        for (const p of candidatePlaylists) {
+          if (!p?.id || seenPlaylistIds.has(p.id)) continue;
+          seenPlaylistIds.add(p.id);
+          uniquePlaylists.push(p);
+        }
+
+        if (uniquePlaylists.length > 0) {
           shelves.push({
             title: "Playlists & Radios — إذاعات وقوائم تشغيل",
             tracks: [],
             albums: [],
-            playlists: quranPlaylists.playlists.slice(0, 24),
+            playlists: uniquePlaylists.slice(0, 24),
             artists: [],
             links: [],
           });
