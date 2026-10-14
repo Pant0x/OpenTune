@@ -819,7 +819,16 @@ export class YouTubeMusicDataSource extends DataSource {
   }
 
   private getArtwork(item: MusicItem): string | undefined {
-    return selectArtworkUrl(collectArtworkCandidates(item.thumbnail, item.thumbnails));
+    return selectArtworkUrl(
+      collectArtworkCandidates(
+        item.thumbnail,
+        item.thumbnails,
+        (item as any).content_image,
+        (item as any).thumbnail_renderer,
+        (item as any).image,
+        (item as any).first_videos,
+      ),
+    );
   }
 
   private normalizeSearchKey(value: string): string {
@@ -1321,12 +1330,20 @@ export class YouTubeMusicDataSource extends DataSource {
     const owner = this.isValidArtistString(rawOwner) ? rawOwner : "YouTube Music playlist";
     const artists = this.getArtists(item)?.filter((a) => this.isValidArtistString(a.name));
     const authorId = artists?.[0]?.id;
+    let artworkUrl = this.getArtwork(item);
+    if (!artworkUrl) {
+      const fv = (item as any).first_videos?.[0];
+      const vId = fv?.id ?? fv?.video_id;
+      if (vId && typeof vId === "string") {
+        artworkUrl = `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+      }
+    }
     return {
       id,
       title,
       owner,
       authorId,
-      artworkUrl: this.getArtwork(item),
+      artworkUrl,
       isSaved: false,
     };
   }
@@ -2644,9 +2661,18 @@ export class YouTubeMusicDataSource extends DataSource {
         .filter((item): item is Playlist => Boolean(item))
         .filter((item) => {
           const normalizedId = item.id.replace(/^VL/, "").toUpperCase();
-          if (normalizedId === "LM") return false;
+          if (normalizedId === "LM" || normalizedId === "LL" || normalizedId === "WL") return false;
           const lowerTitle = item.title.toLocaleLowerCase();
-          if (lowerTitle === "liked songs" || lowerTitle === "likes" || lowerTitle.includes("new releases") || lowerTitle.includes("new episodes")) return false;
+          if (
+            lowerTitle === "liked songs" ||
+            lowerTitle === "liked videos" ||
+            lowerTitle === "likes" ||
+            lowerTitle === "watch later" ||
+            lowerTitle.includes("new releases") ||
+            lowerTitle.includes("new episodes")
+          ) {
+            return false;
+          }
           return true;
         }),
     );
@@ -2664,16 +2690,68 @@ export class YouTubeMusicDataSource extends DataSource {
           const title = (item.title?.text ?? item.title?.toString?.() ?? item.metadata?.title?.text ?? "").trim();
           if (!id || !title) continue;
           const normalizedId = id.replace(/^VL/, "").toUpperCase();
-          if (normalizedId === "LM") continue;
+          if (normalizedId === "LM" || normalizedId === "LL" || normalizedId === "WL") continue;
           const lowerTitle = title.toLocaleLowerCase();
-          if (lowerTitle === "liked songs" || lowerTitle === "likes" || lowerTitle.includes("new releases") || lowerTitle.includes("new episodes")) continue;
+          if (
+            lowerTitle === "liked songs" ||
+            lowerTitle === "liked videos" ||
+            lowerTitle === "likes" ||
+            lowerTitle === "watch later" ||
+            lowerTitle.includes("new releases") ||
+            lowerTitle.includes("new episodes")
+          ) {
+            continue;
+          }
 
           let artworkUrl: string | undefined;
-          if (Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
-            artworkUrl = item.thumbnails[item.thumbnails.length - 1]?.url;
-          } else if (item.content_image?.primary_thumbnail?.thumbnails?.length > 0) {
-            const thumbs = item.content_image.primary_thumbnail.thumbnails;
-            artworkUrl = thumbs[thumbs.length - 1]?.url;
+
+          // 1. Direct candidate paths from Innertube LockupView / Playlist / GridPlaylist
+          const directCandidates = [
+            item.thumbnails,
+            item.thumbnail,
+            item.content_image?.primary_thumbnail?.image,
+            item.content_image?.primary_thumbnail?.thumbnails,
+            item.content_image?.image,
+            item.content_image?.thumbnails,
+            item.thumbnail_renderer?.playlistVideoThumbnailRenderer?.thumbnail?.thumbnails,
+            item.thumbnail_renderer?.thumbnail?.thumbnails,
+            item.first_videos?.[0]?.thumbnails,
+          ];
+
+          for (const cand of directCandidates) {
+            if (Array.isArray(cand) && cand.length > 0) {
+              const last = cand[cand.length - 1];
+              if (last?.url) {
+                artworkUrl = last.url;
+                break;
+              }
+            } else if (cand && typeof cand === "object" && (cand as any).url) {
+              artworkUrl = (cand as any).url;
+              break;
+            }
+          }
+
+          // 2. Recursive object search via selectArtworkUrl
+          if (!artworkUrl) {
+            artworkUrl = selectArtworkUrl(
+              collectArtworkCandidates(
+                item.thumbnails,
+                item.thumbnail,
+                item.content_image,
+                item.thumbnail_renderer,
+                item.first_videos,
+                item,
+              ),
+            );
+          }
+
+          // 3. Fallback to first video thumbnail if present
+          if (!artworkUrl) {
+            const fv = Array.isArray(item.first_videos) && item.first_videos.length > 0 ? item.first_videos[0] : null;
+            const videoId = fv?.id ?? fv?.video_id ?? item.endpoint?.payload?.videoId ?? item.first_video_id;
+            if (videoId && typeof videoId === "string") {
+              artworkUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            }
           }
 
           const owner = item.author?.name ?? item.metadata?.short_byline?.text ?? "YouTube playlist";
@@ -2713,48 +2791,97 @@ export class YouTubeMusicDataSource extends DataSource {
      * the cached snapshot is reused and only new playlists are probed.
      */
     const cachedLibrary = await getCachedJson<LibrarySnapshot>(LIBRARY_CACHE_KEY);
-    const cachedById = new Map((cachedLibrary?.playlists ?? []).map((playlist) => [playlist.id, playlist]));
+    const cachedById = new Map<string, Playlist>();
+    for (const cachedPl of cachedLibrary?.playlists ?? []) {
+      cachedById.set(cachedPl.id, cachedPl);
+      cachedById.set(this.normalizePlaylistId(cachedPl.id), cachedPl);
+    }
+
+    // Carry over cached artwork before queuing
+    for (const playlist of mergedPlaylists) {
+      if (!playlist.artworkUrl) {
+        const norm = this.normalizePlaylistId(playlist.id);
+        const cached = cachedById.get(playlist.id) ?? cachedById.get(norm);
+        if (cached?.artworkUrl) {
+          playlist.artworkUrl = cached.artworkUrl;
+        }
+      }
+    }
+
     const createdPlaylistIds = new Set<string>();
     const queue = mergedPlaylists.filter((playlist) => {
       const norm = this.normalizePlaylistId(playlist.id);
-      if (webPlaylistIds.has(norm)) {
+      const isWeb = webPlaylistIds.has(norm);
+      if (isWeb) {
         createdPlaylistIds.add(playlist.id);
-        return false;
       }
-      const cached = cachedById.get(playlist.id);
-      if (!cached || cached.isEditable === undefined) return true;
-      if (cached.isEditable) createdPlaylistIds.add(playlist.id);
-      // The probe is also where a missing cover came from, so carry that over rather than
-      // paying for the request again.
-      if (!playlist.artworkUrl) playlist.artworkUrl = cached.artworkUrl;
-      return false;
+
+      const cached = cachedById.get(playlist.id) ?? cachedById.get(norm);
+      if (cached?.isEditable) {
+        createdPlaylistIds.add(playlist.id);
+      }
+
+      const needsOwnership = !isWeb && (!cached || cached.isEditable === undefined);
+      const needsArtwork = !playlist.artworkUrl;
+      return needsOwnership || needsArtwork;
     });
+
     const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
       while (queue.length > 0) {
         const playlist = queue.shift();
         if (!playlist) return;
 
+        // 1. Try music browse endpoint
         for (const browseId of this.getPlaylistBrowseIds(playlist.id)) {
           try {
             const response = await this.executeMusicBrowse(client, { browseId });
             const editablePlaylistId = this.findEditablePlaylistId(response);
-            if (!editablePlaylistId) continue;
-
-            const normalizedEditableId = this.normalizePlaylistId(editablePlaylistId);
-            const normalizedPlaylistId = this.normalizePlaylistId(playlist.id);
-            if (normalizedEditableId !== normalizedPlaylistId) continue;
-
-            createdPlaylistIds.add(playlist.id);
-            if (!playlist.artworkUrl) {
-              playlist.artworkUrl = this.getAlbumHeaderArtwork(response);
+            if (editablePlaylistId) {
+              const normalizedEditableId = this.normalizePlaylistId(editablePlaylistId);
+              const normalizedPlaylistId = this.normalizePlaylistId(playlist.id);
+              if (normalizedEditableId === normalizedPlaylistId) {
+                createdPlaylistIds.add(playlist.id);
+              }
             }
-            break;
+
+            if (!playlist.artworkUrl) {
+              playlist.artworkUrl = this.getAlbumHeaderArtwork(response)
+                ?? selectArtworkUrl(collectArtworkCandidates(response));
+            }
+
+            if (
+              playlist.artworkUrl &&
+              (createdPlaylistIds.has(playlist.id) || webPlaylistIds.has(this.normalizePlaylistId(playlist.id)))
+            ) {
+              break;
+            }
           } catch (error) {
             logInternalWarn("YouTubeMusicDataSource.getCreatedPlaylists playlist failed", {
               playlistId: playlist.id,
               browseId,
               error: error instanceof Error ? error.message : String(error),
             });
+          }
+        }
+
+        // 2. Fallback to webClient getPlaylist for YouTube web playlists if artwork still missing
+        if (!playlist.artworkUrl) {
+          try {
+            const strippedId = playlist.id.replace(/^VL/, "");
+            const webClient = await this.getWebClient();
+            const plFeed = await webClient.getPlaylist(strippedId);
+            playlist.artworkUrl = selectArtworkUrl(
+              collectArtworkCandidates(
+                (plFeed as any)?.info?.thumbnails,
+                (plFeed as any)?.header,
+                (plFeed as any)?.videos?.[0]?.thumbnails,
+              ),
+            );
+            if (!playlist.artworkUrl && (plFeed as any)?.videos?.[0]?.id) {
+              playlist.artworkUrl = `https://i.ytimg.com/vi/${(plFeed as any).videos[0].id}/hqdefault.jpg`;
+            }
+          } catch {
+            // Ignore fallback error
           }
         }
       }

@@ -973,52 +973,73 @@ export function HomePage({
     if (chip.id === "spiritual") {
       setIsLoadingMood(true);
       try {
-        const [tracksRes, albumsRes, playlistsRes] = await Promise.all([
-          searchController.searchCategory("تلاوة قرآن كريم quran recitation", "song").catch(() => null),
-          searchController.searchCategory("المصحف المرتل quran full album", "album").catch(() => null),
-          searchController.searchCategory("إذاعة القرآن الكريم quran playlist", "playlist").catch(() => null),
+        const [quranVideos, quranRecitations, fullSurahs, quranPlaylists] = await Promise.all([
+          searchController.searchVideos("تلاوة خاشعة قرآن كريم تلاوات").catch(() => []),
+          searchController.searchVideos("تلاوة هادئة راحة نفسية الشيخ مشاري راشد عبد الباسط").catch(() => []),
+          searchController.searchVideos("سورة البقرة الكهف الملك يس الرحمن كاملة تلاوة").catch(() => []),
+          searchController.searchCategory("المصحف المرتل كامل إذاعة القرآن الكريم", "playlist").catch(() => null),
         ]);
-        const shelves: BrowseShelf[] = [];
-        const rawTracks = tracksRes?.tracks ?? [];
-        const quranTracks: Track[] = [
-          MAKKAH_LIVE_TRACK,
-          ...rawTracks.filter((t) => t.id !== MAKKAH_LIVE_TRACK.id),
-        ];
 
-        if (quranTracks.length > 0) {
+        const shelves: BrowseShelf[] = [];
+
+        // 1. Quick picks with Makkah Live and top peaceful recitations
+        const seenIds = new Set<string>();
+        const allTracks: Track[] = [MAKKAH_LIVE_TRACK];
+        seenIds.add(MAKKAH_LIVE_TRACK.id);
+
+        for (const t of [...quranVideos, ...quranRecitations]) {
+          if (!t?.id || seenIds.has(t.id)) continue;
+          seenIds.add(t.id);
+          allTracks.push({ ...t, isVideo: true });
+        }
+
+        if (allTracks.length > 0) {
           shelves.push({
-            title: "Quick picks — تلاوات مختارة",
-            tracks: quranTracks.slice(0, 32),
+            title: "Quick picks — تلاوات خاشعة ومختارة",
+            tracks: allTracks.slice(0, 32),
             albums: [],
             playlists: [],
             artists: [],
             links: [],
           });
         }
-        if (albumsRes && albumsRes.albums.length > 0) {
+
+        // 2. Long Surahs (Al-Baqarah, Al-Kahf, Yaseen, Al-Mulk)
+        const surahTracks: Track[] = [];
+        for (const t of fullSurahs) {
+          if (!t?.id || seenIds.has(t.id)) continue;
+          seenIds.add(t.id);
+          surahTracks.push({ ...t, isVideo: true });
+        }
+        if (surahTracks.length > 0) {
           shelves.push({
-            title: "Recitations & Surahs — المصحف المرتل",
-            tracks: [],
-            albums: albumsRes.albums.slice(0, 24),
+            title: "Surahs & Long Listens — سور وتلاوات كاملة",
+            tracks: surahTracks.slice(0, 24),
+            albums: [],
             playlists: [],
             artists: [],
             links: [],
           });
         }
-        if (playlistsRes && playlistsRes.playlists.length > 0) {
+
+        // 3. Playlists & Reciters
+        if (quranPlaylists && quranPlaylists.playlists.length > 0) {
           shelves.push({
             title: "Playlists & Radios — إذاعات وقوائم تشغيل",
             tracks: [],
             albums: [],
-            playlists: playlistsRes.playlists.slice(0, 24),
+            playlists: quranPlaylists.playlists.slice(0, 24),
             artists: [],
             links: [],
           });
         }
+
         cachedMoodShelves.set(chip.id, shelves);
         setMoodShelves(shelves);
-      } catch {
-        // Fallback gracefully
+      } catch (err) {
+        logInternalWarn("HomePage load spiritual mood failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setIsLoadingMood(false);
       }
@@ -1371,7 +1392,7 @@ export function HomePage({
           onOpenReleases={onOpenReleases}
           onOpenTrending={destinations?.onOpenBrowse}
         />
-      ) : (
+      ) : activeMood === "all" ? (
         <div className="flex flex-col gap-6">
           <section className="flex flex-col gap-3">
             <h2 className="text-xl font-semibold text-foreground">Quick picks</h2>
@@ -1379,12 +1400,12 @@ export function HomePage({
           </section>
           {isLoadingHomeShelves && (
             <section className="flex flex-col gap-3">
-              <h2 className="text-xl font-semibold text-foreground">albums for you</h2>
+              <h2 className="text-xl font-semibold text-foreground">Albums for you</h2>
               <AlbumGridSkeleton count={8} label="Loading albums" />
             </section>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
