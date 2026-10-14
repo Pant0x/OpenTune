@@ -9420,7 +9420,7 @@ export class YouTubeMusicDataSource extends DataSource {
 
       const lines = text
         .split(/\r?\n/)
-        .map((line) => ({ text: line.trim() }))
+        .map((line) => ({ text: unmaskProfanity(line.trim()) }))
         .filter((line) => line.text.length > 0);
       if (lines.length === 0) return null;
 

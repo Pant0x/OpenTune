@@ -17,88 +17,127 @@ function preserveCase(original: string, replacement: string): string {
   return replacement.toLowerCase();
 }
 
-const PROFANITY_PATTERNS: Array<[RegExp, string]> = [
-  // Motherfucker / mothafucka
-  [/\bm(?:other)?f[\*#@]{2,4}(?:er|ers|a|as)?\b/gi, "motherfucker"],
-  [/\bm[\*#@]{7,12}(?:er|ers|a|as)?\b/gi, "motherfucker"],
-  [/\bmothaf[\*#@]{2,4}(?:a|as|er)?\b/gi, "mothafucka"],
+const MASK = `[*#@%$!]`;
 
-  // Fucking / fuckin' / fucked / fucker / fuck
-  [/\b(?:f[\*#@]{2,3}|[\*#@]{4})in['’]\b/gi, "fuckin'"],
-  [/\b(?:f[\*#@]{2,3}|[\*#@]{4})ing\b/gi, "fucking"],
-  [/\b(?:f[\*#@]{2,3}|[\*#@]{4})ed\b/gi, "fucked"],
-  [/\b(?:f[\*#@]{2,3}|[\*#@]{4})ers?\b/gi, "fucker"],
-  [/\bf[\*#@]{1,3}k\b/gi, "fuck"],
-  [/\bf[\*#@]{2,4}\b/gi, "fuck"],
+// Helper for lookaround word boundaries that handle symbols/punctuation safely
+const LB = `(?<![\\p{L}\\p{N}_])`;
+const RB = `(?![\\p{L}\\p{N}_])`;
 
-  // Bullshit / shit / shitty
-  [/\bbull(?:s[\*#@]{2,3}|sh[\*#@]t)\b/gi, "bullshit"],
-  [/\b(?:s[\*#@]{2,3}|sh[\*#@]t|s[\*#@]t)ty\b/gi, "shitty"],
-  [/\b(?:s[\*#@]{2,3}|sh[\*#@]t|s[\*#@]t)\b/gi, "shit"],
+const UNMASK_RULES: Array<[RegExp, (match: string, ...args: string[]) => string]> = [
+  // 1. Motherfucker / mothafucka / motherfucking variations
+  [new RegExp(`${LB}m(?:other|otha|othaf|otherf|f)${MASK}{1,8}(?:er|ers|a|as|in['’]|ing)?${RB}`, "giu"), (m) => {
+    if (/in['’]$/i.test(m)) return preserveCase(m, "motherfuckin'");
+    if (/ing$/i.test(m)) return preserveCase(m, "motherfucking");
+    if (/as?$/i.test(m) || /motha/i.test(m)) return preserveCase(m, /s$/i.test(m) ? "mothafuckas" : "mothafucka");
+    return preserveCase(m, /s$/i.test(m) ? "motherfuckers" : "motherfucker");
+  }],
 
-  // Bitches / bitch
-  [/\bb[\*#@]{1,3}(?:ch)?es\b/gi, "bitches"],
-  [/\bb[\*#@]{1,3}h\b/gi, "bitch"],
-  [/\bb[\*#@]{3,5}\b/gi, "bitch"],
+  // 2. Fucking / fuckin' / fucked / fucker / fuckers
+  [new RegExp(`${LB}(?:f${MASK}{1,4}|${MASK}{4})(?:ck)?in['’]${RB}`, "giu"), (m) => preserveCase(m, "fuckin'")],
+  [new RegExp(`${LB}(?:f${MASK}{1,4}|${MASK}{4})(?:ck)?ing${RB}`, "giu"), (m) => preserveCase(m, "fucking")],
+  [new RegExp(`${LB}(?:f${MASK}{1,4}|${MASK}{4})(?:ck)?ed${RB}`, "giu"), (m) => preserveCase(m, "fucked")],
+  [new RegExp(`${LB}(?:f${MASK}{1,4}|${MASK}{4})(?:ck)?ers${RB}`, "giu"), (m) => preserveCase(m, "fuckers")],
+  [new RegExp(`${LB}(?:f${MASK}{1,4}|${MASK}{4})(?:ck)?er${RB}`, "giu"), (m) => preserveCase(m, "fucker")],
 
-  // Niggas / nigga / niggers / nigger
-  [/\bn[\*#@]{1,3}g(?:a|as)\b/gi, "nigga"],
-  [/\bn[\*#@]{2,4}(?:as|a)\b/gi, "nigga"],
-  [/\bn[\*#@]{1,3}g(?:er|ers)\b/gi, "nigger"],
-  [/\bn[\*#@]{2,4}(?:ers|er)\b/gi, "nigger"],
+  // 3. Bullshit / shitty / shit
+  [new RegExp(`${LB}bull(?:s${MASK}{1,4}|${MASK}{4})(?:h)?(?:i)?(?:t)?${RB}`, "giu"), (m) => preserveCase(m, "bullshit")],
+  [new RegExp(`${LB}(?:sh?|s)${MASK}{1,4}(?:t)?ty${RB}`, "giu"), (m) => preserveCase(m, "shitty")],
+  [new RegExp(`${LB}(?:sh${MASK}{1,3}t?|s${MASK}{1,3}t|s${MASK}{2,4})${RB}`, "giu"), (m) => preserveCase(m, "shit")],
 
-  // Asshole / ass
-  [/\ba[\*#@]{1,2}hole\b/gi, "asshole"],
-  [/\ba[\*#@]{5}e\b/gi, "asshole"],
-  [/\ba[\*#@]{2}\b/gi, "ass"],
+  // 4. Bitches / bitch
+  [new RegExp(`${LB}b${MASK}{1,5}(?:tch|ch|h)?es${RB}`, "giu"), (m) => preserveCase(m, "bitches")],
+  [new RegExp(`${LB}b${MASK}{1,5}s${RB}`, "giu"), (m) => preserveCase(m, "bitches")],
+  [new RegExp(`${LB}b${MASK}{1,5}(?:tch|ch|h)?${RB}`, "giu"), (m) => preserveCase(m, "bitch")],
 
-  // Pussy / pussies
-  [/\bp[\*#@]{1,3}(?:ss)?(?:y|ies)\b/gi, "pussy"],
-  [/\bp[\*#@]{3,4}\b/gi, "pussy"],
+  // 5. Niggas / nigga / niggers / nigger
+  [new RegExp(`${LB}n${MASK}{1,4}(?:gers|ers)${RB}`, "giu"), (m) => preserveCase(m, "niggers")],
+  [new RegExp(`${LB}n${MASK}{1,4}(?:ger|er)${RB}`, "giu"), (m) => preserveCase(m, "nigger")],
+  [new RegExp(`${LB}n${MASK}{1,4}(?:gas|as|s)${RB}`, "giu"), (m) => preserveCase(m, "niggas")],
+  [new RegExp(`${LB}n${MASK}{1,4}(?:ga|a)?${RB}`, "giu"), (m) => preserveCase(m, "nigga")],
 
-  // Dick
-  [/\bd[\*#@]{1,2}k\b/gi, "dick"],
-  [/\bd[\*#@]{2,3}\b/gi, "dick"],
+  // 6. Asshole / assholes / ass
+  [new RegExp(`${LB}(?:a${MASK}{1,5}|${MASK}{3,4})holes${RB}`, "giu"), (m) => preserveCase(m, "assholes")],
+  [new RegExp(`${LB}(?:a${MASK}{1,5}|${MASK}{3,4})hole${RB}`, "giu"), (m) => preserveCase(m, "asshole")],
+  [new RegExp(`${LB}a${MASK}{1,2}${RB}`, "giu"), (m) => preserveCase(m, "ass")],
 
-  // Cunt
-  [/\bc[\*#@]{1,2}t\b/gi, "cunt"],
+  // 7. Pussy / pussies
+  [new RegExp(`${LB}p${MASK}{1,5}(?:ss)?ies${RB}`, "giu"), (m) => preserveCase(m, "pussies")],
+  [new RegExp(`${LB}p${MASK}{1,5}(?:ss)?y${RB}`, "giu"), (m) => preserveCase(m, "pussy")],
+  [new RegExp(`${LB}p${MASK}{3,4}${RB}`, "giu"), (m) => preserveCase(m, "pussy")],
 
-  // Damn / goddamn
-  [/\bgod[\s-]?d[\*#@]{2,3}\b/gi, "goddamn"],
-  [/\bd[\*#@]{2,3}n\b/gi, "damn"],
+  // 8. Dick / dicks
+  [new RegExp(`${LB}d${MASK}{1,4}(?:ck|k)?s${RB}`, "giu"), (m) => preserveCase(m, "dicks")],
+  [new RegExp(`${LB}d${MASK}{1,4}(?:ck|k)?${RB}`, "giu"), (m) => preserveCase(m, "dick")],
 
-  // Whore / slut
-  [/\bw[\*#@]{2,3}e\b/gi, "whore"],
-  [/\bsl[\*#@]t\b/gi, "slut"],
+  // 9. Cunt / cunts
+  [new RegExp(`${LB}c${MASK}{1,3}(?:nt|t)?s${RB}`, "giu"), (m) => preserveCase(m, "cunts")],
+  [new RegExp(`${LB}c${MASK}{1,3}(?:nt|t)?${RB}`, "giu"), (m) => preserveCase(m, "cunt")],
+
+  // 10. Fuck (f***, f**k, f*ck, f---, f...)
+  [new RegExp(`${LB}f(?:${MASK}{1,4}|-{2,}|\\.{2,})(?:ck|k)?${RB}`, "giu"), (m) => preserveCase(m, "fuck")],
+
+  // 11. Damn / goddamn
+  [new RegExp(`${LB}god[\\s-]?d${MASK}{1,4}n?${RB}`, "giu"), (m) => preserveCase(m, "goddamn")],
+  [new RegExp(`${LB}d${MASK}{1,3}n${RB}`, "giu"), (m) => preserveCase(m, "damn")],
+
+  // 12. Whore / slut
+  [new RegExp(`${LB}(?:wh${MASK}{1,3}e|w${MASK}{2,4}e?)s?${RB}`, "giu"), (m) => preserveCase(m, /s$/i.test(m) ? "whores" : "whore")],
+  [new RegExp(`${LB}sl${MASK}{1,2}ts?${RB}`, "giu"), (m) => preserveCase(m, /s$/i.test(m) ? "sluts" : "slut")],
+
+  // 13. Common idiomatic multi-word censorship with **** / ***
+  [new RegExp(`\\b(holy|piece of|full of|talk that|talk your|no|some real|on some)\\s+${MASK}{3,4}${RB}`, "giu"), (_m, p1) => `${p1} shit`],
+  [new RegExp(`\\b(give a|gives a|gave a|what the|who the|where the|why the|how the|shut the|get the|as)\\s+${MASK}{4}${RB}`, "giu"), (_m, p1) => `${p1} fuck`],
+
+  // 14. Fallback standalone masks
+  [new RegExp(`${LB}${MASK}{5}${RB}`, "gu"), () => "bitch"],
+  [new RegExp(`${LB}${MASK}{4}${RB}`, "gu"), () => "fuck"],
+  [new RegExp(`${LB}${MASK}{3}${RB}`, "gu"), () => "shit"],
 ];
 
 /**
- * Replaces asterisk-masked profanities with the genuine explicit terms.
+ * Replaces asterisk-masked and censored profanities with genuine explicit terms.
  */
 export function unmaskProfanity(text: string): string {
-  if (!text || (!text.includes("*") && !text.includes("#") && !text.includes("@"))) {
+  if (
+    !text ||
+    (!text.includes("*") &&
+      !text.includes("#") &&
+      !text.includes("@") &&
+      !text.includes("%") &&
+      !text.includes("$") &&
+      !text.includes("!") &&
+      !text.includes("-") &&
+      !text.includes("."))
+  ) {
     return text;
   }
 
   let result = text;
-
-  for (const [pattern, replacement] of PROFANITY_PATTERNS) {
-    result = result.replace(pattern, (match) => preserveCase(match, replacement));
+  for (const [pattern, replacer] of UNMASK_RULES) {
+    result = result.replace(pattern, replacer);
   }
-
-  // Handle standalone **** or *** (common in radio/clean edit lyrics)
-  result = result.replace(/\b\*{4}\b/g, "fuck");
-  result = result.replace(/\b\*{3}\b/g, "shit");
 
   return result;
 }
+
+const CENSOR_DETECTION_REGEX = new RegExp(
+  `(?:` +
+    `(?<![\\p{L}\\p{N}_])${MASK}{2,}(?![\\p{L}\\p{N}_])` + // standalone ** / *** / **** / #####
+    `|(?<![\\p{L}\\p{N}_])[\\p{L}\\p{N}]{1,3}${MASK}{1,}` + // f***, sh**, b*
+    `|${MASK}{1,}[\\p{L}\\p{N}]{1,3}(?![\\p{L}\\p{N}_])` + // ***ing, *tch
+    `|[\\p{L}\\p{N}]${MASK}+[\\p{L}\\p{N}]` + // f*ck, b*tch, a**hole
+    `|(?<![\\p{L}\\p{N}_])f-{2,}(?![\\p{L}\\p{N}_])` + // f---
+    `|(?<![\\p{L}\\p{N}_])f\\.{2,}(?![\\p{L}\\p{N}_])` + // f...
+  `)`,
+  "u",
+);
 
 /**
  * Checks whether text contains typical profanity censorship (masked characters).
  */
 export function hasProfanityCensorship(text: string): boolean {
   if (!text) return false;
-  return /\b[a-z0-9]?[\*#@]{2,}[a-z0-9]?\b/i.test(text) || /\b[a-z][\*#@][a-z]{1,2}\b/i.test(text);
+  return CENSOR_DETECTION_REGEX.test(text);
 }
 
 /**
@@ -109,7 +148,10 @@ export function normalizeLyricsTitle(title: string): string {
   if (!title) return "";
   return title
     .toLowerCase()
-    .replace(/\s*[\[(](?:official|music|video|visualizer|audio|lyrics?|lyric|remaster|radio edit|single|album|live|feat|ft|with|prod|version)[^\])]*[\])]\s*/gi, " ")
+    .replace(
+      /\s*[\[(](?:official|music|video|visualizer|audio|lyrics?|lyric|remaster|radio edit|single|album|live|feat|ft|with|prod|version)[^\])]*[\])]\s*/gi,
+      " ",
+    )
     .replace(/\s+-\s+(?:official|music|video|visualizer|audio|lyrics?|lyric|remix).*$/i, "")
     .replace(/[^\p{L}\p{N}\s]/gu, "")
     .replace(/\s+/g, " ")
@@ -183,9 +225,11 @@ export function isLyricsArtistMatch(expectedArtists: string[], candidateArtist?:
   return false;
 }
 
-const SECTION_HEADER_REGEX = /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*$/i;
+const SECTION_HEADER_REGEX =
+  /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*$/i;
 
-const SECTION_HEADER_PREFIX_REGEX = /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*/i;
+const SECTION_HEADER_PREFIX_REGEX =
+  /^\s*\[(?:intro|verse|chorus|bridge|hook|outro|refrain|drop|instrumental|pre-chorus|post-chorus|solo|part|interlude|break|build|skit|spoken)[^\]]*\]\s*/i;
 
 /**
  * Returns true if a lyric line is purely an structural section tag (e.g. [Intro: AI Playboi Carti], [Chorus], [Verse 1]).
